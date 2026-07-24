@@ -1102,6 +1102,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 </head>
 <body>
 <div id="root"></div>
@@ -1179,6 +1180,13 @@ function fbFunctions(){
   fbInit();
   _fbFunctions = firebase.functions();
   return _fbFunctions;
+}
+let _fbStorage = null;
+function fbStorage(){
+  if(_fbStorage) return _fbStorage;
+  fbInit();
+  _fbStorage = firebase.storage();
+  return _fbStorage;
 }
 
 if(FIREBASE_CONFIGURED){
@@ -1489,7 +1497,7 @@ function emptyDraft(regionIdx){
     registrationLink:'',
     contractFileName:'',
     contractFileType:'',
-    contractFileData:'',   // base64, no data-URL prefix
+    contractFileUrl:'',    // Firebase Storage download URL -- the file itself lives in Storage, not Firestore
     paymentDueDate:'',
     paymentMethod:'',            // 'credit_card' | 'pay_at_gate' | 'other'
     creditCardLink:'',           // required only if paymentMethod === 'credit_card'
@@ -2320,7 +2328,7 @@ function humanizeFieldKey(key){
 
 const DIFF_IGNORE_KEYS = new Set([
   'id','history','createdAt','submittedAt','deniedAt','deniedBySupervisor','notPursuingAt',
-  'contractFileData','contractFileType','status'
+  'contractFileUrl','contractFileType','status'
 ]);
 
 // Compares two event objects and returns a short, human-readable list of which fields changed --
@@ -2577,7 +2585,7 @@ async function duplicateEventNextYear(id){
   copy.confirmedAcceptance = '';
   copy.contractFileName = '';
   copy.contractFileType = '';
-  copy.contractFileData = '';
+  copy.contractFileUrl = '';
   copy.history = [];
   // A duplicated event is, by definition, a renewal of a show that already ran -- mark it as
   // such so the pre-approval checklist requires a Historical Show Code before it can move
@@ -3067,9 +3075,9 @@ function buildFullEventTextSummary(ev){
     : ev.paymentMethod==='phone_payment' ? 'Phone Payment'
     : ev.paymentMethod==='check' ? 'Check (not preferred)'
     : ev.paymentMethod==='other' ? 'Other' : '—';
-  const hasAttachment = !!(ev.contractFileName && ev.contractFileData);
+  const hasAttachment = !!(ev.contractFileName && ev.contractFileUrl);
   const attachmentNote = hasAttachment
-    ? `${ev.contractFileName} (downloaded separately — please attach before sending)`
+    ? `${ev.contractFileName} (opened in a new tab — save it from there and attach it before sending)`
     : '—';
 
   const lines = [
@@ -3135,7 +3143,7 @@ function buildFullEventTextSummary(ev){
 function generateApprovalEmail(ev){
   const to = sanitizeHeader(ev.supervisorEmail);
   const subject = sanitizeHeader(`Approval Request: ${ev.eventName}`);
-  const hasAttachment = !!(ev.contractFileName && ev.contractFileData);
+  const hasAttachment = !!(ev.contractFileName && ev.contractFileUrl);
 
   // mailto can't carry file attachments, so download the contract document (if any) alongside
   // the approval PDF, and just point to both in the email body.
@@ -3224,7 +3232,7 @@ async function syncEventToExhibitDay(ev){
 function generateContractingEmail(ev){
   const to = CONTRACTING_EMAIL;
   const subject = sanitizeHeader(`Contract Processing: ${ev.eventName}`);
-  const hasAttachment = !!(ev.contractFileName && ev.contractFileData);
+  const hasAttachment = !!(ev.contractFileName && ev.contractFileUrl);
 
   if(hasAttachment){
     downloadContractFile(ev);
@@ -3246,22 +3254,8 @@ function generateContractingEmail(ev){
 }
 
 function downloadContractFile(ev){
-  if(!(ev.contractFileName && ev.contractFileData)) return;
-  const mime = ev.contractFileType || 'application/octet-stream';
-  const blob = (function(){
-    const byteChars = atob(ev.contractFileData);
-    const byteNumbers = new Array(byteChars.length);
-    for(let i=0;i<byteChars.length;i++) byteNumbers[i] = byteChars.charCodeAt(i);
-    return new Blob([new Uint8Array(byteNumbers)], { type: mime });
-  })();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = ev.contractFileName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  if(!(ev.contractFileName && ev.contractFileUrl)) return;
+  window.open(ev.contractFileUrl, '_blank', 'noopener');
 }
 
 // Escapes a single CSV field: wraps in quotes and doubles up any internal quotes whenever the
@@ -4483,7 +4477,7 @@ function renderEventDetail(ev){
       ${ev.submissionType==='renewal' ? item('Historical Show Code', val(ev.historicalShowCode), isEmptyV(ev.historicalShowCode)) : ''}
       ${item('Show Registration Link', val(ev.registrationLink), isEmptyV(ev.registrationLink))}
       ${ev.contractFileName
-          ? `<div class="detail-item"><span class="detail-label">Contract Document</span><span class="detail-value"><a href="data:${escapeHtml(ev.contractFileType||'application/octet-stream')};base64,${ev.contractFileData}" download="${escapeHtml(ev.contractFileName)}" style="color:var(--accent-dark);text-decoration:underline;">${escapeHtml(ev.contractFileName)}</a></span></div>`
+          ? `<div class="detail-item"><span class="detail-label">Contract Document</span><span class="detail-value"><a href="${escapeHtml(ev.contractFileUrl)}" target="_blank" rel="noopener" style="color:var(--accent-dark);text-decoration:underline;">${escapeHtml(ev.contractFileName)}</a></span></div>`
           : item('Contract Document', val(''), true)}
       ${item('Payment Due Date', val(ev.paymentDueDate), isEmptyV(ev.paymentDueDate))}
       ${item('Payment Method', val(ev.paymentMethod==='credit_card'?'Credit Card':ev.paymentMethod==='pay_at_gate'?'Pay at the Gate':ev.paymentMethod==='phone_payment'?'Phone Payment':ev.paymentMethod==='check'?'Check (not preferred)':ev.paymentMethod==='other'?'Other':''), isEmptyV(ev.paymentMethod))}
@@ -4797,7 +4791,7 @@ function renderPanel(){
         <div class="hint" id="contractFileStatus">
           ${d.contractFileName
             ? `Attached: <strong>${escapeHtml(d.contractFileName)}</strong> — <a href="#" id="removeContractFile" style="color:var(--red);">remove</a>`
-            : 'Upload the signed contract — it will be attached to the approval email. PDF, Word, or image, up to 500KB.'}
+            : 'Upload the signed contract — it will be attached to the approval email. PDF, Word, or image, up to 10MB.'}
         </div>
         <div id="regOrContractNote">${(d.registrationLink||d.contractFileName) ? `<div class="field-note-ok">✓ Requirement satisfied</div>` : ''}</div>
       </div>
@@ -5807,34 +5801,43 @@ function attachHandlers(){
     });
   }
 
-  // Each event is now its own Firestore document, capped at 1 MiB total. Base64-encoding a file
-  // inflates its size by about a third, so this ceiling leaves solid headroom for the rest of
-  // the event's fields (notes, contact info, history, etc.) after the attachment is included.
-  const MAX_ATTACHMENT_BYTES = 500 * 1024; // 500KB raw -> ~667KB base64
+  // Files now go to Firebase Storage (built for actual files) instead of being embedded as
+  // base64 text inside the event's Firestore document -- that's what caused events with a large
+  // attachment to risk blowing past Firestore's 1 MiB per-document limit on their own. Only a
+  // download URL is stored on the event now, so attachments can be far larger without any risk
+  // to the document size.
+  const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB
   const contractFileInput = document.getElementById('f_contractFile');
+  const contractFileStatusEl = document.getElementById('contractFileStatus');
   if(contractFileInput){
-    contractFileInput.addEventListener('change', ()=>{
+    contractFileInput.addEventListener('change', async ()=>{
       const file = contractFileInput.files && contractFileInput.files[0];
       if(!file) return;
       if(file.size > MAX_ATTACHMENT_BYTES){
-        alert(`"${file.name}" is ${(file.size/1024/1024).toFixed(1)}MB, which is over the 500KB limit for an attached file. Please choose a smaller file, or compress it first.`);
+        alert(`"${file.name}" is ${(file.size/1024/1024).toFixed(1)}MB, which is over the 10MB limit for an attached file. Please choose a smaller file, or compress it first.`);
         contractFileInput.value = '';
         return;
       }
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result; // "data:<mime>;base64,<data>"
-        const commaIdx = dataUrl.indexOf(',');
-        readDraftFromForm(); // preserve any other in-progress field edits before re-rendering
+      readDraftFromForm(); // preserve any other in-progress field edits
+      if(contractFileStatusEl) contractFileStatusEl.innerHTML = `Uploading "${escapeHtml(file.name)}"\u2026`;
+      contractFileInput.disabled = true;
+      try{
+        // A random path component keeps files from colliding, independent of whether this
+        // event has been saved yet (new events don't have a real id until Save is clicked).
+        const storagePath = `contracts/${uid()}-${file.name}`;
+        const storageRef = fbStorage().ref(storagePath);
+        await storageRef.put(file);
+        const url = await storageRef.getDownloadURL();
         state.draft.contractFileName = file.name;
         state.draft.contractFileType = file.type || 'application/octet-stream';
-        state.draft.contractFileData = dataUrl.slice(commaIdx + 1);
-        render();
-      };
-      reader.onerror = () => {
-        alert('Could not read that file. Please try again.');
-      };
-      reader.readAsDataURL(file);
+        state.draft.contractFileUrl = url;
+      }catch(e){
+        console.error('Contract file upload failed', e);
+        alert('That file could not be uploaded -- likely a connection issue. Please try again.');
+        contractFileInput.value = '';
+      }
+      contractFileInput.disabled = false;
+      render();
     });
   }
   const removeContractFileLink = document.getElementById('removeContractFile');
@@ -5844,7 +5847,7 @@ function attachHandlers(){
       readDraftFromForm();
       state.draft.contractFileName = '';
       state.draft.contractFileType = '';
-      state.draft.contractFileData = '';
+      state.draft.contractFileUrl = '';
       render();
     });
   }

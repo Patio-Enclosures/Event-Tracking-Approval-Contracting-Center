@@ -1906,6 +1906,37 @@ function findEventNameColumn(headerRow){
 // Event Name, and updates ev.onMasterList (+ ev.masterListCheckedAt) on ALL events -- so
 // re-running this later with an updated master list correctly un-flags anything that dropped
 // off the list, not just adds new matches.
+// For bulk operations (matching many events at once, importing many new ones) that need to
+// read the TRUE latest events from Firestore -- not this tab's possibly-stale copy -- apply a
+// transform, and write the result back atomically. `transformFn(latestEvents)` should mutate
+// and/or return the array it's given. Returns true/false for success, and adopts the final
+// result into state.events either way it succeeds.
+async function persistEventsBulkAtomic(transformFn){
+  try{
+    const docRef = fbDb().collection(FS_COLLECTION).doc('event-ledger-data');
+    let finalEvents = null;
+    await fbDb().runTransaction(async (tx) => {
+      const doc = await tx.get(docRef);
+      let latest = { regionNames: state.regionNames, events: [] };
+      if(doc.exists && doc.data() && doc.data().value){
+        try{ latest = JSON.parse(doc.data().value); }catch(e){ /* fall back to empty */ }
+      }
+      if(!Array.isArray(latest.events)) latest.events = [];
+      const result = transformFn(latest.events);
+      finalEvents = Array.isArray(result) ? result : latest.events;
+      tx.set(docRef, {
+        value: JSON.stringify({ regionNames: latest.regionNames || state.regionNames, events: finalEvents }),
+        updatedAt: Date.now()
+      });
+    });
+    if(finalEvents) state.events = finalEvents;
+    return true;
+  }catch(e){
+    console.error('Bulk atomic persist failed', e);
+    return false;
+  }
+}
+
 async function crossReferenceMasterList(file){
   const buf = await file.arrayBuffer();
   const workbook = XLSX.read(buf, { type: 'array' });
@@ -1925,17 +1956,25 @@ async function crossReferenceMasterList(file){
   }
 
   let matchedCount = 0;
+  let totalCount = 0;
   const now = Date.now();
-  state.events.forEach(ev=>{
-    const isMatch = masterNames.has(normalizeEventName(ev.eventName));
-    ev.onMasterList = isMatch;
-    ev.masterListCheckedAt = now;
-    if(isMatch) matchedCount++;
+  const ok = await persistEventsBulkAtomic((latestEvents) => {
+    totalCount = latestEvents.length;
+    latestEvents.forEach(ev=>{
+      const isMatch = masterNames.has(normalizeEventName(ev.eventName));
+      ev.onMasterList = isMatch;
+      ev.masterListCheckedAt = now;
+      if(isMatch) matchedCount++;
+    });
+    return latestEvents;
   });
 
-  persist();
-  logActivity(null, null, 'Cross-referenced master list', `${file.name} — ${matchedCount} of ${state.events.length} events matched`);
-  state.masterListStatus = `Matched ${matchedCount} of ${state.events.length} dashboard events against ${masterNames.size} names in "${file.name}" (column: "${rows[0][nameColIdx]}"). Checked just now.`;
+  if(!ok){
+    alert('The master list cross-reference could not be saved -- likely a connection issue. Please try again.');
+    return;
+  }
+  logActivity(null, null, 'Cross-referenced master list', `${file.name} — ${matchedCount} of ${totalCount} events matched`);
+  state.masterListStatus = `Matched ${matchedCount} of ${totalCount} dashboard events against ${masterNames.size} names in "${file.name}" (column: "${rows[0][nameColIdx]}"). Checked just now.`;
   render();
 }
 
@@ -2441,16 +2480,20 @@ async function saveDraft(){
   render();
 }
 
-function deleteEvent(id){
+async function deleteEvent(id){
   const ev = state.events.find(e=>e.id===id);
   if(ev && ev.status===STATUS.SUBMITTED){
     alert('This event has already been submitted for contract processing and can no longer be deleted.');
     return;
   }
   if(!confirm('Delete this event from the ledger? This cannot be undone.')) return;
-  logActivity(null, ev ? ev.eventName : 'Unknown event', 'Deleted event');
-  state.events = state.events.filter(e=>e.id!==id);
-  persist();
+  if(!ev) return;
+  const ok = await persistEventChangeAtomic(ev, true);
+  if(!ok){
+    alert('This event could not be deleted -- likely a connection issue. Please try again.');
+    return;
+  }
+  logActivity(null, ev.eventName, 'Deleted event');
   render();
 }
 
@@ -2470,7 +2513,7 @@ function shiftDateNextYear(dateStr){
 // Copies an event to a new Researching entry one year later (same month/day). Approval-specific
 // fields (checklist answers, submission timestamps, contract attachment) are cleared, since
 // those need to be re-verified for the new year rather than carried over automatically.
-function duplicateEventNextYear(id){
+async function duplicateEventNextYear(id){
   const original = state.events.find(e=>e.id===id);
   if(!original) return;
   const newStart = shiftDateNextYear(original.startDate);
@@ -2498,58 +2541,92 @@ function duplicateEventNextYear(id){
   // editable) rather than making the person re-type something that's often unchanged year to year.
   copy.submissionType = 'renewal';
 
-  state.events.push(copy);
+  const ok = await persistEventChangeAtomic(copy, false);
+  if(!ok){
+    alert('This event could not be duplicated -- likely a connection issue. Please try again.');
+    return;
+  }
   logActivity(copy.id, copy.eventName, 'Created event', 'Duplicated from previous year\'s event');
-  persist();
   state.expandedEventId = copy.id;
   state.activeRegion = copy.region;
   render();
 }
 
-function setDecision(id, newStatus){
+async function setDecision(id, newStatus){
   const ev = state.events.find(e=>e.id===id);
+  if(!ev) return;
+  const before = Object.assign({}, ev);
   ev.status = newStatus;
   ev.deniedBySupervisor = false;
   ev.deniedAt = null;
   ev.notPursuingAt = null;
   ev.notPursuingReason = '';
+  const ok = await persistEventChangeAtomic(ev, false);
+  if(!ok){
+    Object.assign(ev, before);
+    alert('This status change could not be saved -- likely a connection issue. Please try again.');
+    render();
+    return;
+  }
   logActivity(ev.id, ev.eventName, 'Status changed to ' + STATUS_LABEL[newStatus]);
-  persist();
   render();
 }
 
-function denyBySupervisor(id){
+async function denyBySupervisor(id){
   const ev = state.events.find(e=>e.id===id);
+  if(!ev) return;
   if(!confirm(`Mark "${ev.eventName}" as denied by supervisor? This moves it to Declined.`)) return;
+  const before = Object.assign({}, ev);
   ev.status = STATUS.DECLINED;
   ev.deniedBySupervisor = true;
   ev.deniedAt = Date.now();
+  const ok = await persistEventChangeAtomic(ev, false);
+  if(!ok){
+    Object.assign(ev, before);
+    alert('This could not be saved -- likely a connection issue. Please try again.');
+    render();
+    return;
+  }
   logActivity(ev.id, ev.eventName, 'Denied by Supervisor');
-  persist();
   render();
 }
 
-function markNotPursuing(id, reason){
+async function markNotPursuing(id, reason){
   const ev = state.events.find(e=>e.id===id);
   if(!ev) return;
+  const before = Object.assign({}, ev);
   ev.status = STATUS.NOT_PURSUING;
   ev.notPursuingAt = Date.now();
   ev.notPursuingReason = reason || '';
+  const ok = await persistEventChangeAtomic(ev, false);
+  if(!ok){
+    Object.assign(ev, before);
+    alert('This could not be saved -- likely a connection issue. Please try again.');
+    render();
+    return;
+  }
   logActivity(ev.id, ev.eventName, 'Marked Not Pursuing', reason || '');
-  persist();
   render();
 }
 
-function submitForApproval(id){
+async function submitForApproval(id){
   const ev = state.events.find(e=>e.id===id);
+  if(!ev) return;
   const missing = getMissingApprovalFields(ev);
   if(missing.length>0){
     alert('This event is missing information required before it can be submitted for approval:\n\n' + missing.join('\n'));
     return;
   }
+  const before = Object.assign({}, ev);
   ev.status = STATUS.EXECUTE;
+  const ok = await persistEventChangeAtomic(ev, false);
+  if(!ok){
+    Object.assign(ev, before);
+    alert('This could not be submitted -- likely a connection issue. Please try again.');
+    render();
+    return;
+  }
   logActivity(ev.id, ev.eventName, 'Submitted for Approval');
-  persist();
   generateApprovalPDF(ev);
   // Email and Teams don't fire automatically -- too many moving parts for a submitter who just
   // wants to hit one button. Instead, prompt right here so notifying is one click away without
@@ -2625,8 +2702,9 @@ async function notifyTeams(ev){
   }
 }
 
-function submitContract(id){
+async function submitContract(id){
   const ev = state.events.find(e=>e.id===id);
+  if(!ev) return;
   const missing = getMissingFields(ev);
   if(missing.length>0){
     alert('This event is missing required information and cannot be submitted for contract processing yet:\n\n' + missing.join(', '));
@@ -2638,10 +2716,17 @@ function submitContract(id){
       : 'Only authorized approvers can submit for contract processing. Set your name first (top of the page), then check with whoever manages the approver list.');
     return;
   }
+  const before = Object.assign({}, ev);
   ev.status = STATUS.SUBMITTED;
   ev.submittedAt = Date.now();
+  const ok = await persistEventChangeAtomic(ev, false);
+  if(!ok){
+    Object.assign(ev, before);
+    alert('This could not be submitted -- likely a connection issue. Please try again.');
+    render();
+    return;
+  }
   logActivity(ev.id, ev.eventName, 'Submitted for Contract Processing');
-  persist();
   render();
   downloadContractSummary(ev);
 }
@@ -3081,7 +3166,10 @@ async function syncEventToExhibitDay(ev){
   const data = result.data;
   ev.exhibitDayEventId = data._exhibitDayEventId;
   ev.exhibitDaySyncedAt = Date.now();
-  persist();
+  const ok = await persistEventChangeAtomic(ev, false);
+  if(!ok){
+    throw new Error('Synced to Exhibit Day successfully, but saving that status back to the dashboard failed -- likely a connection issue. Try clicking Sync again to record it.');
+  }
   logActivity(ev.id, ev.eventName, 'Synced to Exhibit Day', data._syncAction === 'created' ? 'Created new event' : 'Updated existing event');
   return data;
 }
@@ -3298,7 +3386,7 @@ function parseEventsFromCSV(text){
 
 function importEventsFromCSVFile(file){
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     const { events, skipped } = parseEventsFromCSV(String(reader.result));
     if(events.length === 0){
       alert(skipped>0
@@ -3308,9 +3396,12 @@ function importEventsFromCSVFile(file){
     }
     const skipNote = skipped>0 ? ` (${skipped} row${skipped===1?'':'s'} skipped for missing an Event Name)` : '';
     if(!confirm(`Import ${events.length} event${events.length===1?'':'s'} from "${file.name}"?${skipNote}\n\nThese will be added as brand-new events -- this does not check for or merge duplicates.`)) return;
-    state.events = state.events.concat(events);
+    const ok = await persistEventsBulkAtomic((latestEvents) => latestEvents.concat(events));
+    if(!ok){
+      alert('These events could not be imported -- likely a connection issue. Please try again.');
+      return;
+    }
     logActivity(null, null, 'Bulk imported events', `${events.length} events from ${file.name}`);
-    persist();
     render();
     alert(`Imported ${events.length} event${events.length===1?'':'s'}.`);
   };
@@ -5446,17 +5537,26 @@ function attachHandlers(){
   });
   const bulkCleanupEventPassed = document.getElementById('bulkCleanupEventPassed');
   if(bulkCleanupEventPassed){
-    bulkCleanupEventPassed.addEventListener('click', ()=>{
+    bulkCleanupEventPassed.addEventListener('click', async ()=>{
       const targets = state.events.filter(ev => getStalenessFlag(ev)==='event_passed');
       if(targets.length===0) return;
       if(!confirm(`Mark all ${targets.length} event${targets.length===1?'':'s'} with a passed event date as Not Pursuing? This can be undone individually later by reopening for research.`)) return;
-      targets.forEach(ev=>{
-        ev.status = STATUS.NOT_PURSUING;
-        ev.notPursuingAt = Date.now();
-        ev.notPursuingReason = 'Event date already passed (bulk cleanup)';
-        logActivity(ev.id, ev.eventName, 'Marked Not Pursuing', ev.notPursuingReason);
+      const targetIds = new Set(targets.map(ev => ev.id));
+      const ok = await persistEventsBulkAtomic((latestEvents) => {
+        latestEvents.forEach(ev=>{
+          if(targetIds.has(ev.id)){
+            ev.status = STATUS.NOT_PURSUING;
+            ev.notPursuingAt = Date.now();
+            ev.notPursuingReason = 'Event date already passed (bulk cleanup)';
+          }
+        });
+        return latestEvents;
       });
-      persist();
+      if(!ok){
+        alert('This cleanup could not be saved -- likely a connection issue. Please try again.');
+        return;
+      }
+      targets.forEach(ev => logActivity(ev.id, ev.eventName, 'Marked Not Pursuing', 'Event date already passed (bulk cleanup)'));
       render();
     });
   }

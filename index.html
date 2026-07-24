@@ -2154,8 +2154,10 @@ async function persist(){
       regionNames: state.regionNames,
       events: state.events
     }), true);
+    return true;
   }catch(e){
     console.error('Storage error', e);
+    return false;
   }
 }
 
@@ -2356,7 +2358,7 @@ const REQUIRED_BASE_FIELDS = [
   ['endDate', 'End Date']
 ];
 
-function saveDraft(){
+async function saveDraft(){
   const d = state.draft;
   const missing = REQUIRED_BASE_FIELDS
     .filter(([key])=> !d[key] || !String(d[key]).trim())
@@ -2365,22 +2367,44 @@ function saveDraft(){
     alert('Please complete the following before saving this event:\n\n' + missing.join('\n'));
     return;
   }
+
+  const isNew = !state.editingEventId;
+  let idx = -1, before = null, changedFields = [];
   if(state.editingEventId){
-    const idx = state.events.findIndex(e=>e.id===state.editingEventId);
-    const before = state.events[idx];
-    const changedFields = diffEventFields(before, d);
+    idx = state.events.findIndex(e=>e.id===state.editingEventId);
+    before = state.events[idx];
+    changedFields = diffEventFields(before, d);
     d.history = before ? before.history : [];
     state.events[idx] = d;
-    if(changedFields.length>0){
-      logActivity(d.id, d.eventName, 'Edited event', changedFields.join(', '));
-    }
   } else {
     d.id = uid();
     d.history = [];
     state.events.push(d);
-    logActivity(d.id, d.eventName, 'Created event');
   }
-  persist();
+
+  const saveBtn = document.getElementById('savePanelBtn');
+  const saveBtnOriginalText = saveBtn ? saveBtn.textContent : 'Save';
+  if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'Saving\u2026'; }
+  const ok = await persist();
+  if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = saveBtnOriginalText; }
+
+  if(!ok){
+    // Roll back the in-memory change so state.events doesn't silently drift from what's
+    // actually stored -- and keep the panel open so nothing typed gets lost.
+    if(isNew){
+      state.events = state.events.filter(e => e.id !== d.id);
+    } else if(idx > -1){
+      state.events[idx] = before;
+    }
+    alert('This event could not be saved -- your data was NOT stored. This is usually a connection issue. Please check your internet connection and click Save again. Nothing has been lost; your entries are still in this form.');
+    return;
+  }
+
+  if(isNew){
+    logActivity(d.id, d.eventName, 'Created event');
+  } else if(changedFields.length>0){
+    logActivity(d.id, d.eventName, 'Edited event', changedFields.join(', '));
+  }
   closePanel(true);
   render();
 }

@@ -5971,6 +5971,31 @@ if(FIREBASE_CONFIGURED){
   state.currentUser = { email: 'unconfigured' };
   loadData();
 }
+
+/* ============================================================================
+   CONSOLE ACCESS BRIDGE
+   ----------------------------------------------------------------------------
+   Switching to the modular Firebase SDK removed the old global "firebase"
+   object, which broke every browser-console admin command used throughout
+   this project (assigning brands, one-off data fixes, activity log cleanup,
+   etc.) -- none of that was ever meant to require redeploying code just to
+   run a quick fix. This re-exposes what's needed for that to keep working.
+
+   Most useful for admin console commands:
+     callFunction('assignUserBrand', {email: '...', brand: '...'})
+     callFunction('getUserBrand', {email: '...'})
+     state.events / state.regionNames -- inspect or one-off patch live data
+     persistEventChangeAtomic(eventObject, false) -- save a manual data fix
+     persist() / persistActivityLog() -- after directly editing state
+     render() -- refresh the screen after a manual state change
+   ============================================================================ */
+window.state = state;
+window.render = render;
+window.persist = persist;
+window.persistActivityLog = persistActivityLog;
+window.persistEventChangeAtomic = persistEventChangeAtomic;
+window.persistEventsBulkAtomic = persistEventsBulkAtomic;
+window.callFunction = (name, data) => httpsCallable(fbFunctions(), name)(data);
 </script>
 </body>
 </html>

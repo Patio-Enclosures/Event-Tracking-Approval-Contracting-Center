@@ -32,9 +32,6 @@ const exhibitDayApiKey = defineSecret('EXHIBITDAY_API_KEY');
 
 const EXHIBITDAY_BASE_URL = 'https://api.exhibitday.com/v1';
 
-// Looks up whether an event with this dashboard ID (stored in
-// integration_metadata_field_1 on the Exhibit Day side) was already synced,
-// so re-running the sync updates the same record instead of duplicating it.
 async function findExistingExhibitDayEvent(dashboardEventId, apiKey) {
   const url = new URL(`${EXHIBITDAY_BASE_URL}/events`); // VERIFY THIS PATH ("Retrieve Events")
   url.searchParams.set('api_key', apiKey);
@@ -75,9 +72,6 @@ async function updateExhibitDayEvent(exhibitDayEventId, payload, apiKey) {
   return res.json();
 }
 
-// The dashboard sends a plain object with these fields already computed
-// (see the dashboard-side buildExhibitDaySyncPayload() function) -- this
-// function's only job is auth, dedup lookup, and the actual API calls.
 exports.syncEventToExhibitDay = onCall({ secrets: [exhibitDayApiKey] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'You must be signed in to sync events.');
@@ -104,20 +98,15 @@ exports.syncEventToExhibitDay = onCall({ secrets: [exhibitDayApiKey] }, async (r
       budget_attendee_registrations: ev.budget_attendee_registrations,
       integration_metadata_field_1: ev.dashboardEventId,
       integration_metadata_field_2: ev.dashboardStatus || '',
-      ...(ev.custom_fields || {}) // Region, Branch, Contact info, Payment info, Target Opps Goal
+      ...(ev.custom_fields || {})
     };
 
     let result;
     if (existing) {
-      // Update path already supports every field in one call.
       result = await updateExhibitDayEvent(existing.id, { name: ev.name, start_date: ev.start_date, end_date: ev.end_date, ...richFieldsPayload }, apiKey);
       result._syncAction = 'updated';
       result._exhibitDayEventId = existing.id;
     } else {
-      // Exhibit Day's "Add an Event" endpoint only accepts name/start_date/end_date (plus a
-      // couple of unrelated fields) -- venue, budget, notes, etc. are silently ignored if sent
-      // here. So: create with just the basics, then immediately follow with an update call
-      // carrying everything else, using the new event's id.
       const created = await createExhibitDayEvent({ name: ev.name, start_date: ev.start_date, end_date: ev.end_date }, apiKey);
       result = await updateExhibitDayEvent(created.id, richFieldsPayload, apiKey);
       result._syncAction = 'created';
@@ -130,10 +119,6 @@ exports.syncEventToExhibitDay = onCall({ secrets: [exhibitDayApiKey] }, async (r
   }
 });
 
-// One-time discovery helper: lists every custom field configured in your Exhibit Day workspace
-// (across the Event Information, Booth, and Special Event tabs), including each one's internal
-// field_name (e.g. "custom_123456") -- the value needed to write directly into it via the API.
-// Called from a temporary "List Custom Fields" button in the dashboard's Settings panel.
 exports.listExhibitDayCustomFields = onCall({ secrets: [exhibitDayApiKey] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'You must be signed in to do this.');
@@ -149,12 +134,7 @@ exports.listExhibitDayCustomFields = onCall({ secrets: [exhibitDayApiKey] }, asy
   return res.json();
 });
 
-// Assigns which brand a user's account belongs to, via a custom claim on their Firebase Auth
-// account -- not something adjustable from the browser. Firestore security rules check this
-// same claim, so even a bug in the dashboard's own code can't connect someone to the wrong
-// brand's database; Firestore itself refuses the mismatch.
-// Only callable by BRAND_ADMIN_EMAILS. Takes { email, brand } and assigns it to that account.
-exports.assignUserBrand = onCall(async (request) => {
+exports.assignUserBrand = onCall({}, async (request) => {
   if (!request.auth || !request.auth.token.email) {
     throw new HttpsError('unauthenticated', 'You must be signed in to do this.');
   }
@@ -183,9 +163,7 @@ exports.assignUserBrand = onCall(async (request) => {
   }
 });
 
-// Looks up which brand (if any) an account is currently assigned to -- lets an admin double
-// check before/after making a change, without having to dig through the Firebase Console.
-exports.getUserBrand = onCall(async (request) => {
+exports.getUserBrand = onCall({}, async (request) => {
   if (!request.auth || !request.auth.token.email) {
     throw new HttpsError('unauthenticated', 'You must be signed in to do this.');
   }

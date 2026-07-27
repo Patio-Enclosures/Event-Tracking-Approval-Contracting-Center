@@ -1098,16 +1098,24 @@
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 </head>
 <body>
 <div id="root"></div>
 
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, writeBatch
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getFunctions, httpsCallable
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
+import {
+  getStorage, ref as storageRefFn, uploadBytes, getDownloadURL
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 /* ============================================================================
    FIREBASE STORAGE ADAPTER
    ----------------------------------------------------------------------------
@@ -1141,6 +1149,19 @@ const FIREBASE_CONFIG = {
 };
 
 const FIREBASE_CONFIGURED = FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith('PASTE_');
+
+// Each brand's data lives in its own separate Firestore database (not just filtered within one
+// shared database) -- genuine isolation enforced by Firestore itself via security rules tied to
+// each account's "brand" custom claim, not just something the app's own code checks.
+// null/undefined here means "use the project's (default) database" -- Patio Enclosures kept its
+// original data there rather than migrating it to a newly-named database.
+const BRAND_DATABASE_MAP = {
+  'patio-enclosures': null,
+  'universal-windows-bath-authority': 'universal-windows-bath-authority',
+  'champion-windows': 'champion-windows',
+  'leafguard': 'leafguard'
+};
+
 const FS_COLLECTION = 'dashboardStorage';
 // Events are stored one-document-per-event here, NOT inside the single key-value blob above.
 // Firestore caps any one document at 1 MiB -- with 1,000+ events, a single shared blob for all
@@ -1153,39 +1174,42 @@ const EVENTS_COLLECTION = 'dashboardEvents';
 // this page (unlike the Claude.ai version) is a normal, unsandboxed browser page.
 const FB_PERSONAL_KEYS = new Set(['user-display-name']);
 
-let _fbInitialized = false;
-function fbInit(){
-  if(!_fbInitialized){
-    firebase.initializeApp(FIREBASE_CONFIG);
-    _fbInitialized = true;
-  }
+let _fbApp = null;
+function fbApp(){
+  if(!_fbApp) _fbApp = initializeApp(FIREBASE_CONFIG);
+  return _fbApp;
+}
+// Set once we know which brand the signed-in account belongs to (see the auth listener near
+// the bottom of this file). fbDb() can't pick the right database until this is known, so
+// nothing that touches Firestore should be called before sign-in completes -- the app's own
+// auth-gated rendering already ensures that naturally.
+let _currentBrandDatabaseId = undefined;
+function setCurrentBrand(brand){
+  _currentBrandDatabaseId = BRAND_DATABASE_MAP.hasOwnProperty(brand) ? BRAND_DATABASE_MAP[brand] : null;
+  _fbDb = null; // force fbDb() to reconnect to the correct database next time it's called
 }
 let _fbDb = null;
 function fbDb(){
   if(_fbDb) return _fbDb;
-  fbInit();
-  _fbDb = firebase.firestore();
+  _fbDb = _currentBrandDatabaseId ? getFirestore(fbApp(), _currentBrandDatabaseId) : getFirestore(fbApp());
   return _fbDb;
 }
 let _fbAuth = null;
 function fbAuth(){
   if(_fbAuth) return _fbAuth;
-  fbInit();
-  _fbAuth = firebase.auth();
+  _fbAuth = getAuth(fbApp());
   return _fbAuth;
 }
 let _fbFunctions = null;
 function fbFunctions(){
   if(_fbFunctions) return _fbFunctions;
-  fbInit();
-  _fbFunctions = firebase.functions();
+  _fbFunctions = getFunctions(fbApp());
   return _fbFunctions;
 }
 let _fbStorage = null;
 function fbStorage(){
   if(_fbStorage) return _fbStorage;
-  fbInit();
-  _fbStorage = firebase.storage();
+  _fbStorage = getStorage(fbApp());
   return _fbStorage;
 }
 
@@ -1197,9 +1221,9 @@ if(FIREBASE_CONFIGURED){
         return v !== null ? { key, value: v, shared: false } : null;
       }
       try{
-        const doc = await fbDb().collection(FS_COLLECTION).doc(key).get();
-        if(!doc.exists) return null;
-        return { key, value: doc.data().value, shared: !!shared };
+        const snap = await getDoc(doc(fbDb(), FS_COLLECTION, key));
+        if(!snap.exists()) return null;
+        return { key, value: snap.data().value, shared: !!shared };
       }catch(e){
         console.error('Firestore read failed for', key, e);
         return null;
@@ -1211,7 +1235,7 @@ if(FIREBASE_CONFIGURED){
         return { key, value, shared: false };
       }
       try{
-        await fbDb().collection(FS_COLLECTION).doc(key).set({ value, updatedAt: Date.now() });
+        await setDoc(doc(fbDb(), FS_COLLECTION, key), { value, updatedAt: Date.now() });
         return { key, value, shared: !!shared };
       }catch(e){
         console.error('Firestore write failed for', key, e);
@@ -1224,7 +1248,7 @@ if(FIREBASE_CONFIGURED){
         return { key, deleted: true, shared: false };
       }
       try{
-        await fbDb().collection(FS_COLLECTION).doc(key).delete();
+        await deleteDoc(doc(fbDb(), FS_COLLECTION, key));
         return { key, deleted: true, shared: !!shared };
       }catch(e){
         console.error('Firestore delete failed for', key, e);
@@ -1233,7 +1257,7 @@ if(FIREBASE_CONFIGURED){
     },
     async list(prefix, shared){
       try{
-        const snap = await fbDb().collection(FS_COLLECTION).get();
+        const snap = await getDocs(collection(fbDb(), FS_COLLECTION));
         const keys = snap.docs.map(d=>d.id).filter(k => !prefix || k.startsWith(prefix));
         return { keys, prefix, shared };
       }catch(e){
@@ -1942,16 +1966,16 @@ function findEventNameColumn(headerRow){
 // `transformFn(latestEvents)` should mutate and/or return the array it's given.
 async function persistEventsBulkAtomic(transformFn){
   try{
-    const snap = await fbDb().collection(EVENTS_COLLECTION).get();
+    const snap = await getDocs(collection(fbDb(), EVENTS_COLLECTION));
     const latestEvents = snap.docs.map(d => d.data());
     const result = transformFn(latestEvents);
     const finalEvents = Array.isArray(result) ? result : latestEvents;
 
     const batchSize = 400;
     for(let i=0; i<finalEvents.length; i += batchSize){
-      const batch = fbDb().batch();
+      const batch = writeBatch(fbDb());
       finalEvents.slice(i, i+batchSize).forEach(ev=>{
-        batch.set(fbDb().collection(EVENTS_COLLECTION).doc(ev.id), ev);
+        batch.set(doc(fbDb(), EVENTS_COLLECTION, ev.id), ev);
       });
       await batch.commit();
     }
@@ -2033,9 +2057,9 @@ async function loadData(){
       if(legacyEvents.length > 0){
         const batchSize = 400; // Firestore batch writes cap at 500 operations
         for(let i=0; i<legacyEvents.length; i += batchSize){
-          const batch = fbDb().batch();
+          const batch = writeBatch(fbDb());
           legacyEvents.slice(i, i+batchSize).forEach(ev=>{
-            batch.set(fbDb().collection(EVENTS_COLLECTION).doc(ev.id), ev);
+            batch.set(doc(fbDb(), EVENTS_COLLECTION, ev.id), ev);
           });
           await batch.commit();
         }
@@ -2051,7 +2075,7 @@ async function loadData(){
 
   // Load events from the per-document collection -- the authoritative source from here on.
   try{
-    const snap = await fbDb().collection(EVENTS_COLLECTION).get();
+    const snap = await getDocs(collection(fbDb(), EVENTS_COLLECTION));
     state.events = snap.docs.map(d => d.data());
   }catch(e){
     console.error('Could not load events', e);
@@ -2472,12 +2496,12 @@ const REQUIRED_BASE_FIELDS = [
 // simply different documents), and no transaction is needed to guarantee that.
 async function persistEventChangeAtomic(changedEvent, isDelete){
   try{
-    const docRef = fbDb().collection(EVENTS_COLLECTION).doc(changedEvent.id);
+    const docRef = doc(fbDb(), EVENTS_COLLECTION, changedEvent.id);
     if(isDelete){
-      await docRef.delete();
+      await deleteDoc(docRef);
       state.events = state.events.filter(e => e.id !== changedEvent.id);
     } else {
-      await docRef.set(changedEvent);
+      await setDoc(docRef, changedEvent);
       const idx = state.events.findIndex(e => e.id === changedEvent.id);
       if(idx > -1) state.events[idx] = changedEvent; else state.events.push(changedEvent);
     }
@@ -3212,7 +3236,7 @@ function buildExhibitDaySyncPayload(ev){
 }
 
 async function syncEventToExhibitDay(ev){
-  const syncFn = fbFunctions().httpsCallable('syncEventToExhibitDay');
+  const syncFn = httpsCallable(fbFunctions(), 'syncEventToExhibitDay');
   const payload = buildExhibitDaySyncPayload(ev);
   const result = await syncFn(payload);
   const data = result.data;
@@ -5404,7 +5428,7 @@ function attachHandlers(){
       state.exhibitDayFieldsStatus = 'Looking up custom fields…';
       render();
       try{
-        const fn = fbFunctions().httpsCallable('listExhibitDayCustomFields');
+        const fn = httpsCallable(fbFunctions(), 'listExhibitDayCustomFields');
         const result = await fn();
         console.log('Exhibit Day custom fields:', result.data);
         console.table(Array.isArray(result.data) ? result.data : (result.data.fields || result.data.custom_fields || result.data));
@@ -5825,9 +5849,9 @@ function attachHandlers(){
         // A random path component keeps files from colliding, independent of whether this
         // event has been saved yet (new events don't have a real id until Save is clicked).
         const storagePath = `contracts/${uid()}-${file.name}`;
-        const storageRef = fbStorage().ref(storagePath);
-        await storageRef.put(file);
-        const url = await storageRef.getDownloadURL();
+        const storageRef = storageRefFn(fbStorage(), storagePath);
+        await uploadBytes(storageRef, file);
+        const url = await getDownloadURL(storageRef);
         state.draft.contractFileName = file.name;
         state.draft.contractFileType = file.type || 'application/octet-stream';
         state.draft.contractFileUrl = url;
@@ -5890,8 +5914,9 @@ async function signIn(email, password){
   state.signInLoading = true;
   render();
   try{
-    await fbAuth().signInWithEmailAndPassword(email, password);
-    // onAuthStateChanged below picks up the result and loads the dashboard.
+    await signInWithEmailAndPassword(fbAuth(), email, password);
+    // onAuthStateChanged below picks up the result, resolves the account's brand, and loads
+    // the dashboard.
   }catch(e){
     state.signInLoading = false;
     state.signInError = e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found'
@@ -5901,17 +5926,39 @@ async function signIn(email, password){
   }
 }
 async function signOutUser(){
-  try{ await fbAuth().signOut(); }catch(e){ console.error('Sign out failed', e); }
+  try{ await signOut(fbAuth()); }catch(e){ console.error('Sign out failed', e); }
 }
 
 if(FIREBASE_CONFIGURED){
-  fbAuth().onAuthStateChanged(function(user){
+  onAuthStateChanged(fbAuth(), async function(user){
     state.authChecked = true;
     state.currentUser = user;
     state.signInLoading = false;
     if(user){
       state.userName = user.displayName || (user.email ? user.email.split('@')[0] : 'Someone');
-      loadData();
+      // Which brand's database this account should connect to is set server-side (a custom
+      // claim assigned via the assignUserBrand Cloud Function, not anything adjustable from the
+      // browser). Force a token refresh so a brand assigned moments ago is picked up correctly,
+      // not a stale cached token from before the assignment.
+      try{
+        const tokenResult = await user.getIdTokenResult(true);
+        const brand = tokenResult.claims.brand;
+        if(!brand || !BRAND_DATABASE_MAP.hasOwnProperty(brand)){
+          state.authChecked = true;
+          state.currentUser = null;
+          state.signInError = 'Your account isn\'t assigned to a brand yet. Contact your administrator to get set up before signing in.';
+          await signOut(fbAuth());
+          render();
+          return;
+        }
+        setCurrentBrand(brand);
+        loadData();
+      }catch(e){
+        console.error('Could not resolve account brand', e);
+        state.currentUser = null;
+        state.signInError = 'Could not verify your account access. Please try signing in again.';
+        render();
+      }
     } else {
       render();
     }

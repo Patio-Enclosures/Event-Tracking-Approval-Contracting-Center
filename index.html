@@ -612,6 +612,74 @@
     background:var(--surface);
     color:var(--ink);
   }
+  .multiselect-dropdown{
+    position:relative;
+    display:inline-block;
+  }
+  .multiselect-toggle{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-family:var(--font-body);
+    font-size:12.5px;
+    padding:7px 12px;
+    border:1px solid var(--border);
+    border-radius:7px;
+    background:var(--surface);
+    color:var(--ink);
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .multiselect-toggle:hover{border-color:var(--accent);}
+  .multiselect-toggle.has-selection{
+    border-color:var(--accent);
+    background:var(--accent-soft);
+    color:var(--accent-dark);
+    font-weight:600;
+  }
+  .multiselect-toggle .chevron{font-size:9px;color:var(--ink-faint);}
+  .multiselect-panel{
+    position:absolute;
+    top:calc(100% + 4px);
+    left:0;
+    z-index:20;
+    min-width:220px;
+    max-height:260px;
+    overflow-y:auto;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:9px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.14);
+    padding:6px;
+  }
+  .multiselect-option{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:6px 8px;
+    border-radius:6px;
+    font-size:13px;
+    color:var(--ink);
+    cursor:pointer;
+  }
+  .multiselect-option:hover{background:var(--bg);}
+  .multiselect-option input{width:auto;margin:0;}
+  .multiselect-clear{
+    display:block;
+    width:100%;
+    margin-top:4px;
+    padding:6px 8px;
+    border:none;
+    border-top:1px solid var(--border);
+    background:none;
+    color:var(--accent-dark);
+    font-size:12px;
+    font-weight:600;
+    text-align:left;
+    cursor:pointer;
+    border-radius:0 0 6px 6px;
+  }
+  .multiselect-clear:hover{background:var(--bg);}
   .region-name-wrap{
     display:flex;
     align-items:baseline;
@@ -1290,6 +1358,21 @@ if(FIREBASE_CONFIGURED){
    ============================================================================ */
 
 const REGION_COUNT = 14;
+
+// Maps each checkbox-dropdown instance's id to the state field it controls -- lets one generic
+// set of click handlers (wired up in attachHandlers) drive every multi-select filter on the
+// page instead of writing near-identical listeners for each one individually.
+const MULTISELECT_FIELD_MAP = {
+  masterRegionFilter: 'filterRegions',
+  masterBranchFilter: 'filterBranches',
+  regionTabBranchFilter: 'filterBranches',
+  budgetRegionFilter: 'budgetSummaryRegions',
+  budgetBranchFilter: 'budgetSummaryBranches'
+};
+// The "click anywhere outside to close" listener is bound to `document` itself, which survives
+// across re-renders (unlike the DOM elements inside #root) -- so it must only ever be attached
+// once, not every time attachHandlers() runs, or clicks would trigger it multiple times over.
+let _multiselectOutsideClickBound = false;
 const STATUS = {
   RESEARCHING: 'researching',
   EXECUTE: 'execute',
@@ -1492,6 +1575,7 @@ let state = {
   budgetSummaryDateTo:'',
   budgetSummaryRegions:[],
   budgetSummaryBranches:[],
+  openMultiSelectId:null,
   regionSummaryPeriodType:'all',
   regionSummaryPeriod:'',
   authorizedApprovers:[],
@@ -1982,6 +2066,27 @@ function renderDuplicateEventWarning(eventName, excludeId){
 function reconfirmMark(d){
   if(!d || !d.needsReconfirmation) return '';
   return ' <span style="color:var(--amber);" title="Carried over from the original event -- please confirm this is still accurate">*</span>';
+}
+
+// A checkbox-based multi-select dropdown, used anywhere the dashboard needs to filter by
+// several regions/branches at once -- a more familiar pattern than a native multi-select
+// listbox, which relies on an easy-to-miss Ctrl/Cmd-click gesture to pick more than one.
+// `id` must be unique per instance on the page. `options` is an array of [value, label] pairs.
+function renderMultiSelectDropdown(id, label, options, selectedValues){
+  const isOpen = state.openMultiSelectId === id;
+  const count = selectedValues.length;
+  const toggleLabel = count > 0 ? `${label} (${count})` : label;
+  return `<div class="multiselect-dropdown" data-multiselect="${id}">
+    <button type="button" class="multiselect-toggle ${count>0?'has-selection':''}" data-multiselect-toggle="${id}">${escapeHtml(toggleLabel)} <span class="chevron">${isOpen?'▲':'▼'}</span></button>
+    ${isOpen ? `<div class="multiselect-panel" data-multiselect-panel="${id}">
+      ${options.map(([value,optLabel]) => `
+        <label class="multiselect-option">
+          <input type="checkbox" data-multiselect-checkbox="${id}" value="${escapeHtml(value)}" ${selectedValues.includes(value)?'checked':''}/>
+          ${escapeHtml(optLabel)}
+        </label>`).join('')}
+      ${count>0 ? `<button type="button" class="multiselect-clear" data-multiselect-clear="${id}">Clear</button>` : ''}
+    </div>` : ''}
+  </div>`;
 }
 
 // Tries to find the column in a parsed spreadsheet's header row that holds the event name,
@@ -3521,13 +3626,28 @@ function regionIndexFromName(name){
 // Maps CSV header names (matching the Export CSV format, case-insensitive) to a setter that
 // writes the cell value onto a fresh draft event. Unrecognized columns are ignored; missing
 // columns just leave that field at its default.
+// Converts common date formats (M/D/YYYY, MM/DD/YYYY, M/D/YY -- the usual result of exporting
+// dates from Excel) into the YYYY-MM-DD format the dashboard's date fields require. Values
+// already in YYYY-MM-DD pass through unchanged. Anything unrecognized is left as-is rather than
+// discarded, so at least the original text survives even though it won't populate the field.
+function normalizeCsvDate(v){
+  const s = (v||'').trim();
+  if(!s) return s;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; // already correct
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if(!m) return s;
+  let [, month, day, year] = m;
+  if(year.length === 2) year = (parseInt(year,10) < 50 ? '20' : '19') + year;
+  return `${year}-${month.padStart(2,'0')}-${day.padStart(2,'0')}`;
+}
+
 const CSV_IMPORT_COLUMNS = {
   'region': (ev,v)=>{ ev.region = regionIndexFromName(v); },
   'branch': (ev,v)=>{ ev.branch = v; },
   'event name': (ev,v)=>{ ev.eventName = v; },
   'status': (ev,v)=>{ ev.status = statusKeyFromLabel(v); },
-  'start date': (ev,v)=>{ ev.startDate = v; },
-  'end date': (ev,v)=>{ ev.endDate = v; },
+  'start date': (ev,v)=>{ ev.startDate = normalizeCsvDate(v); },
+  'end date': (ev,v)=>{ ev.endDate = normalizeCsvDate(v); },
   'zip': (ev,v)=>{ ev.zip = v; },
   'venue name': (ev,v)=>{ ev.venueName = v; },
   'venue address': (ev,v)=>{ ev.venueAddress = v; },
@@ -3545,7 +3665,7 @@ const CSV_IMPORT_COLUMNS = {
   'priority': (ev,v)=>{ ev.priorityLevel = v; },
   'submission type': (ev,v)=>{ ev.submissionType = v; },
   'historical show code': (ev,v)=>{ ev.historicalShowCode = v; },
-  'payment due date': (ev,v)=>{ ev.paymentDueDate = v; },
+  'payment due date': (ev,v)=>{ ev.paymentDueDate = normalizeCsvDate(v); },
   'payment method': (ev,v)=>{ ev.paymentMethod = v; },
   'registration link': (ev,v)=>{ ev.registrationLink = v; },
   'not pursuing reason': (ev,v)=>{ ev.notPursuingReason = v; },
@@ -3943,19 +4063,9 @@ function render(){
         </select>
         <span class="search-result-count">${masterEvents.length} of ${regionEventsAll.length} shown</span>
       </div>
-      <div class="search-sort-bar filter-row" style="align-items:flex-start;">
-        <div>
-          <select id="regionFilterRegion" multiple size="4">
-            ${state.regionNames.map((n,i)=>`<option value="${i}" ${state.filterRegions.includes(String(i))?'selected':''}>${escapeHtml(n)}</option>`).join('')}
-          </select>
-          <div class="hint" style="margin:2px 0 0 0;">Ctrl/Cmd-click to select multiple regions</div>
-        </div>
-        <div>
-          <select id="regionFilterBranch" multiple size="4">
-            ${distinctBranchesMaster.map(b=>`<option value="${escapeHtml(b)}" ${state.filterBranches.includes(b)?'selected':''}>${escapeHtml(b)}</option>`).join('')}
-          </select>
-          <div class="hint" style="margin:2px 0 0 0;">Ctrl/Cmd-click to select multiple branches</div>
-        </div>
+      <div class="search-sort-bar filter-row">
+        ${renderMultiSelectDropdown('masterRegionFilter', 'Regions', state.regionNames.map((n,i)=>[String(i),n]), state.filterRegions)}
+        ${renderMultiSelectDropdown('masterBranchFilter', 'Branches', distinctBranchesMaster.map(b=>[b,b]), state.filterBranches)}
         <select id="regionFilterStatus">
           <option value="">All Statuses</option>
           ${Object.keys(STATUS_LABEL).map(s=>`<option value="${s}" ${state.filterStatus===s?'selected':''}>${STATUS_LABEL[s]}</option>`).join('')}
@@ -4013,13 +4123,8 @@ function render(){
         </select>
         <span class="search-result-count">${regionEvents.length} of ${regionEventsAll.length} shown</span>
       </div>
-      <div class="search-sort-bar filter-row" style="align-items:flex-start;">
-        <div>
-          <select id="regionFilterBranch" multiple size="4">
-            ${distinctBranches.map(b=>`<option value="${escapeHtml(b)}" ${state.filterBranches.includes(b)?'selected':''}>${escapeHtml(b)}</option>`).join('')}
-          </select>
-          <div class="hint" style="margin:2px 0 0 0;">Ctrl/Cmd-click to select multiple branches</div>
-        </div>
+      <div class="search-sort-bar filter-row">
+        ${renderMultiSelectDropdown('regionTabBranchFilter', 'Branches', distinctBranches.map(b=>[b,b]), state.filterBranches)}
         <select id="regionFilterStatus">
           <option value="">All Statuses</option>
           ${Object.keys(STATUS_LABEL).map(s=>`<option value="${s}" ${state.filterStatus===s?'selected':''}>${STATUS_LABEL[s]}</option>`).join('')}
@@ -4467,21 +4572,11 @@ function renderOverview(allEvents){
         </div>
       </div>`;
   const budgetSummaryFilterHtml = `
-    <div class="search-sort-bar filter-row" style="align-items:flex-start;flex-wrap:wrap;">
+    <div class="search-sort-bar filter-row" style="flex-wrap:wrap;">
       <label class="filter-date-label">From <input type="date" id="budgetSummaryDateFrom" value="${escapeHtml(state.budgetSummaryDateFrom)}"/></label>
       <label class="filter-date-label">To <input type="date" id="budgetSummaryDateTo" value="${escapeHtml(state.budgetSummaryDateTo)}"/></label>
-      <div>
-        <select id="budgetSummaryRegionFilter" multiple size="4">
-          ${state.regionNames.map((n,i)=>`<option value="${i}" ${state.budgetSummaryRegions.includes(String(i))?'selected':''}>${escapeHtml(n)}</option>`).join('')}
-        </select>
-        <div class="hint" style="margin:2px 0 0 0;">Ctrl/Cmd-click for multiple regions</div>
-      </div>
-      <div>
-        <select id="budgetSummaryBranchFilter" multiple size="4">
-          ${budgetSummaryDistinctBranches.map(b=>`<option value="${escapeHtml(b)}" ${state.budgetSummaryBranches.includes(b)?'selected':''}>${escapeHtml(b)}</option>`).join('')}
-        </select>
-        <div class="hint" style="margin:2px 0 0 0;">Ctrl/Cmd-click for multiple branches</div>
-      </div>
+      ${renderMultiSelectDropdown('budgetRegionFilter', 'Regions', state.regionNames.map((n,i)=>[String(i),n]), state.budgetSummaryRegions)}
+      ${renderMultiSelectDropdown('budgetBranchFilter', 'Branches', budgetSummaryDistinctBranches.map(b=>[b,b]), state.budgetSummaryBranches)}
       ${(state.budgetSummaryDateFrom||state.budgetSummaryDateTo||state.budgetSummaryRegions.length>0||state.budgetSummaryBranches.length>0) ? `<button class="btn btn-outline btn-sm" id="clearBudgetSummaryFiltersBtn">Clear Filters</button>` : ''}
     </div>
   `;
@@ -5536,21 +5631,6 @@ function attachHandlers(){
       render();
     });
   }
-  const filterBranchSelect = document.getElementById('regionFilterBranch');
-  if(filterBranchSelect){
-    filterBranchSelect.addEventListener('change', ()=>{
-      state.filterBranches = Array.from(filterBranchSelect.selectedOptions).map(o=>o.value);
-      render();
-    });
-  }
-  const filterRegionSelect = document.getElementById('regionFilterRegion');
-  if(filterRegionSelect){
-    filterRegionSelect.addEventListener('change', ()=>{
-      state.filterRegions = Array.from(filterRegionSelect.selectedOptions).map(o=>o.value);
-      state.filterBranches = []; // branch options change with region, so the old selection may no longer apply
-      render();
-    });
-  }
   const filterStatusSelect = document.getElementById('regionFilterStatus');
   if(filterStatusSelect){
     filterStatusSelect.addEventListener('change', ()=>{
@@ -5586,21 +5666,6 @@ function attachHandlers(){
       render();
     });
   }
-  const budgetSummaryRegionFilterEl = document.getElementById('budgetSummaryRegionFilter');
-  if(budgetSummaryRegionFilterEl){
-    budgetSummaryRegionFilterEl.addEventListener('change', ()=>{
-      state.budgetSummaryRegions = Array.from(budgetSummaryRegionFilterEl.selectedOptions).map(o=>o.value);
-      state.budgetSummaryBranches = []; // branch options change with region, so the old selection may no longer apply
-      render();
-    });
-  }
-  const budgetSummaryBranchFilterEl = document.getElementById('budgetSummaryBranchFilter');
-  if(budgetSummaryBranchFilterEl){
-    budgetSummaryBranchFilterEl.addEventListener('change', ()=>{
-      state.budgetSummaryBranches = Array.from(budgetSummaryBranchFilterEl.selectedOptions).map(o=>o.value);
-      render();
-    });
-  }
   const clearBudgetSummaryFiltersBtn = document.getElementById('clearBudgetSummaryFiltersBtn');
   if(clearBudgetSummaryFiltersBtn){
     clearBudgetSummaryFiltersBtn.addEventListener('click', ()=>{
@@ -5609,6 +5674,52 @@ function attachHandlers(){
       state.budgetSummaryRegions = [];
       state.budgetSummaryBranches = [];
       render();
+    });
+  }
+
+  document.querySelectorAll('[data-multiselect-toggle]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const id = btn.getAttribute('data-multiselect-toggle');
+      state.openMultiSelectId = state.openMultiSelectId === id ? null : id;
+      render();
+    });
+  });
+  document.querySelectorAll('[data-multiselect-panel]').forEach(panel=>{
+    panel.addEventListener('click', (e)=> e.stopPropagation()); // clicking inside shouldn't close it
+  });
+  document.querySelectorAll('[data-multiselect-checkbox]').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      const id = cb.getAttribute('data-multiselect-checkbox');
+      const field = MULTISELECT_FIELD_MAP[id];
+      if(!field) return;
+      const current = state[field];
+      state[field] = cb.checked
+        ? (current.includes(cb.value) ? current : [...current, cb.value])
+        : current.filter(v=>v!==cb.value);
+      // Narrowing region selection invalidates any branch selection outside those regions,
+      // same as the old single-select filters used to do.
+      if(id === 'masterRegionFilter') state.filterBranches = [];
+      if(id === 'budgetRegionFilter') state.budgetSummaryBranches = [];
+      render();
+    });
+  });
+  document.querySelectorAll('[data-multiselect-clear]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const id = btn.getAttribute('data-multiselect-clear');
+      const field = MULTISELECT_FIELD_MAP[id];
+      if(field) state[field] = [];
+      render();
+    });
+  });
+  if(!_multiselectOutsideClickBound){
+    _multiselectOutsideClickBound = true;
+    document.addEventListener('click', ()=>{
+      if(state.openMultiSelectId !== null){
+        state.openMultiSelectId = null;
+        render();
+      }
     });
   }
 

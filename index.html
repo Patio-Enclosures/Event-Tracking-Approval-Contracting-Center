@@ -1473,6 +1473,18 @@ function getSubmissionCutoff(startDate){
 // Flags a Researching event as stale: no start date, the event date itself has passed, or the
 // submission cutoff (last day of the prior month) has passed while the event is still upcoming.
 // Returns null for anything not Researching or not stale.
+// Post-event evaluation only becomes available once the event is actually over -- uses the
+// End Date if set, falling back to Start Date for single-day events or ones missing an end date.
+function hasEventDatePassed(ev){
+  const dateStr = ev.endDate || ev.startDate;
+  if(!dateStr) return false;
+  const eventDate = new Date(dateStr + 'T00:00:00');
+  if(isNaN(eventDate.getTime())) return false;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return eventDate < today;
+}
+
 function getStalenessFlag(ev){
   if(ev.status !== STATUS.RESEARCHING) return null;
   const now = new Date();
@@ -1583,8 +1595,16 @@ let state = {
   regionLabelSingular:'Region',
   regionLabelPlural:'Regions',
   regionLabelStatus:'',
+  postEventEvalEventId:null,
+  postEventEvalDraft:null,
   customServiceableZips:{},
   serviceableZipsStatus:'',
+  customBranchOptions:{},
+  branchOptionsStatus:'',
+  customSupervisorEmails:[],
+  supervisorEmailsStatus:'',
+  customContractingEmail:'',
+  contractingEmailStatus:'',
   settingsAdminStatus:'',
   regionPendingDeleteIdx:null,
   authorizedApproversDraft:'',
@@ -1901,6 +1921,16 @@ function zipCheckDisplayLabel(ev){
 
 function renderBranchOptions(regionIdx, selectedBranch){
   const regionName = state.regionNames[regionIdx];
+  if(state.currentBrand !== 'patio-enclosures'){
+    // Most brands run one branch per tab, so the tab's own name is the sensible default --
+    // Settings lets an admin override this per tab if a location genuinely needs more than one.
+    const options = (state.customBranchOptions[regionName] && state.customBranchOptions[regionName].length > 0)
+      ? state.customBranchOptions[regionName]
+      : [regionName];
+    let html = `<option value="">Select ${state.regionLabelSingular.toLowerCase()}…</option>`;
+    html += options.map(opt => `<option value="${escapeHtml(opt)}" ${opt===selectedBranch?'selected':''}>${escapeHtml(opt)}</option>`).join('');
+    return html;
+  }
   const branches = BRANCHES.filter(b=>b.region===regionName);
   let html = `<option value="">Select branch…</option>`;
   html += branches.map(b=>{
@@ -2376,6 +2406,33 @@ async function loadData(){
   }
 
   try{
+    const branchOptsRes = await window.storage.get('custom-branch-options', true);
+    if(branchOptsRes && branchOptsRes.value){
+      state.customBranchOptions = JSON.parse(branchOptsRes.value) || {};
+    }
+  }catch(e){
+    // not customized for this brand yet -- each tab defaults to just its own name
+  }
+
+  try{
+    const supervisorsRes = await window.storage.get('custom-supervisor-emails', true);
+    if(supervisorsRes && supervisorsRes.value){
+      state.customSupervisorEmails = JSON.parse(supervisorsRes.value) || [];
+    }
+  }catch(e){
+    // not configured for this brand yet -- the Supervisor's Email dropdown just shows empty
+  }
+
+  try{
+    const contractingEmailRes = await window.storage.get('custom-contracting-email', true);
+    if(contractingEmailRes && contractingEmailRes.value){
+      state.customContractingEmail = contractingEmailRes.value;
+    }
+  }catch(e){
+    // not configured for this brand yet -- Email for Contracting stays disabled until it is
+  }
+
+  try{
     const userNameRes = await window.storage.get('user-display-name', false);
     if(userNameRes && userNameRes.value){
       state.userName = userNameRes.value;
@@ -2749,6 +2806,47 @@ function closePanel(force){
   render();
 }
 
+// Post-event evaluation is deliberately a separate, narrower panel from the main edit form --
+// it's meant to stay reachable once an event's date has passed, which for most events means
+// it's sitting in the fully-locked Submitted status. Working through this panel instead of
+// openEditPanel() means it never needs to touch (or weaken) that lock. Open to anyone signed
+// in, not just approvers, since evaluation input often comes from whoever staffed the event.
+const POST_EVENT_EVAL_FIELDS = [
+  'eventActivationStatus','numberOfLeads','roiNotes','overallEventRating','issuesEncountered',
+  'whatWentWell','notesForNextYear','boothPhotoFileName','boothPhotoFileType','boothPhotoFileUrl',
+  'whoWorkedEvent','totalAppointments','leadsPerHour','totalCallToSets','staffComplianceRating'
+];
+function openPostEventEvalPanel(id){
+  const ev = state.events.find(e=>e.id===id);
+  if(!ev) return;
+  const draft = {};
+  POST_EVENT_EVAL_FIELDS.forEach(k => { draft[k] = ev[k] || ''; });
+  state.postEventEvalEventId = id;
+  state.postEventEvalDraft = draft;
+  render();
+}
+function closePostEventEvalPanel(){
+  state.postEventEvalEventId = null;
+  state.postEventEvalDraft = null;
+  render();
+}
+async function savePostEventEval(){
+  const id = state.postEventEvalEventId;
+  const ev = state.events.find(e=>e.id===id);
+  if(!ev || !state.postEventEvalDraft) return;
+  const updated = Object.assign({}, ev, state.postEventEvalDraft);
+  const saveBtn = document.getElementById('savePostEventEvalBtn');
+  if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+  const ok = await persistEventChangeAtomic(updated, false);
+  if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'Save Evaluation'; }
+  if(!ok){
+    alert('This could not be saved -- likely a connection issue. Please try again.');
+    return;
+  }
+  logActivity(ev.id, ev.eventName, 'Completed post-event evaluation');
+  closePostEventEvalPanel();
+}
+
 const REQUIRED_BASE_FIELDS = [
   ['eventName', 'Event Name'],
   ['branch', 'Branch'],
@@ -2781,7 +2879,14 @@ async function persistEventChangeAtomic(changedEvent, isDelete){
 
 async function saveDraft(){
   const d = state.draft;
-  const missing = REQUIRED_BASE_FIELDS
+  // Branch isn't required for brands that have renamed "Region" to something else (like
+  // Universal Windows calling it "Branch") -- for those, the tab itself already represents
+  // the branch, and leaving the separate Branch field blank is expected, not an error.
+  const usesCustomTerminology = state.regionLabelSingular !== 'Region';
+  const requiredFields = usesCustomTerminology
+    ? REQUIRED_BASE_FIELDS.filter(([key]) => key !== 'branch')
+    : REQUIRED_BASE_FIELDS;
+  const missing = requiredFields
     .filter(([key])=> !d[key] || !String(d[key]).trim())
     .map(([, label])=>label);
   if(missing.length>0){
@@ -3630,7 +3735,11 @@ async function syncEventToExhibitDay(ev){
 // authorized to approve to hand off once an event is ready to move forward. Same
 // mailto-based approach as Email Supervisor -- opens a compose window, doesn't send silently.
 function generateContractingEmail(ev){
-  const to = CONTRACTING_EMAIL;
+  const to = state.currentBrand === 'patio-enclosures' ? CONTRACTING_EMAIL : state.customContractingEmail;
+  if(!to){
+    alert(`No contracting email has been set up yet for ${BRAND_DISPLAY_NAMES[state.currentBrand] || 'this brand'}. Ask your administrator to set it in Settings -> Contracting Email.`);
+    return;
+  }
   const subject = sanitizeHeader(`Contract Processing: ${ev.eventName}`);
   const hasAttachment = !!(ev.contractFileName && ev.contractFileUrl);
 
@@ -3650,7 +3759,7 @@ function generateContractingEmail(ev){
 
   const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
   window.location.href = mailtoUrl;
-  logActivity(ev.id, ev.eventName, 'Emailed to contracting', CONTRACTING_EMAIL);
+  logActivity(ev.id, ev.eventName, 'Emailed to contracting', to);
 }
 
 function downloadContractFile(ev){
@@ -4387,6 +4496,12 @@ function render(){
       </div>
     </div>
 
+    <div class="overlay ${state.postEventEvalEventId ? 'open' : ''}" id="postEventEvalOverlay">
+      <div class="panel" id="postEventEvalPanelStop" style="max-width:600px;">
+        ${state.postEventEvalEventId ? renderPostEventEvalPanel() : ''}
+      </div>
+    </div>
+
     <div class="overlay notify-overlay ${state.notifyPromptEventId?'open':''}" id="notifyOverlay">
       ${state.notifyPromptEventId ? renderNotifyPrompt() : ''}
     </div>
@@ -5099,6 +5214,7 @@ function renderEventDetail(ev){
         : `<button class="btn btn-outline btn-sm" data-edit="${ev.id}">Edit Event</button>`}
       <button class="btn btn-outline btn-sm" data-download-event="${ev.id}">📄 Download / Print PDF</button>
       <button class="btn btn-outline btn-sm" data-duplicate-event="${ev.id}">📅 Duplicate for Next Year</button>
+      ${hasEventDatePassed(ev) ? `<button class="btn btn-blue btn-sm" data-post-event-eval="${ev.id}">📋 Post-Event Evaluation</button>` : ''}
       ${ev.status!==STATUS.SUBMITTED
         ? `<button class="btn btn-red btn-sm" data-delete="${ev.id}" style="margin-left:auto;">Delete</button>`
         : ''}
@@ -5146,6 +5262,102 @@ function renderNotPursuingPrompt(){
       <button class="btn btn-outline btn-sm" id="notPursuingCancel">Cancel</button>
       <button class="btn btn-primary btn-sm" id="notPursuingConfirm">Confirm</button>
     </div>
+  </div>`;
+}
+
+function renderPostEventEvalPanel(){
+  const ev = state.events.find(e=>e.id===state.postEventEvalEventId);
+  const d = state.postEventEvalDraft;
+  if(!ev || !d) return '';
+  return `
+  <div class="panel-header">
+    <h2>Post-Event Evaluation</h2>
+    <div class="hint" style="margin-top:2px;">${escapeHtml(ev.eventName)} — completed independently of the event's main details, so this stays reachable even after the event is locked.</div>
+    <button class="panel-close" id="closePostEventEvalBtn">✕</button>
+  </div>
+  <div class="panel-body">
+    <div class="field-group">
+      <div class="field">
+        <label>Event Activation Status</label>
+        <select id="pe_eventActivationStatus">
+          <option value="" ${!d.eventActivationStatus?'selected':''}>Select…</option>
+          <option value="Activated" ${d.eventActivationStatus==='Activated'?'selected':''}>Activated</option>
+          <option value="Not Activated" ${d.eventActivationStatus==='Not Activated'?'selected':''}>Not Activated</option>
+          <option value="Canceled by Event Organizer" ${d.eventActivationStatus==='Canceled by Event Organizer'?'selected':''}>Canceled by Event Organizer</option>
+        </select>
+      </div>
+
+      <div class="field-group-title" style="margin-top:16px;font-size:14px;">Engagement Metrics</div>
+      <div class="field">
+        <label>Number of Leads <span class="hint" style="margin:0;display:inline;">(generated from this event)</span></label>
+        <input id="pe_numberOfLeads" type="number" value="${escapeHtml(d.numberOfLeads)}"/>
+      </div>
+      <div class="field">
+        <label>ROI Notes</label>
+        <textarea id="pe_roiNotes" rows="3">${escapeHtml(d.roiNotes)}</textarea>
+      </div>
+
+      <div class="field-group-title" style="margin-top:16px;font-size:14px;">Event Logistics and Feedback</div>
+      <div class="field">
+        <label>Rate the overall event organization <span class="hint" style="margin:0;display:inline;">(communication, load-in/out, traffic flow)</span></label>
+        <select id="pe_overallEventRating">
+          <option value="" ${!d.overallEventRating?'selected':''}>Select…</option>
+          ${[1,2,3,4,5].map(n=>`<option value="${n}" ${String(d.overallEventRating)===String(n)?'selected':''}>${n}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Did you encounter any issues?</label>
+        <textarea id="pe_issuesEncountered" rows="2">${escapeHtml(d.issuesEncountered)}</textarea>
+      </div>
+      <div class="field">
+        <label>What went well?</label>
+        <textarea id="pe_whatWentWell" rows="2">${escapeHtml(d.whatWentWell)}</textarea>
+      </div>
+      <div class="field">
+        <label>Notes for next year</label>
+        <textarea id="pe_notesForNextYear" rows="2">${escapeHtml(d.notesForNextYear)}</textarea>
+      </div>
+      <div class="field">
+        <label>Photo of booth setup</label>
+        <input id="pe_boothPhotoFile" type="file" accept=".png,.jpg,.jpeg"/>
+        <div class="hint" id="peBoothPhotoFileStatus">
+          ${d.boothPhotoFileName
+            ? `Attached: <strong>${escapeHtml(d.boothPhotoFileName)}</strong> — <a href="#" id="pe_removeBoothPhotoFile" style="color:var(--red);">remove</a>`
+            : 'Optional. PNG or JPG, up to 10MB.'}
+        </div>
+      </div>
+
+      <div class="field-group-title" style="margin-top:16px;font-size:14px;">Staff Performance</div>
+      <div class="field">
+        <label>Who worked the event?</label>
+        <input id="pe_whoWorkedEvent" value="${escapeHtml(d.whoWorkedEvent)}"/>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Total Appointments</label>
+          <input id="pe_totalAppointments" type="number" value="${escapeHtml(d.totalAppointments)}"/>
+        </div>
+        <div class="field">
+          <label>Leads per Hour <span class="hint" style="margin:0;display:inline;">(total appointments/total hours worked)</span></label>
+          <input id="pe_leadsPerHour" type="text" value="${escapeHtml(d.leadsPerHour)}"/>
+        </div>
+      </div>
+      <div class="field">
+        <label>Total Call to Sets</label>
+        <input id="pe_totalCallToSets" type="number" value="${escapeHtml(d.totalCallToSets)}"/>
+      </div>
+      <div class="field">
+        <label>Rate staff compliance with booth behavior &amp; expectations <span class="hint" style="margin:0;display:inline;">(standing, engagement, product knowledge)</span></label>
+        <select id="pe_staffComplianceRating">
+          <option value="" ${!d.staffComplianceRating?'selected':''}>Select…</option>
+          ${[1,2,3,4,5].map(n=>`<option value="${n}" ${String(d.staffComplianceRating)===String(n)?'selected':''}>${n}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+  </div>
+  <div class="panel-footer">
+    <button class="btn btn-outline" id="cancelPostEventEvalBtn">Cancel</button>
+    <button class="btn btn-primary" id="savePostEventEvalBtn">Save Evaluation</button>
   </div>`;
 }
 
@@ -5224,6 +5436,44 @@ function renderSettingsPanel(){
         <button class="btn btn-primary btn-sm" id="addRegionBtn">+ Add ${escapeHtml(state.regionLabelSingular)}</button>
       </div>
     </div>
+
+    ${state.currentBrand !== 'patio-enclosures' ? `
+    <div class="field-group">
+      <div class="field-group-title">Branch Options</div>
+      <div class="hint" style="margin-bottom:10px;">What shows in the Branch dropdown on the New Event form, for each ${state.regionLabelSingular.toLowerCase()} tab. Defaults to just the tab's own name, since most locations only have one branch -- add more here only if a tab genuinely needs multiple choices.</div>
+      ${state.regionNames.map((name, idx) => {
+        const current = (state.customBranchOptions[name] && state.customBranchOptions[name].length > 0) ? state.customBranchOptions[name] : [name];
+        return `<div class="field" style="margin-bottom:10px;">
+          <label>${escapeHtml(name)}</label>
+          <input type="text" id="branchOpt_${idx}" data-branch-opt-region="${escapeHtml(name)}" value="${escapeHtml(current.join(', '))}" placeholder="${escapeHtml(name)}"/>
+        </div>`;
+      }).join('')}
+      <div class="hint" style="margin:0 0 10px 2px;">Separate multiple options with commas.</div>
+      <button class="btn btn-primary btn-sm" id="saveBranchOptionsBtn">Save Branch Options</button>
+      ${state.branchOptionsStatus ? `<div class="hint" style="margin-top:8px;color:var(--accent-dark);font-weight:600;">${escapeHtml(state.branchOptionsStatus)}</div>` : ''}
+    </div>` : ''}
+
+    ${state.currentBrand !== 'patio-enclosures' ? `
+    <div class="field-group">
+      <div class="field-group-title">Supervisor Email Options</div>
+      <div class="hint" style="margin-bottom:10px;">Who shows up in the "Supervisor's Email" dropdown on the New Event form, for this brand. One email per line.</div>
+      <textarea id="f_customSupervisorEmails" rows="4" placeholder="jane.doe@greatdayimprovements.com">${escapeHtml((state.customSupervisorEmails||[]).join('\n'))}</textarea>
+      <div style="margin-top:10px;">
+        <button class="btn btn-primary btn-sm" id="saveSupervisorEmailsBtn">Save Supervisor Emails</button>
+      </div>
+      ${state.supervisorEmailsStatus ? `<div class="hint" style="margin-top:8px;color:var(--accent-dark);font-weight:600;">${escapeHtml(state.supervisorEmailsStatus)}</div>` : ''}
+    </div>` : ''}
+
+    ${state.currentBrand !== 'patio-enclosures' ? `
+    <div class="field-group">
+      <div class="field-group-title">Contracting Email</div>
+      <div class="hint" style="margin-bottom:10px;">Where "📧 Email for Contracting" sends an approved event's details for this brand. Until this is set, that button shows a message telling whoever clicks it to check with an admin, rather than sending nowhere.</div>
+      <input type="email" id="f_customContractingEmail" value="${escapeHtml(state.customContractingEmail)}" placeholder="contracting@greatdayimprovements.com"/>
+      <div style="margin-top:10px;">
+        <button class="btn btn-primary btn-sm" id="saveContractingEmailBtn">Save Contracting Email</button>
+      </div>
+      ${state.contractingEmailStatus ? `<div class="hint" style="margin-top:8px;color:var(--accent-dark);font-weight:600;">${escapeHtml(state.contractingEmailStatus)}</div>` : ''}
+    </div>` : ''}
 
     <div class="field-group">
       <div class="field-group-title">CSV Import History</div>
@@ -5324,7 +5574,7 @@ function renderPanel(){
             ${state.regionNames.map((n,i)=>`<option value="${i}" ${i===d.region?'selected':''}>${escapeHtml(n)}</option>`).join('')}
           </select>
         </div>
-        <div class="field"><label>Branch <span style="color:var(--red);">*</span></label><select id="f_branch">${renderBranchOptions(d.region, d.branch)}</select></div>
+        <div class="field"><label>Branch ${state.regionLabelSingular === 'Region' ? '<span style="color:var(--red);">*</span>' : ''}</label><select id="f_branch">${renderBranchOptions(d.region, d.branch)}</select></div>
       </div>
       <div class="field-row">
         <div class="field"><label>Start Date <span style="color:var(--red);">*</span>${reconfirmMark(d)}</label><input id="f_startDate" type="date" class="${(d.startDate && d.endDate && d.endDate < d.startDate) ? 'field-invalid' : ''}" value="${escapeHtml(d.startDate)}"/></div>
@@ -5454,11 +5704,14 @@ function renderPanel(){
       <div class="field-row">
         <div class="field">
           <label>Supervisor's Email${reconfirmMark(d)}</label>
-          <select id="f_supervisorEmail">
+          ${(()=>{
+            const emailOptions = state.currentBrand === 'patio-enclosures' ? SUPERVISOR_EMAILS : state.customSupervisorEmails;
+            return `<select id="f_supervisorEmail">
             <option value="" ${!d.supervisorEmail?'selected':''}>Select…</option>
-            ${d.supervisorEmail && !SUPERVISOR_EMAILS.includes(d.supervisorEmail) ? `<option value="${escapeHtml(d.supervisorEmail)}" selected>${escapeHtml(d.supervisorEmail)} (not in list)</option>` : ''}
-            ${SUPERVISOR_EMAILS.map(email=>`<option value="${escapeHtml(email)}" ${d.supervisorEmail===email?'selected':''}>${escapeHtml(email)}</option>`).join('')}
-          </select>
+            ${d.supervisorEmail && !emailOptions.includes(d.supervisorEmail) ? `<option value="${escapeHtml(d.supervisorEmail)}" selected>${escapeHtml(d.supervisorEmail)} (not in list)</option>` : ''}
+            ${emailOptions.map(email=>`<option value="${escapeHtml(email)}" ${d.supervisorEmail===email?'selected':''}>${escapeHtml(email)}</option>`).join('')}
+          </select>`;
+          })()}
         </div>
         <div class="field">
           <label>Priority Level${reconfirmMark(d)}</label>
@@ -5612,88 +5865,6 @@ function renderPanel(){
     </div>
 
     <div class="field-group">
-      <div class="field-group-title">Post-Event Evaluation</div>
-      <div class="hint" style="margin-bottom:10px;">Filled in after the event happens. Mirrors the post-event evaluation in Exhibit Day, so this can sync straight over once the field mapping is set up.</div>
-      <div class="field">
-        <label>Event Activation Status${reconfirmMark(d)}</label>
-        <select id="f_eventActivationStatus">
-          <option value="" ${!d.eventActivationStatus?'selected':''}>Select…</option>
-          <option value="Activated" ${d.eventActivationStatus==='Activated'?'selected':''}>Activated</option>
-          <option value="Not Activated" ${d.eventActivationStatus==='Not Activated'?'selected':''}>Not Activated</option>
-          <option value="Canceled by Event Organizer" ${d.eventActivationStatus==='Canceled by Event Organizer'?'selected':''}>Canceled by Event Organizer</option>
-        </select>
-      </div>
-
-      <div class="field-group-title" style="margin-top:16px;font-size:14px;">Engagement Metrics</div>
-      <div class="field">
-        <label>Number of Leads <span class="hint" style="margin:0;display:inline;">(generated from this event)</span>${reconfirmMark(d)}</label>
-        <input id="f_numberOfLeads" type="number" value="${escapeHtml(d.numberOfLeads)}"/>
-      </div>
-      <div class="field">
-        <label>ROI Notes${reconfirmMark(d)}</label>
-        <textarea id="f_roiNotes" rows="3">${escapeHtml(d.roiNotes)}</textarea>
-      </div>
-
-      <div class="field-group-title" style="margin-top:16px;font-size:14px;">Event Logistics and Feedback</div>
-      <div class="hint" style="margin:-4px 0 8px 2px;">Booth Location is set earlier, under the Pre-Approval Checklist section above.</div>
-      <div class="field">
-        <label>Rate the overall event organization <span class="hint" style="margin:0;display:inline;">(communication, load-in/out, traffic flow)</span>${reconfirmMark(d)}</label>
-        <select id="f_overallEventRating">
-          <option value="" ${!d.overallEventRating?'selected':''}>Select…</option>
-          ${[1,2,3,4,5].map(n=>`<option value="${n}" ${String(d.overallEventRating)===String(n)?'selected':''}>${n}</option>`).join('')}
-        </select>
-      </div>
-      <div class="field">
-        <label>Did you encounter any issues?${reconfirmMark(d)}</label>
-        <textarea id="f_issuesEncountered" rows="2">${escapeHtml(d.issuesEncountered)}</textarea>
-      </div>
-      <div class="field">
-        <label>What went well?${reconfirmMark(d)}</label>
-        <textarea id="f_whatWentWell" rows="2">${escapeHtml(d.whatWentWell)}</textarea>
-      </div>
-      <div class="field">
-        <label>Notes for next year${reconfirmMark(d)}</label>
-        <textarea id="f_notesForNextYear" rows="2">${escapeHtml(d.notesForNextYear)}</textarea>
-      </div>
-      <div class="field">
-        <label>Photo of booth setup${reconfirmMark(d)}</label>
-        <input id="f_boothPhotoFile" type="file" accept=".png,.jpg,.jpeg"/>
-        <div class="hint" id="boothPhotoFileStatus">
-          ${d.boothPhotoFileName
-            ? `Attached: <strong>${escapeHtml(d.boothPhotoFileName)}</strong> — <a href="#" id="removeBoothPhotoFile" style="color:var(--red);">remove</a>`
-            : 'Optional. PNG or JPG, up to 10MB.'}
-        </div>
-      </div>
-
-      <div class="field-group-title" style="margin-top:16px;font-size:14px;">Staff Performance</div>
-      <div class="field">
-        <label>Who worked the event?${reconfirmMark(d)}</label>
-        <input id="f_whoWorkedEvent" value="${escapeHtml(d.whoWorkedEvent)}"/>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Total Appointments${reconfirmMark(d)}</label>
-          <input id="f_totalAppointments" type="number" value="${escapeHtml(d.totalAppointments)}"/>
-        </div>
-        <div class="field">
-          <label>Leads per Hour <span class="hint" style="margin:0;display:inline;">(total appointments/total hours worked)</span>${reconfirmMark(d)}</label>
-          <input id="f_leadsPerHour" type="text" value="${escapeHtml(d.leadsPerHour)}"/>
-        </div>
-      </div>
-      <div class="field">
-        <label>Total Call to Sets${reconfirmMark(d)}</label>
-        <input id="f_totalCallToSets" type="number" value="${escapeHtml(d.totalCallToSets)}"/>
-      </div>
-      <div class="field">
-        <label>Rate staff compliance with booth behavior &amp; expectations <span class="hint" style="margin:0;display:inline;">(standing, engagement, product knowledge)</span>${reconfirmMark(d)}</label>
-        <select id="f_staffComplianceRating">
-          <option value="" ${!d.staffComplianceRating?'selected':''}>Select…</option>
-          ${[1,2,3,4,5].map(n=>`<option value="${n}" ${String(d.staffComplianceRating)===String(n)?'selected':''}>${n}</option>`).join('')}
-        </select>
-      </div>
-    </div>
-
-    <div class="field-group">
       <div class="field-group-title">Research Notes</div>
       <div class="field"><textarea id="f_notes" rows="3" placeholder="Findings, considerations, risks...">${escapeHtml(d.notes)}</textarea></div>
     </div>
@@ -5760,18 +5931,6 @@ function readDraftFromForm(){
   d.thirdPartyPhone = g('f_thirdPartyPhone') ? g('f_thirdPartyPhone').value : d.thirdPartyPhone;
   d.thirdPartyPaymentInfo = g('f_thirdPartyPaymentInfo') ? g('f_thirdPartyPaymentInfo').value : d.thirdPartyPaymentInfo;
   d.finalNotes = g('f_finalNotes').value;
-  d.numberOfLeads = g('f_numberOfLeads').value;
-  d.roiNotes = g('f_roiNotes').value;
-  d.eventActivationStatus = g('f_eventActivationStatus').value;
-  d.overallEventRating = g('f_overallEventRating').value;
-  d.issuesEncountered = g('f_issuesEncountered').value;
-  d.whatWentWell = g('f_whatWentWell').value;
-  d.notesForNextYear = g('f_notesForNextYear').value;
-  d.whoWorkedEvent = g('f_whoWorkedEvent').value;
-  d.totalAppointments = g('f_totalAppointments').value;
-  d.leadsPerHour = g('f_leadsPerHour').value;
-  d.totalCallToSets = g('f_totalCallToSets').value;
-  d.staffComplianceRating = g('f_staffComplianceRating').value;
 }
 
 // Reads the current form field values directly from the DOM (not state.draft, so it works
@@ -6346,6 +6505,66 @@ function attachHandlers(){
     });
   });
 
+  const saveContractingEmailBtn = document.getElementById('saveContractingEmailBtn');
+  if(saveContractingEmailBtn){
+    saveContractingEmailBtn.addEventListener('click', async ()=>{
+      const input = document.getElementById('f_customContractingEmail');
+      const email = input ? input.value.trim() : '';
+      saveContractingEmailBtn.disabled = true;
+      try{
+        await window.storage.set('custom-contracting-email', email, true);
+        state.customContractingEmail = email;
+        state.contractingEmailStatus = email ? 'Saved.' : 'Cleared -- Email for Contracting will show a setup message until this is filled in again.';
+      }catch(e){
+        state.contractingEmailStatus = 'Could not save -- please try again.';
+      }
+      saveContractingEmailBtn.disabled = false;
+      render();
+    });
+  }
+
+  const saveSupervisorEmailsBtn = document.getElementById('saveSupervisorEmailsBtn');
+  if(saveSupervisorEmailsBtn){
+    saveSupervisorEmailsBtn.addEventListener('click', async ()=>{
+      const textarea = document.getElementById('f_customSupervisorEmails');
+      const emails = textarea
+        ? textarea.value.split('\n').map(e=>e.trim()).filter(e=>e.length>0)
+        : [];
+      saveSupervisorEmailsBtn.disabled = true;
+      try{
+        await window.storage.set('custom-supervisor-emails', JSON.stringify(emails), true);
+        state.customSupervisorEmails = emails;
+        state.supervisorEmailsStatus = `Saved -- ${emails.length} email${emails.length===1?'':'s'} in the dropdown.`;
+      }catch(e){
+        state.supervisorEmailsStatus = 'Could not save -- please try again.';
+      }
+      saveSupervisorEmailsBtn.disabled = false;
+      render();
+    });
+  }
+
+  const saveBranchOptionsBtn = document.getElementById('saveBranchOptionsBtn');
+  if(saveBranchOptionsBtn){
+    saveBranchOptionsBtn.addEventListener('click', async ()=>{
+      const map = {};
+      document.querySelectorAll('[data-branch-opt-region]').forEach(input=>{
+        const regionName = input.getAttribute('data-branch-opt-region');
+        const opts = input.value.split(',').map(s=>s.trim()).filter(s=>s.length>0);
+        if(opts.length>0) map[regionName] = opts;
+      });
+      saveBranchOptionsBtn.disabled = true;
+      try{
+        await window.storage.set('custom-branch-options', JSON.stringify(map), true);
+        state.customBranchOptions = map;
+        state.branchOptionsStatus = 'Saved.';
+      }catch(e){
+        state.branchOptionsStatus = 'Could not save -- please try again.';
+      }
+      saveBranchOptionsBtn.disabled = false;
+      render();
+    });
+  }
+
   const addRegionBtn = document.getElementById('addRegionBtn');
   if(addRegionBtn){
     addRegionBtn.addEventListener('click', async ()=>{
@@ -6839,45 +7058,74 @@ function attachHandlers(){
     });
   }
 
-  const boothPhotoFileInput = document.getElementById('f_boothPhotoFile');
-  const boothPhotoFileStatusEl = document.getElementById('boothPhotoFileStatus');
-  if(boothPhotoFileInput){
-    boothPhotoFileInput.addEventListener('change', async ()=>{
-      const file = boothPhotoFileInput.files && boothPhotoFileInput.files[0];
+  // Post-Event Evaluation panel -- separate from the main form entirely, see openPostEventEvalPanel.
+  document.querySelectorAll('[data-post-event-eval]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      openPostEventEvalPanel(btn.getAttribute('data-post-event-eval'));
+    });
+  });
+  const closePostEventEvalBtn = document.getElementById('closePostEventEvalBtn');
+  if(closePostEventEvalBtn) closePostEventEvalBtn.addEventListener('click', closePostEventEvalPanel);
+  const cancelPostEventEvalBtn = document.getElementById('cancelPostEventEvalBtn');
+  if(cancelPostEventEvalBtn) cancelPostEventEvalBtn.addEventListener('click', closePostEventEvalPanel);
+  const savePostEventEvalBtn = document.getElementById('savePostEventEvalBtn');
+  if(savePostEventEvalBtn){
+    savePostEventEvalBtn.addEventListener('click', ()=>{
+      const g = id => document.getElementById(id);
+      const d = state.postEventEvalDraft;
+      if(!d) return;
+      d.eventActivationStatus = g('pe_eventActivationStatus').value;
+      d.numberOfLeads = g('pe_numberOfLeads').value;
+      d.roiNotes = g('pe_roiNotes').value;
+      d.overallEventRating = g('pe_overallEventRating').value;
+      d.issuesEncountered = g('pe_issuesEncountered').value;
+      d.whatWentWell = g('pe_whatWentWell').value;
+      d.notesForNextYear = g('pe_notesForNextYear').value;
+      d.whoWorkedEvent = g('pe_whoWorkedEvent').value;
+      d.totalAppointments = g('pe_totalAppointments').value;
+      d.leadsPerHour = g('pe_leadsPerHour').value;
+      d.totalCallToSets = g('pe_totalCallToSets').value;
+      d.staffComplianceRating = g('pe_staffComplianceRating').value;
+      savePostEventEval();
+    });
+  }
+  const peBoothPhotoFileInput = document.getElementById('pe_boothPhotoFile');
+  const peBoothPhotoFileStatusEl = document.getElementById('peBoothPhotoFileStatus');
+  if(peBoothPhotoFileInput){
+    peBoothPhotoFileInput.addEventListener('change', async ()=>{
+      const file = peBoothPhotoFileInput.files && peBoothPhotoFileInput.files[0];
       if(!file) return;
       if(file.size > MAX_ATTACHMENT_BYTES){
         alert(`"${file.name}" is ${(file.size/1024/1024).toFixed(1)}MB, which is over the 10MB limit for an attached file. Please choose a smaller file, or compress it first.`);
-        boothPhotoFileInput.value = '';
+        peBoothPhotoFileInput.value = '';
         return;
       }
-      readDraftFromForm();
-      if(boothPhotoFileStatusEl) boothPhotoFileStatusEl.innerHTML = `Uploading "${escapeHtml(file.name)}"\u2026`;
-      boothPhotoFileInput.disabled = true;
+      if(peBoothPhotoFileStatusEl) peBoothPhotoFileStatusEl.innerHTML = `Uploading "${escapeHtml(file.name)}"\u2026`;
+      peBoothPhotoFileInput.disabled = true;
       try{
         const storagePath = `booth-photos/${uid()}-${file.name}`;
         const storageRef = storageRefFn(fbStorage(), storagePath);
         await uploadBytes(storageRef, file);
         const url = await getDownloadURL(storageRef);
-        state.draft.boothPhotoFileName = file.name;
-        state.draft.boothPhotoFileType = file.type || 'application/octet-stream';
-        state.draft.boothPhotoFileUrl = url;
+        state.postEventEvalDraft.boothPhotoFileName = file.name;
+        state.postEventEvalDraft.boothPhotoFileType = file.type || 'application/octet-stream';
+        state.postEventEvalDraft.boothPhotoFileUrl = url;
       }catch(e){
         console.error('Booth photo upload failed', e);
         alert('That file could not be uploaded -- likely a connection issue. Please try again.');
-        boothPhotoFileInput.value = '';
+        peBoothPhotoFileInput.value = '';
       }
-      boothPhotoFileInput.disabled = false;
+      peBoothPhotoFileInput.disabled = false;
       render();
     });
   }
-  const removeBoothPhotoFileLink = document.getElementById('removeBoothPhotoFile');
-  if(removeBoothPhotoFileLink){
-    removeBoothPhotoFileLink.addEventListener('click', (e)=>{
+  const pe_removeBoothPhotoFileLink = document.getElementById('pe_removeBoothPhotoFile');
+  if(pe_removeBoothPhotoFileLink){
+    pe_removeBoothPhotoFileLink.addEventListener('click', (e)=>{
       e.preventDefault();
-      readDraftFromForm();
-      state.draft.boothPhotoFileName = '';
-      state.draft.boothPhotoFileType = '';
-      state.draft.boothPhotoFileUrl = '';
+      state.postEventEvalDraft.boothPhotoFileName = '';
+      state.postEventEvalDraft.boothPhotoFileType = '';
+      state.postEventEvalDraft.boothPhotoFileUrl = '';
       render();
     });
   }

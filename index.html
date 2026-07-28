@@ -3634,9 +3634,10 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     paymentLink: 'custom_267573',
     targetOpps: 'custom_223428',
     // TODO: run Settings -> List Custom Field Names again to find these -- not part of the
-    // original discovery, so post-event evaluation data won't sync until these are filled in.
-    numberOfLeads: null,
-    roiNotes: null,
+    // original discovery, so these won't sync until filled in. (numberOfLeads and roiNotes are
+    // NOT here anymore -- confirmed 7/28/2026 via the raw Events API response that those are
+    // standard built-in Exhibit Day fields (roi_num_leads, roi_notes), not custom fields, so
+    // they're sent directly on every brand's payload below instead of through this per-brand map.)
     eventActivationStatus: null,
     overallEventRating: null,
     issuesEncountered: null,
@@ -3646,10 +3647,42 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     totalAppointments: null,
     leadsPerHour: null,
     totalCallToSets: null,
-    staffComplianceRating: null
+    staffComplianceRating: null,
+    paymentNotes: null,
+    registrationLink: null,
+    registrationUsername: null,
+    registrationPassword: null,
+    boothLocation: null
+  },
+  // Discovered 7/28/2026 via Settings -> List Custom Field Names.
+  // eventActivationStatus stays null -- not present anywhere in this workspace's 39 custom
+  // fields, and (unlike leads/ROI notes) there's no evidence yet it's a standard field either.
+  'universal-windows-bath-authority': {
+    region: 'custom_258648',
+    branch: 'custom_244241', // Exhibit Day calls this "Office"
+    contactName: 'custom_244496', // Exhibit Day calls this "Organizer Name"
+    contactPhone: 'custom_244498', // "Organizer Phone Number"
+    contactEmail: 'custom_244497', // "Organizer Email"
+    paymentType: 'custom_248946',
+    paymentLink: 'custom_244470',
+    paymentNotes: 'custom_244475',
+    targetOpps: 'custom_258646', // "Opps (Lead) Goal"
+    registrationLink: 'custom_244473', // generic "URL" field
+    registrationUsername: 'custom_244471',
+    registrationPassword: 'custom_244472',
+    boothLocation: 'custom_252529',
+    overallEventRating: 'custom_252530',
+    issuesEncountered: 'custom_252531',
+    whatWentWell: 'custom_267613',
+    notesForNextYear: 'custom_252532',
+    whoWorkedEvent: 'custom_252535',
+    totalAppointments: 'custom_267612',
+    leadsPerHour: 'custom_252536',
+    totalCallToSets: 'custom_267611',
+    staffComplianceRating: 'custom_267610',
+    eventActivationStatus: null
   },
   // TODO: run Settings -> List Custom Field Names while signed into this brand, then fill these in.
-  'universal-windows-bath-authority': null,
   'champion-windows': null,
   'leafguard': null
 };
@@ -3685,8 +3718,6 @@ function buildExhibitDaySyncPayload(ev){
   addField('paymentType', paymentMethodLabel || '');
   addField('paymentLink', paymentLink || '');
   addField('targetOpps', ev.forecastedOpps ? String(ev.forecastedOpps) : '');
-  addField('numberOfLeads', ev.numberOfLeads ? String(ev.numberOfLeads) : '');
-  addField('roiNotes', ev.roiNotes || '');
   addField('eventActivationStatus', ev.eventActivationStatus || '');
   addField('overallEventRating', ev.overallEventRating || '');
   addField('issuesEncountered', ev.issuesEncountered || '');
@@ -3697,6 +3728,18 @@ function buildExhibitDaySyncPayload(ev){
   addField('leadsPerHour', ev.leadsPerHour || '');
   addField('totalCallToSets', ev.totalCallToSets ? String(ev.totalCallToSets) : '');
   addField('staffComplianceRating', ev.staffComplianceRating || '');
+  addField('paymentNotes', ev.paymentNotes || '');
+  addField('registrationLink', ev.registrationLink || '');
+  addField('registrationUsername', ev.registrationUsername || '');
+  addField('registrationPassword', ev.registrationPassword || '');
+  addField('boothLocation', ev.boothLocation || '');
+
+  // Confirmed 7/28/2026 via a raw Events API response: these three are standard, built-in
+  // Exhibit Day fields present in every workspace -- not custom fields -- so they're sent the
+  // same way for every brand, no per-brand mapping needed.
+  const boothSizeStandard = ev.boothSize === 'other'
+    ? (ev.boothSizeOther || '')
+    : (ev.boothSize ? ev.boothSize.toUpperCase().replace('X', ' X ') : '');
 
   return {
     dashboardEventId: ev.id,
@@ -3712,6 +3755,9 @@ function buildExhibitDaySyncPayload(ev){
     budget_travel: mileageDollars(ev) + hotelDollars(ev) + perDiemDollars(ev),
     budget_misc_expenses: num(ev.miscCosts),
     budget_attendee_registrations: laborDollars(ev),
+    booth_size: boothSizeStandard,
+    roi_notes: ev.roiNotes || '',
+    roi_num_leads: num(ev.numberOfLeads),
     custom_fields
   };
 }
@@ -6454,9 +6500,10 @@ function attachHandlers(){
       try{
         const fn = httpsCallable(fbFunctions(), 'listExhibitDayCustomFields');
         const result = await fn();
+        window.lastExhibitDayFields = result.data; // cached here so it can be reliably copied out later
         console.log('Exhibit Day custom fields:', result.data);
         console.table(Array.isArray(result.data) ? result.data : (result.data.fields || result.data.custom_fields || result.data));
-        state.exhibitDayFieldsStatus = 'Done — press F12, click "Console", and look for "Exhibit Day custom fields" to see the full list with each field_name.';
+        state.exhibitDayFieldsStatus = 'Done — run copy(JSON.stringify(window.lastExhibitDayFields, null, 2)) in the console, then paste your clipboard wherever you need the full list.';
       }catch(err){
         console.error('Custom field lookup failed', err);
         state.exhibitDayFieldsStatus = `Lookup failed: ${err.message || err}`;

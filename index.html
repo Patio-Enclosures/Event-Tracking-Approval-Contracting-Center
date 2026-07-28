@@ -4716,10 +4716,11 @@ function renderOverview(allEvents){
     acc.mileage += mileageDollars(ev);
     acc.hotel += hotelDollars(ev);
     acc.perDiem += perDiemDollars(ev);
+    acc.vehicleRental += vehicleRentalDollars(ev);
     acc.misc += num(ev.miscCosts);
     return acc;
-  }, { contract:0, labor:0, mileage:0, hotel:0, perDiem:0, misc:0 });
-  const budgetGrandTotal = budgetTotals.contract + budgetTotals.labor + budgetTotals.mileage + budgetTotals.hotel + budgetTotals.perDiem + budgetTotals.misc;
+  }, { contract:0, labor:0, mileage:0, hotel:0, perDiem:0, vehicleRental:0, misc:0 });
+  const budgetGrandTotal = budgetTotals.contract + budgetTotals.labor + budgetTotals.mileage + budgetTotals.hotel + budgetTotals.perDiem + budgetTotals.vehicleRental + budgetTotals.misc;
   const budgetSummaryBranchSource = state.budgetSummaryRegions.length>0
     ? allEvents.filter(e=>state.budgetSummaryRegions.includes(String(e.region)))
     : allEvents;
@@ -4730,6 +4731,7 @@ function renderOverview(allEvents){
     ['Mileage', budgetTotals.mileage],
     ['Hotel', budgetTotals.hotel],
     ['Per Diem', budgetTotals.perDiem],
+    ...(state.currentBrand !== 'patio-enclosures' ? [['Vehicle Rental', budgetTotals.vehicleRental]] : []),
     ['Misc.', budgetTotals.misc]
   ];
   const budgetSummaryHtml = budgetFilteredEvents.length===0

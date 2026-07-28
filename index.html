@@ -2114,10 +2114,17 @@ async function persistEventsBulkAtomic(transformFn){
   try{
     const snap = await getDocs(collection(fbDb(), EVENTS_COLLECTION));
     const latestEvents = snap.docs.map(d => d.data());
+    const latestIds = new Set(latestEvents.map(ev => ev.id));
     const result = transformFn(latestEvents);
     const finalEvents = Array.isArray(result) ? result : latestEvents;
+    const finalIds = new Set(finalEvents.map(ev => ev.id));
 
-    const batchSize = 400;
+    // Anything present before the transform but missing after it was deliberately removed
+    // (e.g. filtered out) -- those documents need an actual delete, not just to be left out of
+    // the writes below. Omitting a document from a batch of .set() calls does NOT delete it.
+    const idsToDelete = [...latestIds].filter(id => !finalIds.has(id));
+
+    const batchSize = 400; // Firestore batch writes cap at 500 operations
     for(let i=0; i<finalEvents.length; i += batchSize){
       const batch = writeBatch(fbDb());
       finalEvents.slice(i, i+batchSize).forEach(ev=>{
@@ -2125,6 +2132,14 @@ async function persistEventsBulkAtomic(transformFn){
       });
       await batch.commit();
     }
+    for(let i=0; i<idsToDelete.length; i += batchSize){
+      const batch = writeBatch(fbDb());
+      idsToDelete.slice(i, i+batchSize).forEach(id=>{
+        batch.delete(doc(fbDb(), EVENTS_COLLECTION, id));
+      });
+      await batch.commit();
+    }
+
     state.events = finalEvents;
     return true;
   }catch(e){

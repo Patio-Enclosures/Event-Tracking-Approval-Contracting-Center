@@ -3720,10 +3720,15 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
 };
 
 function buildExhibitDaySyncPayload(ev){
+  // Exhibit Day's Payment Type field is a dropdown with a fixed set of allowed values --
+  // confirmed 7/29/2026 from a real 400 error response: Cash/Expense | Check | Credit Card |
+  // Free | ACH. This dashboard's own payment method options don't map 1:1, so anything without
+  // a clean match either uses the closest real equivalent or is left blank (an empty value is
+  // accepted as "not set"; an unrecognized word is rejected outright, which is what broke here).
   const paymentMethodLabel = ev.paymentMethod==='credit_card' ? 'Credit Card'
-    : ev.paymentMethod==='pay_at_gate' ? 'Pay at the Gate'
-    : ev.paymentMethod==='phone_payment' ? 'Phone Payment'
-    : ev.paymentMethod==='check' ? 'Check' : ev.paymentMethod==='other' ? 'Other' : '';
+    : ev.paymentMethod==='pay_at_gate' ? 'Cash/Expense'
+    : ev.paymentMethod==='phone_payment' ? 'Credit Card'
+    : ev.paymentMethod==='check' ? 'Check' : '';
   const paymentLink = ev.paymentMethod==='credit_card' ? ev.creditCardLink : '';
 
   // Venue Address has no custom field configured in Exhibit Day, so it's the only one still

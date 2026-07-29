@@ -1581,7 +1581,8 @@ let state = {
     needsDecision:true,
     yearTrends:false,
     activity:false,
-    budgetSummary:false
+    budgetSummary:false,
+    overdueEvals:true
   },
   budgetSummaryDateFrom:'',
   budgetSummaryDateTo:'',
@@ -2835,6 +2836,8 @@ async function savePostEventEval(){
   const ev = state.events.find(e=>e.id===id);
   if(!ev || !state.postEventEvalDraft) return;
   const updated = Object.assign({}, ev, state.postEventEvalDraft);
+  updated.postEventEvalCompleted = true;
+  updated.postEventEvalCompletedAt = Date.now();
   const saveBtn = document.getElementById('savePostEventEvalBtn');
   if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
   const ok = await persistEventChangeAtomic(updated, false);
@@ -3595,10 +3598,14 @@ function generateApprovalEmail(ev){
   const subject = sanitizeHeader(`Approval Request: ${ev.eventName}`);
   const hasAttachment = !!(ev.contractFileName && ev.contractFileUrl);
 
-  // mailto can't carry file attachments, so download the contract document (if any) alongside
-  // the approval PDF, and just point to both in the email body.
+  // mailto can't carry file attachments -- this is a hard browser/email-client limitation, not
+  // something fixable in code, since letting a webpage silently attach files to an outgoing
+  // email would be a real security risk. Best available workaround: open the file in a new tab
+  // so it's easy to save, and make sure the person sending this actually notices they need to
+  // attach it themselves before hitting send -- easy to miss if it's only mentioned in the body.
   if(hasAttachment){
     downloadContractFile(ev);
+    alert(`"${ev.contractFileName}" just opened in a new browser tab.\n\nEmail links can't attach files automatically (this is a browser limitation, not a bug) -- please save that file, then manually attach it to the email draft that's about to open, before you send it.`);
   }
 
   let bodyText = 'Hi,\n\nThe following event is ready for review:\n\n' + buildFullEventTextSummary(ev);
@@ -3816,6 +3823,7 @@ function generateContractingEmail(ev){
 
   if(hasAttachment){
     downloadContractFile(ev);
+    alert(`"${ev.contractFileName}" just opened in a new browser tab, and the summary PDF is downloading too.\n\nEmail links can't attach files automatically (this is a browser limitation, not a bug) -- please save both, then manually attach them to the email draft that's about to open, before you send it.`);
   }
   downloadEventPDF(ev);
 
@@ -4886,6 +4894,33 @@ function renderOverview(allEvents){
         </div>
       `).join('') + `</div>`;
 
+  // Post-event evaluations still needed: event date has passed, no evaluation saved yet, and
+  // only for events on or after the cutoff date -- older events are exempt on purpose, so this
+  // doesn't surface a backlog of ancient events nobody intends to go back and evaluate.
+  const POST_EVENT_EVAL_REMINDER_CUTOFF = '2026-08-03';
+  const overdueEvaluations = allEvents.filter(ev =>
+    hasEventDatePassed(ev) && !ev.postEventEvalCompleted && ev.startDate && ev.startDate >= POST_EVENT_EVAL_REMINDER_CUTOFF
+  );
+  const overdueEvalsByRegion = {};
+  overdueEvaluations.forEach(ev => {
+    const regionName = state.regionNames[ev.region] || 'Unknown';
+    if(!overdueEvalsByRegion[regionName]) overdueEvalsByRegion[regionName] = [];
+    overdueEvalsByRegion[regionName].push(ev);
+  });
+  const overdueEvalsHtml = overdueEvaluations.length === 0
+    ? `<div class="empty" style="padding:24px;"><div class="empty-title" style="font-size:15px;">Nothing overdue</div><div>Every event on or after ${new Date(POST_EVENT_EVAL_REMINDER_CUTOFF+'T00:00:00').toLocaleDateString()} that's already happened has its post-event evaluation completed.</div></div>`
+    : `<div class="region-table-wrap" style="padding:12px 18px;">` +
+        Object.keys(overdueEvalsByRegion).sort().map(regionName => `
+          <div style="margin-bottom:14px;">
+            <div style="font-weight:700;color:var(--ink);margin-bottom:6px;">${escapeHtml(regionName)} (${overdueEvalsByRegion[regionName].length})</div>
+            ${overdueEvalsByRegion[regionName].map(ev => `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0 6px 10px;border-bottom:1px solid var(--border);">
+                <span>${escapeHtml(ev.eventName)} <span class="hint" style="margin:0;">— ended ${ev.endDate || ev.startDate}</span></span>
+                <button class="btn btn-outline btn-sm" data-post-event-eval="${ev.id}">📋 Complete Evaluation</button>
+              </div>`).join('')}
+          </div>`).join('') +
+      `</div>`;
+
   // Budget summary by category: sums each cost category across whatever events match the
   // date range / region / branch filters chosen for this section specifically -- independent
   // of any filters set elsewhere on the page, since this is meant as a standalone report.
@@ -4954,6 +4989,12 @@ function renderOverview(allEvents){
           <div class="hint" style="margin:-6px 0 10px 2px;">Click a region to see its branch-level breakdown.</div>
           ${periodFilterHtml}
           ${regionTableHtml}
+        ` : ''}
+
+        ${sectionHeader('overdueEvals', `Post-Event Evaluations Needed (${overdueEvaluations.length})`, null, '📋')}
+        ${state.overviewSectionsOpen.overdueEvals ? `
+          <div class="hint" style="margin:-6px 0 10px 2px;">Events that have already happened (on or after ${new Date(POST_EVENT_EVAL_REMINDER_CUTOFF+'T00:00:00').toLocaleDateString()}) but don't have a completed post-event evaluation yet, grouped by ${state.regionLabelSingular.toLowerCase()}.</div>
+          ${overdueEvalsHtml}
         ` : ''}
 
         ${sectionHeader('budgetSummary', 'Budget Summary by Category', null, '💰')}
@@ -5136,12 +5177,20 @@ function renderEventDetail(ev){
   let decisionButtons = '';
   if(ev.status===STATUS.RESEARCHING){
     const missingApproval = getMissingApprovalFields(ev);
+    const allowSkipApproval = state.currentBrand === 'universal-windows-bath-authority';
+    const missingForDirectContract = allowSkipApproval ? getMissingFields(ev).concat(missingApproval) : [];
+    const directContractBtn = !allowSkipApproval ? '' : (
+      missingForDirectContract.length===0
+        ? `<button class="btn btn-green btn-sm" data-submit="${ev.id}">Submit for Contract Processing</button>`
+        : `<button class="btn btn-green btn-sm" disabled title="Missing: ${escapeHtml(missingForDirectContract.join(', '))}">Submit for Contract Processing</button>`
+    );
     if(missingApproval.length===0){
       decisionButtons = `
         <div class="decision-note">Determination pending — decide whether to proceed.</div>
         <div class="decision-bar-actions">
           <button class="btn btn-outline btn-sm" data-notpursuing="${ev.id}">Not Pursuing</button>
           <button class="btn btn-blue btn-sm" data-execute="${ev.id}">Submit for Approval</button>
+          ${directContractBtn}
         </div>`;
     } else {
       decisionButtons = `
@@ -5150,6 +5199,7 @@ function renderEventDetail(ev){
           <button class="btn btn-outline btn-sm" data-notpursuing="${ev.id}">Not Pursuing</button>
           <button class="btn btn-outline btn-sm" data-edit="${ev.id}">Complete Checklist</button>
           <button class="btn btn-blue btn-sm" disabled title="Complete the pre-approval checklist before submitting for approval">Submit for Approval</button>
+          ${directContractBtn}
         </div>`;
     }
   } else if(ev.status===STATUS.EXECUTE){
@@ -5204,7 +5254,9 @@ function renderEventDetail(ev){
         <button class="btn btn-outline btn-sm" data-redownload="${ev.id}">Download Summary Again</button>
         <button class="btn btn-outline btn-sm" data-email-contracting="${ev.id}">📧 Email for Contracting Again</button>
         <button class="btn btn-outline btn-sm" data-sync-exhibitday="${ev.id}">📊 ${ev.exhibitDaySyncedAt ? 'Re-sync' : 'Sync'} to Exhibit Day</button>
-      </div>`;
+        ${isAuthorizedApprover() ? `<button class="btn btn-red btn-sm" data-notpursuing="${ev.id}">Mark as Not Pursuing</button>` : ''}
+      </div>
+      ${isAuthorizedApprover() ? `<div class="hint" style="margin-top:6px;">If something falls through after submission (venue backs out, event's cancelled, etc.), use Mark as Not Pursuing rather than leaving this stuck here.</div>` : ''}`;
   }
 
   return `

@@ -3633,26 +3633,24 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     paymentType: 'custom_267570',
     paymentLink: 'custom_267573',
     targetOpps: 'custom_223428',
-    // TODO: run Settings -> List Custom Field Names again to find these -- not part of the
-    // original discovery, so these won't sync until filled in. (numberOfLeads and roiNotes are
-    // NOT here anymore -- confirmed 7/28/2026 via the raw Events API response that those are
-    // standard built-in Exhibit Day fields (roi_num_leads, roi_notes), not custom fields, so
-    // they're sent directly on every brand's payload below instead of through this per-brand map.)
-    eventActivationStatus: null,
-    overallEventRating: null,
-    issuesEncountered: null,
-    whatWentWell: null,
-    notesForNextYear: null,
-    whoWorkedEvent: null,
-    totalAppointments: null,
-    leadsPerHour: null,
-    totalCallToSets: null,
-    staffComplianceRating: null,
-    paymentNotes: null,
-    registrationLink: null,
-    registrationUsername: null,
-    registrationPassword: null,
-    boothLocation: null
+    // Confirmed 7/28/2026 -- Patio Enclosures' full custom field list is an exact, same-order
+    // match to Champion Windows' (both share the same underlying template), so these use the
+    // identical IDs rather than a fresh guess.
+    eventActivationStatus: 'custom_273011',
+    overallEventRating: 'custom_251303',
+    issuesEncountered: 'custom_251304',
+    whatWentWell: 'custom_251306',
+    notesForNextYear: 'custom_251259',
+    whoWorkedEvent: 'custom_251257',
+    totalAppointments: 'custom_251292',
+    leadsPerHour: 'custom_251258',
+    totalCallToSets: 'custom_251293',
+    staffComplianceRating: 'custom_251296',
+    paymentNotes: 'custom_267571',
+    registrationLink: 'custom_267574',
+    registrationUsername: 'custom_267575',
+    registrationPassword: 'custom_267576',
+    boothLocation: 'custom_251294'
   },
   // Discovered 7/28/2026 via Settings -> List Custom Field Names.
   // eventActivationStatus stays null -- not present anywhere in this workspace's 39 custom
@@ -3683,7 +3681,34 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     eventActivationStatus: null
   },
   // TODO: run Settings -> List Custom Field Names while signed into this brand, then fill these in.
-  'champion-windows': null,
+  // Discovered 7/28/2026 via Settings -> List Custom Field Names. Unlike Universal Windows,
+  // this workspace DOES have Event Activation Status as a real custom field.
+  'champion-windows': {
+    region: 'custom_123549',
+    branch: 'custom_245675', // Exhibit Day calls this "Office"
+    contactName: 'custom_267566', // "Organizer Name"
+    contactPhone: 'custom_267568', // "Organizer Phone Number"
+    contactEmail: 'custom_267567', // "Organizer Email"
+    paymentType: 'custom_267570',
+    paymentLink: 'custom_267573',
+    paymentNotes: 'custom_267571',
+    targetOpps: 'custom_223428', // "Opps Goal"
+    registrationLink: 'custom_267574', // generic "URL" field
+    registrationUsername: 'custom_267575',
+    registrationPassword: 'custom_267576',
+    eventActivationStatus: 'custom_273011',
+    boothLocation: 'custom_251294',
+    overallEventRating: 'custom_251303',
+    issuesEncountered: 'custom_251304',
+    whatWentWell: 'custom_251306',
+    notesForNextYear: 'custom_251259',
+    whoWorkedEvent: 'custom_251257',
+    totalAppointments: 'custom_251292',
+    leadsPerHour: 'custom_251258',
+    totalCallToSets: 'custom_251293',
+    staffComplianceRating: 'custom_251296'
+  },
+  // TODO: run Settings -> List Custom Field Names while signed into this brand, then fill these in.
   'leafguard': null
 };
 

@@ -3224,21 +3224,30 @@ async function submitContract(id){
   const before = Object.assign({}, ev);
   ev.status = STATUS.SUBMITTED;
   ev.submittedAt = Date.now();
+
+  // Universal Windows runs approval and contracting as one combined step -- the email needs to
+  // fire here, synchronously, in the same tick as the click, or browsers can silently refuse to
+  // open the mailto link (confirmed in practice: it worked reliably from a plain button click,
+  // but not after an await for the Firestore save first broke that direct connection to the
+  // click). The tradeoff is that if the save below fails, the email will have already opened --
+  // handled with a clear follow-up alert rather than silently leaving that unexplained.
+  const isCombinedFlow = state.currentBrand === 'universal-windows-bath-authority';
+  if(isCombinedFlow){
+    generateContractingEmail(ev);
+  }
+
   const ok = await persistEventChangeAtomic(ev, false);
   if(!ok){
     Object.assign(ev, before);
-    alert('This could not be submitted -- likely a connection issue. Please try again.');
+    alert(isCombinedFlow
+      ? 'The email draft opened, but saving this event as submitted failed -- likely a connection issue. The event has NOT actually been marked as submitted. Please try clicking Submit for Approval & Contracting again once your connection is stable.'
+      : 'This could not be submitted -- likely a connection issue. Please try again.');
     render();
     return;
   }
   logActivity(ev.id, ev.eventName, 'Submitted for Contract Processing');
   render();
-  // Universal Windows runs approval and contracting as one combined step, not two separate
-  // ones -- so submitting also fires the contracting email immediately, rather than requiring
-  // a second button click the way every other brand's two-stage process does.
-  if(state.currentBrand === 'universal-windows-bath-authority'){
-    generateContractingEmail(ev);
-  } else {
+  if(!isCombinedFlow){
     downloadContractSummary(ev);
   }
 }
@@ -3641,6 +3650,72 @@ const CONTRACTING_EMAIL = 'shanautica.sales@greatdayimprovements.com';
 // requires an exact match to one of 12 full-name values. Confirmed 7/29/2026, then re-confirmed
 // after Exhibit Day's Office list was corrected to add Toledo and remove the unused Louisville
 // entry -- all 12 dashboard tabs now have a clean, exact match.
+// Patio Enclosures' Office field also requires an exact string match, confirmed 7/29/2026
+// against the complete list of valid values from a real 400 error. Keyed by branch code
+// (extracted the same way checkZipServiceable does: text before " - " in the Branch field).
+// Exhibit Day's own list is inconsistently spaced -- some entries are "CODE - Name", others
+// "CODE -Name" with no space after the dash -- so each value below is copied exactly as given,
+// not reconstructed from a formula. Only confirmed for Patio Enclosures specifically; Champion
+// Windows shares this same field ID but has its own separate workspace and hasn't been checked,
+// so its branch mapping stays disabled until verified on its own.
+const PATIO_BRANCH_CODE_TO_EXHIBITDAY_OFFICE = {
+  'AGA': 'AGA - Augusta/Macon, GA',
+  'ALB': 'ALB -Albany',
+  'AML': 'AML -Amarillo/Lubbock',
+  'ASO': 'ASO -Abilene/Sweetwater/Odesa/Midland',
+  'ATL': 'ATL -Atlanta',
+  'AUS': 'AUS - Austin',
+  'BAL': 'BAL - Baltimore',
+  'BIR': 'BIR -Birmingham',
+  'BUF': 'BUF -Buffalo',
+  'CHA': 'CHA -Charlotte',
+  'CHI': 'CHI -Chicago',
+  'CHL': 'CHL -Charleston, SC',
+  'CHT': 'CHT -Chattanooga',
+  'CIN': 'CIN -Cincinnati',
+  'CLB': 'CLB -Columbia, SC',
+  'CLE': 'CLE - Cleveland',
+  'COL': 'COL -Columbus',
+  'CWV': 'CWV -Charleston, WV',
+  'DAL': 'DAL -Dallas/Ft. Worth',
+  'GRE': 'GRE - Greenville, SC',
+  'HAR': 'HAR - Harrisburg',
+  'HNT': 'HNT - Huntsville, AL',
+  'HOU': 'HOU - Houston',
+  'HRT': 'HRT - Hartford/Springfield',
+  'IND': 'IND - Indianapolis',
+  'JAL': 'JAL - Johnstown/Altoona',
+  'KNO': 'KNO - Knoxville',
+  'LAS': 'LAS - Las Vegas',
+  'LOU': 'LOU - Louisville',
+  'MAD': 'MAD - Madison',
+  'MBL': 'MBL - Mobile, AL',
+  'MON': 'MON - Montgomery, AL',
+  'MYB': 'MYB - Myrtle Beach/Wilmington',
+  'NAS': 'NAS - Nashville',
+  'NJN': 'NJN - New Jersey North',
+  'NVB': 'NVB - Norfolk/Virginia Beach',
+  'OMA': 'OMA - Omaha/Lincoln',
+  'PHI': 'PHI - Philadelphia',
+  'PHX': 'PHX - Phoenix',
+  'PIT': 'PIT - Pittsburgh',
+  'PRT': 'PRT - Portland, OR',
+  'PRV': 'PRV - Providence',
+  'RAL': 'RAL - Raleigh',
+  'RIC': 'RIC - Richmond',
+  'ROC': 'ROC - Rochester',
+  'SAN': 'SAN - San Antonio',
+  'SAV': 'SAV - Savannah, GA',
+  'SEA': 'SEA - Seattle, WA',
+  'SHR': 'SHR - Shreveport, LA',
+  'STL': 'STL - St Louis',
+  'TUC': 'TUC - Tucson',
+  'WAC': 'WAC - Waco',
+  'WAS': 'WAS - Washington',
+  'WBS': 'WBS - Wilkes-Barre/Scranton',
+  'WSM': 'WSM - Winston-Salem'
+};
+
 const UNIVERSAL_WINDOWS_OFFICE_TRANSLATION = {
   'BAL': 'Baltimore-UHR',
   'CHA': 'Charlotte NC-UHR',
@@ -3659,6 +3734,7 @@ const UNIVERSAL_WINDOWS_OFFICE_TRANSLATION = {
 const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
   'patio-enclosures': {
     region: 'custom_123549',
+    // Re-enabled 7/29/2026 with the complete verified translation table (PATIO_BRANCH_CODE_TO_EXHIBITDAY_OFFICE above).
     branch: 'custom_245675',
     contactName: 'custom_267566',
     contactPhone: 'custom_267568',
@@ -3720,7 +3796,10 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
   // this workspace DOES have Event Activation Status as a real custom field.
   'champion-windows': {
     region: 'custom_123549',
-    branch: 'custom_245675', // Exhibit Day calls this "Office"
+    // Disabled 7/29/2026: same field ID as Patio Enclosures, and the same 400 error applies --
+    // requires an exact match to ~50+ specific branch-code strings we don't have the complete,
+    // verified list for yet.
+    branch: null, // Exhibit Day calls this "Office"
     contactName: 'custom_267566', // "Organizer Name"
     contactPhone: 'custom_267568', // "Organizer Phone Number"
     contactEmail: 'custom_267567', // "Organizer Email"
@@ -3778,6 +3857,8 @@ function buildExhibitDaySyncPayload(ev){
   addField('region', state.regionNames[ev.region] || '');
   const branchValueForSync = state.currentBrand === 'universal-windows-bath-authority'
     ? (UNIVERSAL_WINDOWS_OFFICE_TRANSLATION[ev.branch] || '')
+    : state.currentBrand === 'patio-enclosures'
+    ? (PATIO_BRANCH_CODE_TO_EXHIBITDAY_OFFICE[(ev.branch || '').split(' - ')[0].trim()] || '')
     : (ev.branch || '');
   addField('branch', branchValueForSync);
   addField('contactName', ev.contactName || '');

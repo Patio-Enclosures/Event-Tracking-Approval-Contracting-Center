@@ -3233,7 +3233,14 @@ async function submitContract(id){
   }
   logActivity(ev.id, ev.eventName, 'Submitted for Contract Processing');
   render();
-  downloadContractSummary(ev);
+  // Universal Windows runs approval and contracting as one combined step, not two separate
+  // ones -- so submitting also fires the contracting email immediately, rather than requiring
+  // a second button click the way every other brand's two-stage process does.
+  if(state.currentBrand === 'universal-windows-bath-authority'){
+    generateContractingEmail(ev);
+  } else {
+    downloadContractSummary(ev);
+  }
 }
 
 function generateApprovalPDF(ev){
@@ -3630,6 +3637,25 @@ const CONTRACTING_EMAIL = 'shanautica.sales@greatdayimprovements.com';
 // per workspace. Only Patio Enclosures' workspace has been discovered so far (via Settings ->
 // List Custom Field Names); the other three need the same one-time discovery step run from
 // an account signed into that brand, then their real IDs filled in below.
+// Universal Windows' dashboard tabs are 3-letter codes, but Exhibit Day's "Office" field
+// requires an exact match to one of 12 full-name values. Confirmed 7/29/2026, then re-confirmed
+// after Exhibit Day's Office list was corrected to add Toledo and remove the unused Louisville
+// entry -- all 12 dashboard tabs now have a clean, exact match.
+const UNIVERSAL_WINDOWS_OFFICE_TRANSLATION = {
+  'BAL': 'Baltimore-UHR',
+  'CHA': 'Charlotte NC-UHR',
+  'CHI': 'Chicago IL-UHR',
+  'CLE': 'Cleveland OH-UHR',
+  'COL': 'Columbus Oh-UHR',
+  'IND': 'Indianapolis ID-UHR',
+  'LAS': 'Las Vegas, NV-UHR',
+  'MIL': 'Milwaukee WI-UHR',
+  'PIT': 'Pittsburgh PA-UHR',
+  'RAL': 'Raleigh NC-TBA',
+  'STL': 'St Louis MO-UHR',
+  'TOL': 'Toledo, OH-UHR'
+};
+
 const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
   'patio-enclosures': {
     region: 'custom_123549',
@@ -3663,8 +3689,10 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
   // eventActivationStatus stays null -- not present anywhere in this workspace's 39 custom
   // fields, and (unlike leads/ROI notes) there's no evidence yet it's a standard field either.
   'universal-windows-bath-authority': {
-    region: 'custom_258648',
-    branch: 'custom_244241', // Exhibit Day calls this "Office"
+    // Confirmed 7/29/2026: Universal Windows doesn't use this Exhibit Day field at all -- stays
+    // permanently unmapped, not a placeholder waiting on more info.
+    region: null,
+    branch: 'custom_244241', // Exhibit Day calls this "Office" -- needs UNIVERSAL_WINDOWS_OFFICE_TRANSLATION below, not a raw value
     contactName: 'custom_244496', // Exhibit Day calls this "Organizer Name"
     contactPhone: 'custom_244498', // "Organizer Phone Number"
     contactEmail: 'custom_244497', // "Organizer Email"
@@ -3748,7 +3776,10 @@ function buildExhibitDaySyncPayload(ev){
   const custom_fields = {};
   const addField = (key, value) => { if(fieldIds[key]) custom_fields[fieldIds[key]] = value; };
   addField('region', state.regionNames[ev.region] || '');
-  addField('branch', ev.branch || '');
+  const branchValueForSync = state.currentBrand === 'universal-windows-bath-authority'
+    ? (UNIVERSAL_WINDOWS_OFFICE_TRANSLATION[ev.branch] || '')
+    : (ev.branch || '');
+  addField('branch', branchValueForSync);
   addField('contactName', ev.contactName || '');
   addField('contactPhone', ev.contactPhone || '');
   addField('contactEmail', ev.contactEmail || '');
@@ -3780,6 +3811,11 @@ function buildExhibitDaySyncPayload(ev){
 
   return {
     dashboardEventId: ev.id,
+    // If this event has synced before, its real Exhibit Day ID is already known and remembered
+    // locally -- send it directly so the server can update that exact record. This replaces an
+    // earlier approach that searched Exhibit Day for a matching event using a custom metadata
+    // field filter that turned out not to work, silently creating a duplicate on every re-sync.
+    exhibitDayEventId: ev.exhibitDayEventId || null,
     dashboardStatus: STATUS_LABEL[ev.status] || '',
     name: ev.eventName,
     start_date: ev.startDate,
@@ -4903,9 +4939,10 @@ function renderOverview(allEvents){
   // only for events on or after the cutoff date -- older events are exempt on purpose, so this
   // doesn't surface a backlog of ancient events nobody intends to go back and evaluate.
   const POST_EVENT_EVAL_REMINDER_CUTOFF = '2026-08-03';
-  const overdueEvaluations = allEvents.filter(ev =>
-    hasEventDatePassed(ev) && !ev.postEventEvalCompleted && ev.startDate && ev.startDate >= POST_EVENT_EVAL_REMINDER_CUTOFF
-  );
+  const overdueEvaluations = allEvents.filter(ev => {
+    const effectiveDate = ev.endDate || ev.startDate;
+    return hasEventDatePassed(ev) && !ev.postEventEvalCompleted && effectiveDate && effectiveDate >= POST_EVENT_EVAL_REMINDER_CUTOFF;
+  });
   const overdueEvalsByRegion = {};
   overdueEvaluations.forEach(ev => {
     const regionName = state.regionNames[ev.region] || 'Unknown';
@@ -5186,8 +5223,8 @@ function renderEventDetail(ev){
     const missingForDirectContract = allowSkipApproval ? getMissingFields(ev).concat(missingApproval) : [];
     const directContractBtn = !allowSkipApproval ? '' : (
       missingForDirectContract.length===0
-        ? `<button class="btn btn-green btn-sm" data-submit="${ev.id}">Submit for Contract Processing</button>`
-        : `<button class="btn btn-green btn-sm" disabled title="Missing: ${escapeHtml(missingForDirectContract.join(', '))}">Submit for Contract Processing</button>`
+        ? `<button class="btn btn-green btn-sm" data-submit="${ev.id}">Submit for Approval &amp; Contracting</button>`
+        : `<button class="btn btn-green btn-sm" disabled title="Missing: ${escapeHtml(missingForDirectContract.join(', '))}">Submit for Approval &amp; Contracting</button>`
     );
     if(missingApproval.length===0){
       decisionButtons = `

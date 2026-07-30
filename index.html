@@ -1365,7 +1365,9 @@ const REGION_COUNT = 14;
 const MULTISELECT_FIELD_MAP = {
   masterRegionFilter: 'filterRegions',
   masterBranchFilter: 'filterBranches',
+  masterStatusFilter: 'filterStatuses',
   regionTabBranchFilter: 'filterBranches',
+  regionTabStatusFilter: 'filterStatuses',
   budgetRegionFilter: 'budgetSummaryRegions',
   budgetBranchFilter: 'budgetSummaryBranches'
 };
@@ -1559,7 +1561,7 @@ let state = {
   searchQuery:'',
   sortBy:'startDateAsc',
   filterBranches:[],
-  filterStatus:'',
+  filterStatuses:[],
   filterDateFrom:'',
   filterDateTo:'',
   filterRegions:[],
@@ -1598,6 +1600,7 @@ let state = {
   regionLabelStatus:'',
   postEventEvalEventId:null,
   postEventEvalDraft:null,
+  attachmentConfirmPending:null,
   customServiceableZips:{},
   serviceableZipsStatus:'',
   customBranchOptions:{},
@@ -2831,22 +2834,75 @@ function closePostEventEvalPanel(){
   state.postEventEvalDraft = null;
   render();
 }
-async function savePostEventEval(){
+
+// Requires an active checkbox confirmation before proceeding, rather than a plain alert() that's
+// easy to click through on autopilot. `onConfirm` runs synchronously from the Continue button's
+// own click -- important, since that's what lets it safely fire a mailto: link (browsers need a
+// direct, un-delayed user gesture for that to reliably work, the same issue we hit and fixed for
+// Universal Windows' combined submit flow).
+function requestAttachmentConfirmation(fileNames, onConfirm){
+  state.attachmentConfirmPending = { fileNames, onConfirm };
+  render();
+}
+function cancelAttachmentConfirmation(){
+  state.attachmentConfirmPending = null;
+  render();
+}
+function confirmAttachmentAndProceed(){
+  const pending = state.attachmentConfirmPending;
+  if(!pending) return;
+  state.attachmentConfirmPending = null;
+  render();
+  pending.onConfirm();
+}
+
+// Saves the evaluation fields onto the real event and returns the updated event on success, or
+// null on failure -- doesn't close the panel or touch any button state itself, so both plain
+// Save and the combined Save & Sync flow can share this without duplicating the save logic.
+async function savePostEventEvalFields(){
   const id = state.postEventEvalEventId;
   const ev = state.events.find(e=>e.id===id);
-  if(!ev || !state.postEventEvalDraft) return;
+  if(!ev || !state.postEventEvalDraft) return null;
   const updated = Object.assign({}, ev, state.postEventEvalDraft);
   updated.postEventEvalCompleted = true;
   updated.postEventEvalCompletedAt = Date.now();
+  const ok = await persistEventChangeAtomic(updated, false);
+  if(!ok) return null;
+  logActivity(ev.id, ev.eventName, 'Completed post-event evaluation');
+  return updated;
+}
+
+async function savePostEventEval(){
   const saveBtn = document.getElementById('savePostEventEvalBtn');
   if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
-  const ok = await persistEventChangeAtomic(updated, false);
+  const updated = await savePostEventEvalFields();
   if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'Save Evaluation'; }
-  if(!ok){
+  if(!updated){
     alert('This could not be saved -- likely a connection issue. Please try again.');
     return;
   }
-  logActivity(ev.id, ev.eventName, 'Completed post-event evaluation');
+  closePostEventEvalPanel();
+}
+
+async function savePostEventEvalAndSync(){
+  const btn = document.getElementById('savePostEventEvalAndSyncBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Saving…'; }
+  const updated = await savePostEventEvalFields();
+  if(!updated){
+    if(btn){ btn.disabled = false; btn.textContent = 'Save & Sync to Exhibit Day'; }
+    alert('This could not be saved -- likely a connection issue. Please try again.');
+    return;
+  }
+  if(btn){ btn.textContent = 'Syncing…'; }
+  try{
+    await syncEventToExhibitDay(updated);
+  }catch(err){
+    console.error('Sync to Exhibit Day failed', err);
+    alert(`Saved locally, but the sync to Exhibit Day failed: ${err.message || err}\n\nYou can retry from the event's own Sync button.`);
+    closePostEventEvalPanel();
+    return;
+  }
+  if(btn){ btn.disabled = false; btn.textContent = 'Save & Sync to Exhibit Day'; }
   closePostEventEvalPanel();
 }
 
@@ -3226,16 +3282,21 @@ async function submitContract(id){
   ev.submittedAt = Date.now();
 
   // Universal Windows runs approval and contracting as one combined step -- the email needs to
-  // fire here, synchronously, in the same tick as the click, or browsers can silently refuse to
-  // open the mailto link (confirmed in practice: it worked reliably from a plain button click,
-  // but not after an await for the Firestore save first broke that direct connection to the
-  // click). The tradeoff is that if the save below fails, the email will have already opened --
-  // handled with a clear follow-up alert rather than silently leaving that unexplained.
+  // fire as directly as possible in response to the click, or browsers can silently refuse to
+  // open the mailto link. When there's no attachment, that means firing it before the async
+  // save. When there IS an attachment, the confirmation checkbox's own click becomes the new
+  // direct user gesture instead, so the save can safely wait for that confirmation -- this
+  // callback is what lets the save happen only once the email has actually gone out, whichever
+  // path that took.
   const isCombinedFlow = state.currentBrand === 'universal-windows-bath-authority';
   if(isCombinedFlow){
-    generateContractingEmail(ev);
+    generateContractingEmail(ev, () => finishSubmitContract(ev, before, true));
+  } else {
+    await finishSubmitContract(ev, before, false);
   }
+}
 
+async function finishSubmitContract(ev, before, isCombinedFlow){
   const ok = await persistEventChangeAtomic(ev, false);
   if(!ok){
     Object.assign(ev, before);
@@ -3610,19 +3671,17 @@ function buildFullEventTextSummary(ev){
 }
 
 function generateApprovalEmail(ev){
-  const to = sanitizeHeader(ev.supervisorEmail);
-  const subject = sanitizeHeader(`Approval Request: ${ev.eventName}`);
   const hasAttachment = !!(ev.contractFileName && ev.contractFileUrl);
-
-  // mailto can't carry file attachments -- this is a hard browser/email-client limitation, not
-  // something fixable in code, since letting a webpage silently attach files to an outgoing
-  // email would be a real security risk. Best available workaround: open the file in a new tab
-  // so it's easy to save, and make sure the person sending this actually notices they need to
-  // attach it themselves before hitting send -- easy to miss if it's only mentioned in the body.
   if(hasAttachment){
     downloadContractFile(ev);
-    alert(`"${ev.contractFileName}" just opened in a new browser tab.\n\nEmail links can't attach files automatically (this is a browser limitation, not a bug) -- please save that file, then manually attach it to the email draft that's about to open, before you send it.`);
+    requestAttachmentConfirmation([ev.contractFileName], () => fireApprovalEmail(ev));
+    return;
   }
+  fireApprovalEmail(ev);
+}
+function fireApprovalEmail(ev){
+  const to = sanitizeHeader(ev.supervisorEmail);
+  const subject = sanitizeHeader(`Approval Request: ${ev.eventName}`);
 
   let bodyText = 'Hi,\n\nThe following event is ready for review:\n\n' + buildFullEventTextSummary(ev);
 
@@ -3934,20 +3993,28 @@ async function syncEventToExhibitDay(ev){
 // Sends the event's full details to the contracting team's fixed inbox, for whoever is
 // authorized to approve to hand off once an event is ready to move forward. Same
 // mailto-based approach as Email Supervisor -- opens a compose window, doesn't send silently.
-function generateContractingEmail(ev){
+function generateContractingEmail(ev, afterFired){
   const to = state.currentBrand === 'patio-enclosures' ? CONTRACTING_EMAIL : state.customContractingEmail;
   if(!to){
     alert(`No contracting email has been set up yet for ${BRAND_DISPLAY_NAMES[state.currentBrand] || 'this brand'}. Ask your administrator to set it in Settings -> Contracting Email.`);
     return;
   }
-  const subject = sanitizeHeader(`Contract Processing: ${ev.eventName}`);
+  const fire = () => {
+    fireContractingEmail(ev, to);
+    if(afterFired) afterFired();
+  };
   const hasAttachment = !!(ev.contractFileName && ev.contractFileUrl);
-
   if(hasAttachment){
     downloadContractFile(ev);
-    alert(`"${ev.contractFileName}" just opened in a new browser tab, and the summary PDF is downloading too.\n\nEmail links can't attach files automatically (this is a browser limitation, not a bug) -- please save both, then manually attach them to the email draft that's about to open, before you send it.`);
+    downloadEventPDF(ev);
+    requestAttachmentConfirmation([ev.contractFileName, 'the summary PDF'], fire);
+    return;
   }
   downloadEventPDF(ev);
+  fire();
+}
+function fireContractingEmail(ev, to){
+  const subject = sanitizeHeader(`Contract Processing: ${ev.eventName}`);
 
   let bodyText = 'Hi,\n\n'
     + `The following event has been approved${state.userName ? ` by ${state.userName}` : ''} and is ready for contract processing:\n\n`
@@ -4469,8 +4536,8 @@ function render(){
     if(state.filterBranches.length > 0){
       out = out.filter(ev => state.filterBranches.includes(ev.branch));
     }
-    if(state.filterStatus){
-      out = out.filter(ev => ev.status === state.filterStatus);
+    if(state.filterStatuses.length > 0){
+      out = out.filter(ev => state.filterStatuses.includes(ev.status));
     }
     if(state.filterDateFrom){
       out = out.filter(ev => ev.startDate && ev.startDate >= state.filterDateFrom);
@@ -4536,7 +4603,7 @@ function render(){
       : allEvents;
     const distinctBranchesMaster = Array.from(new Set(branchSourceEvents.map(e=>e.branch).filter(b=>b && b.trim())))
       .sort((a,b)=>a.localeCompare(b));
-    const hasActiveFiltersMaster = state.filterBranches.length>0 || state.filterStatus || state.filterDateFrom || state.filterDateTo || state.filterRegions.length>0 || state.filterDataSource;
+    const hasActiveFiltersMaster = state.filterBranches.length>0 || state.filterStatuses.length>0 || state.filterDateFrom || state.filterDateTo || state.filterRegions.length>0 || state.filterDataSource;
     const searchSortBarHtmlMaster = regionEventsAll.length===0 ? '' : `
       <div class="search-sort-bar">
         <div class="search-box">
@@ -4551,10 +4618,7 @@ function render(){
       <div class="search-sort-bar filter-row">
         ${renderMultiSelectDropdown('masterRegionFilter', state.regionLabelPlural, state.regionNames.map((n,i)=>[String(i),n]), state.filterRegions)}
         ${renderMultiSelectDropdown('masterBranchFilter', 'Branches', distinctBranchesMaster.map(b=>[b,b]), state.filterBranches)}
-        <select id="regionFilterStatus">
-          <option value="">All Statuses</option>
-          ${Object.keys(STATUS_LABEL).map(s=>`<option value="${s}" ${state.filterStatus===s?'selected':''}>${STATUS_LABEL[s]}</option>`).join('')}
-        </select>
+        ${renderMultiSelectDropdown('masterStatusFilter', 'Statuses', Object.keys(STATUS_LABEL).map(s=>[s,STATUS_LABEL[s]]), state.filterStatuses)}
         <select id="regionFilterDataSource">
           <option value="">All Data Sources</option>
           <option value="legacy" ${state.filterDataSource==='legacy'?'selected':''}>🗂️ Original Import Only</option>
@@ -4596,7 +4660,7 @@ function render(){
     }
     const distinctBranches = Array.from(new Set(regionEventsAll.map(e=>e.branch).filter(b=>b && b.trim())))
       .sort((a,b)=>a.localeCompare(b));
-    const hasActiveFilters = state.filterBranches.length>0 || state.filterStatus || state.filterDateFrom || state.filterDateTo || state.filterDataSource;
+    const hasActiveFilters = state.filterBranches.length>0 || state.filterStatuses.length>0 || state.filterDateFrom || state.filterDateTo || state.filterDataSource;
     const searchSortBarHtml = regionEventsAll.length===0 ? '' : `
       <div class="search-sort-bar">
         <div class="search-box">
@@ -4610,10 +4674,7 @@ function render(){
       </div>
       <div class="search-sort-bar filter-row">
         ${renderMultiSelectDropdown('regionTabBranchFilter', 'Branches', distinctBranches.map(b=>[b,b]), state.filterBranches)}
-        <select id="regionFilterStatus">
-          <option value="">All Statuses</option>
-          ${Object.keys(STATUS_LABEL).map(s=>`<option value="${s}" ${state.filterStatus===s?'selected':''}>${STATUS_LABEL[s]}</option>`).join('')}
-        </select>
+        ${renderMultiSelectDropdown('regionTabStatusFilter', 'Statuses', Object.keys(STATUS_LABEL).map(s=>[s,STATUS_LABEL[s]]), state.filterStatuses)}
         <select id="regionFilterDataSource">
           <option value="">All Data Sources</option>
           <option value="legacy" ${state.filterDataSource==='legacy'?'selected':''}>🗂️ Original Import Only</option>
@@ -4700,6 +4761,12 @@ function render(){
     <div class="overlay ${state.postEventEvalEventId ? 'open' : ''}" id="postEventEvalOverlay">
       <div class="panel" id="postEventEvalPanelStop" style="max-width:600px;">
         ${state.postEventEvalEventId ? renderPostEventEvalPanel() : ''}
+      </div>
+    </div>
+
+    <div class="overlay ${state.attachmentConfirmPending ? 'open' : ''}" id="attachmentConfirmOverlay">
+      <div class="panel" id="attachmentConfirmPanelStop" style="max-width:480px;">
+        ${state.attachmentConfirmPending ? renderAttachmentConfirmModal() : ''}
       </div>
     </div>
 
@@ -5511,6 +5578,32 @@ function renderNotPursuingPrompt(){
   </div>`;
 }
 
+function renderAttachmentConfirmModal(){
+  const pending = state.attachmentConfirmPending;
+  if(!pending) return '';
+  const fileList = pending.fileNames.map(f => `<li>${escapeHtml(f)}</li>`).join('');
+  return `
+  <div class="panel-header">
+    <h2>Attach Before Sending</h2>
+    <button class="panel-close" id="cancelAttachmentConfirmBtn">✕</button>
+  </div>
+  <div class="panel-body">
+    <div class="field-group">
+      <p>The following file${pending.fileNames.length===1?' has':'s have'} opened in a new browser tab, ready to save:</p>
+      <ul style="margin:8px 0 16px 20px;">${fileList}</ul>
+      <p>Email links can't attach files automatically — this is a browser limitation, not a bug. The email draft won't open until you confirm below.</p>
+      <label style="display:flex;align-items:flex-start;gap:8px;margin-top:16px;cursor:pointer;">
+        <input type="checkbox" id="attachmentConfirmCheckbox" style="width:auto;margin-top:3px;"/>
+        <span>I've saved the file${pending.fileNames.length===1?'':'s'} above and will attach ${pending.fileNames.length===1?'it':'them'} to the email before sending.</span>
+      </label>
+    </div>
+  </div>
+  <div class="panel-footer">
+    <button class="btn btn-outline" id="cancelAttachmentConfirmBtn2">Cancel</button>
+    <button class="btn btn-primary" id="continueAttachmentConfirmBtn" disabled>Continue to Email</button>
+  </div>`;
+}
+
 function renderPostEventEvalPanel(){
   const ev = state.events.find(e=>e.id===state.postEventEvalEventId);
   const d = state.postEventEvalDraft;
@@ -5604,6 +5697,7 @@ function renderPostEventEvalPanel(){
   <div class="panel-footer">
     <button class="btn btn-outline" id="cancelPostEventEvalBtn">Cancel</button>
     <button class="btn btn-primary" id="savePostEventEvalBtn">Save Evaluation</button>
+    ${EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND[state.currentBrand] ? `<button class="btn btn-blue" id="savePostEventEvalAndSyncBtn">Save &amp; Sync to Exhibit Day</button>` : ''}
   </div>`;
 }
 
@@ -6323,7 +6417,7 @@ function attachHandlers(){
       // event can end up excluded from the filtered list and never actually appear on screen.
       state.searchQuery = '';
       state.filterBranches = [];
-      state.filterStatus = '';
+      state.filterStatuses = [];
       state.filterDateFrom = '';
       state.filterDateTo = '';
       state.sortBy = 'startDateAsc';
@@ -6367,13 +6461,6 @@ function attachHandlers(){
   if(sortSelect){
     sortSelect.addEventListener('change', ()=>{
       state.sortBy = sortSelect.value;
-      render();
-    });
-  }
-  const filterStatusSelect = document.getElementById('regionFilterStatus');
-  if(filterStatusSelect){
-    filterStatusSelect.addEventListener('change', ()=>{
-      state.filterStatus = filterStatusSelect.value;
       render();
     });
   }
@@ -6466,7 +6553,7 @@ function attachHandlers(){
   if(clearFiltersBtn){
     clearFiltersBtn.addEventListener('click', ()=>{
       state.filterBranches = [];
-      state.filterStatus = '';
+      state.filterStatuses = [];
       state.filterDateFrom = '';
       state.filterDateTo = '';
       state.filterRegions = [];
@@ -7311,29 +7398,54 @@ function attachHandlers(){
       openPostEventEvalPanel(btn.getAttribute('data-post-event-eval'));
     });
   });
+  document.querySelectorAll('#cancelAttachmentConfirmBtn, #cancelAttachmentConfirmBtn2').forEach(btn=>{
+    btn.addEventListener('click', cancelAttachmentConfirmation);
+  });
+  const attachmentConfirmCheckbox = document.getElementById('attachmentConfirmCheckbox');
+  const continueAttachmentConfirmBtn = document.getElementById('continueAttachmentConfirmBtn');
+  if(attachmentConfirmCheckbox && continueAttachmentConfirmBtn){
+    attachmentConfirmCheckbox.addEventListener('change', ()=>{
+      continueAttachmentConfirmBtn.disabled = !attachmentConfirmCheckbox.checked;
+    });
+  }
+  if(continueAttachmentConfirmBtn){
+    continueAttachmentConfirmBtn.addEventListener('click', confirmAttachmentAndProceed);
+  }
+
   const closePostEventEvalBtn = document.getElementById('closePostEventEvalBtn');
   if(closePostEventEvalBtn) closePostEventEvalBtn.addEventListener('click', closePostEventEvalPanel);
   const cancelPostEventEvalBtn = document.getElementById('cancelPostEventEvalBtn');
   if(cancelPostEventEvalBtn) cancelPostEventEvalBtn.addEventListener('click', closePostEventEvalPanel);
+
+  const readPostEventEvalForm = () => {
+    const g = id => document.getElementById(id);
+    const d = state.postEventEvalDraft;
+    if(!d) return false;
+    d.eventActivationStatus = g('pe_eventActivationStatus').value;
+    d.numberOfLeads = g('pe_numberOfLeads').value;
+    d.roiNotes = g('pe_roiNotes').value;
+    d.overallEventRating = g('pe_overallEventRating').value;
+    d.issuesEncountered = g('pe_issuesEncountered').value;
+    d.whatWentWell = g('pe_whatWentWell').value;
+    d.notesForNextYear = g('pe_notesForNextYear').value;
+    d.whoWorkedEvent = g('pe_whoWorkedEvent').value;
+    d.totalAppointments = g('pe_totalAppointments').value;
+    d.leadsPerHour = g('pe_leadsPerHour').value;
+    d.totalCallToSets = g('pe_totalCallToSets').value;
+    d.staffComplianceRating = g('pe_staffComplianceRating').value;
+    return true;
+  };
+
   const savePostEventEvalBtn = document.getElementById('savePostEventEvalBtn');
   if(savePostEventEvalBtn){
     savePostEventEvalBtn.addEventListener('click', ()=>{
-      const g = id => document.getElementById(id);
-      const d = state.postEventEvalDraft;
-      if(!d) return;
-      d.eventActivationStatus = g('pe_eventActivationStatus').value;
-      d.numberOfLeads = g('pe_numberOfLeads').value;
-      d.roiNotes = g('pe_roiNotes').value;
-      d.overallEventRating = g('pe_overallEventRating').value;
-      d.issuesEncountered = g('pe_issuesEncountered').value;
-      d.whatWentWell = g('pe_whatWentWell').value;
-      d.notesForNextYear = g('pe_notesForNextYear').value;
-      d.whoWorkedEvent = g('pe_whoWorkedEvent').value;
-      d.totalAppointments = g('pe_totalAppointments').value;
-      d.leadsPerHour = g('pe_leadsPerHour').value;
-      d.totalCallToSets = g('pe_totalCallToSets').value;
-      d.staffComplianceRating = g('pe_staffComplianceRating').value;
-      savePostEventEval();
+      if(readPostEventEvalForm()) savePostEventEval();
+    });
+  }
+  const savePostEventEvalAndSyncBtn = document.getElementById('savePostEventEvalAndSyncBtn');
+  if(savePostEventEvalAndSyncBtn){
+    savePostEventEvalAndSyncBtn.addEventListener('click', ()=>{
+      if(readPostEventEvalForm()) savePostEventEvalAndSync();
     });
   }
   const peBoothPhotoFileInput = document.getElementById('pe_boothPhotoFile');

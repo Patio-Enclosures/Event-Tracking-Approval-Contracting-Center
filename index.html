@@ -339,6 +339,70 @@
     margin-top:2px;
   }
 
+  .region-cards-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(260px,1fr));
+    gap:14px;
+  }
+  .region-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:16px;
+  }
+  .region-card-header{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    cursor:pointer;
+    margin-bottom:10px;
+  }
+  .region-card-name{
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:16px;
+    color:var(--ink);
+    flex:1;
+  }
+  .region-card-chevron{
+    display:inline-block;
+    transition:transform 0.15s;
+    color:var(--ink-faint);
+    font-size:11px;
+  }
+  .region-card-chevron.open{ transform:rotate(90deg); }
+  .region-card-value{
+    font-family:var(--font-display);
+    font-size:22px;
+    font-weight:700;
+    color:var(--accent-dark);
+    margin:10px 0 12px 0;
+  }
+  .region-card-stats{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:6px 12px;
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--ink-soft);
+    margin-bottom:12px;
+  }
+  .region-card-stats span{ color:var(--ink); font-weight:600; }
+  .region-card-branches{
+    border-top:1px solid var(--border);
+    margin-top:4px;
+    padding-top:10px;
+  }
+  .region-card-branch-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:6px 0;
+    font-size:12.5px;
+    border-bottom:1px solid var(--bg);
+  }
+  .region-card-branch-row:last-child{ border-bottom:none; }
+
   .overview-section-title{
     font-family:var(--font-body);
     font-weight:700;
@@ -4520,8 +4584,6 @@ function render(){
   }
 
   const allEvents = state.events;
-  const totalPipeline = allEvents.filter(e=>e.status!==STATUS.DECLINED && e.status!==STATUS.NOT_PURSUING).reduce((s,e)=>s+totalCost(e),0);
-  const activeCount = allEvents.length;
   const submittedCount = allEvents.filter(e=>e.status===STATUS.SUBMITTED).length;
   const pendingApprovalCount = allEvents.filter(e=>e.status===STATUS.EXECUTE).length;
 
@@ -4740,9 +4802,6 @@ function render(){
           </div>
         </div>
         <div class="header-stats">
-          <div class="stat"><div class="stat-label">Events Logged</div><div class="stat-value">${activeCount}</div></div>
-          <div class="stat"><div class="stat-label">Submitted</div><div class="stat-value">${submittedCount}</div></div>
-          <div class="stat"><div class="stat-label">Est. Pipeline Value</div><div class="stat-value">${money(totalPipeline)}</div></div>
           ${pendingApprovalCount>0 ? `<button class="pending-approval-badge" id="pendingApprovalBadge">⚠ ${pendingApprovalCount} Pending Approval</button>` : ''}
           ${state.currentUser && state.currentUser.email !== 'unconfigured' ? `
           <div class="stat" style="text-align:right;">
@@ -4816,46 +4875,6 @@ function renderOverview(allEvents){
   const submittedValue = byStatus.submitted.reduce((s,e)=>s+totalCost(e),0);
   const pipelineValue = allEvents.filter(e=>e.status!==STATUS.DECLINED && e.status!==STATUS.NOT_PURSUING).reduce((s,e)=>s+totalCost(e),0);
 
-  const kpiHtml = `
-    <div class="kpi-grid">
-      <div class="kpi-card hero">
-        <div class="kpi-label">💰 Est. Pipeline Value</div>
-        <div class="kpi-value">${money(pipelineValue)}</div>
-        <div class="kpi-sub">Excludes declined &amp; not-pursuing events</div>
-      </div>
-      <div class="kpi-card total">
-        <div class="kpi-label">📁 Total Events</div>
-        <div class="kpi-value">${allEvents.length}</div>
-        <div class="kpi-sub">Across ${state.regionNames.length} regions</div>
-      </div>
-      <div class="kpi-card researching">
-        <div class="kpi-label">🔎 Researching</div>
-        <div class="kpi-value">${byStatus.researching.length}</div>
-        <div class="kpi-sub">Awaiting determination</div>
-      </div>
-      <div class="kpi-card execute">
-        <div class="kpi-label">📨 Approved</div>
-        <div class="kpi-value">${byStatus.execute.length}</div>
-        <div class="kpi-sub">Awaiting contract submission</div>
-      </div>
-      <div class="kpi-card submitted">
-        <div class="kpi-label">✅ Submitted</div>
-        <div class="kpi-value">${byStatus.submitted.length}</div>
-        <div class="kpi-sub">${money(submittedValue)} contracted</div>
-      </div>
-      <div class="kpi-card declined">
-        <div class="kpi-label">✕ Declined</div>
-        <div class="kpi-value">${byStatus.declined.length}</div>
-        <div class="kpi-sub">Not moving forward</div>
-      </div>
-      <div class="kpi-card not_pursuing">
-        <div class="kpi-label">– Not Pursuing</div>
-        <div class="kpi-value">${byStatus.not_pursuing.length}</div>
-        <div class="kpi-sub">Decided not to pursue</div>
-      </div>
-    </div>
-  `;
-
   // Per-region rollup, sorted by total value desc -- scoped to the selected month/quarter period
   const periodFilteredEvents = allEvents.filter(ev => eventMatchesPeriod(ev, state.regionSummaryPeriodType, state.regionSummaryPeriod));
   const regionRollups = state.regionNames.map((name, idx)=>{
@@ -4907,66 +4926,41 @@ function renderOverview(allEvents){
   }
 
   const regionTableHtml = `
-    <div class="region-table-wrap">
-      <table class="region-table">
-        <thead>
-          <tr>
-            <th style="text-align:left;">Region</th>
-            <th style="text-align:left;">Mix</th>
-            <th>Total</th>
-            <th>Researching</th>
-            <th>Approved</th>
-            <th>Submitted</th>
-            <th>Declined</th>
-            <th>Not Pursuing</th>
-            <th>Pipeline Value</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${regionRollups.map(r=>{
-            const isOpen = state.expandedOverviewRegion === r.idx;
-            const rowHtml = `
-              <tr data-toggle-region="${r.idx}">
-                <td class="region-table-name">
-                  <span class="region-table-chevron ${isOpen?'open':''}">▶</span><span class="region-tab-dot" style="background:${regionColor(r.idx)};margin-right:6px;"></span>${escapeHtml(r.name)}
-                </td>
-                <td style="text-align:left;">${mixBarHtml(r.counts, r.count)}</td>
-                <td>${r.count}</td>
-                <td>${r.counts.researching}</td>
-                <td>${r.counts.execute}</td>
-                <td>${r.counts.submitted}</td>
-                <td>${r.counts.declined}</td>
-                <td>${r.counts.notPursuing}</td>
-                <td class="region-table-value">${money(r.pipelineTotal)}</td>
-                <td><button class="btn btn-outline btn-sm" data-goto-region="${r.idx}">Open →</button></td>
-              </tr>`;
-            let subRowsHtml = '';
-            if(isOpen){
-              const branches = branchRollupForRegion(r.idx);
-              if(branches.length===0){
-                subRowsHtml = `<tr class="region-table-subrow"><td colspan="10" style="text-align:center;color:var(--ink-faint);">No events in this ${state.regionLabelSingular.toLowerCase()} yet.</td></tr>`;
-              } else {
-                subRowsHtml = branches.map(b=>`
-                  <tr class="region-table-subrow">
-                    <td class="region-table-name" style="padding-left:32px;font-weight:400;color:var(--ink-soft);">${escapeHtml(b.branch)}</td>
-                    <td style="text-align:left;">${mixBarHtml({researching:b.researching,execute:b.execute,submitted:b.submitted,declined:b.declined,notPursuing:b.notPursuing}, b.count)}</td>
-                    <td>${b.count}</td>
-                    <td>${b.researching}</td>
-                    <td>${b.execute}</td>
-                    <td>${b.submitted}</td>
-                    <td>${b.declined}</td>
-                    <td>${b.notPursuing}</td>
-                    <td class="region-table-value">${money(b.pipelineTotal)}</td>
-                    <td></td>
-                  </tr>
-                `).join('');
-              }
+    <div class="region-cards-grid">
+      ${regionRollups.map(r=>{
+        const isOpen = state.expandedOverviewRegion === r.idx;
+        const branches = isOpen ? branchRollupForRegion(r.idx) : [];
+        return `
+        <div class="region-card">
+          <div class="region-card-header" data-toggle-region="${r.idx}">
+            <span class="region-card-chevron ${isOpen?'open':''}">▶</span>
+            <span class="region-tab-dot" style="background:${regionColor(r.idx)};"></span>
+            <span class="region-card-name">${escapeHtml(r.name)}</span>
+            <button class="btn btn-outline btn-sm" data-goto-region="${r.idx}">Open →</button>
+          </div>
+          ${mixBarHtml(r.counts, r.count)}
+          <div class="region-card-value">${money(r.pipelineTotal)}</div>
+          <div class="region-card-stats">
+            <div>Total <span>${r.count}</span></div>
+            <div>Researching <span>${r.counts.researching}</span></div>
+            <div>Approved <span>${r.counts.execute}</span></div>
+            <div>Submitted <span>${r.counts.submitted}</span></div>
+            <div>Declined <span>${r.counts.declined}</span></div>
+            <div>Not Pursuing <span>${r.counts.notPursuing}</span></div>
+          </div>
+          ${isOpen ? `
+          <div class="region-card-branches">
+            ${branches.length===0
+              ? `<div class="hint" style="margin:0;">No events in this ${state.regionLabelSingular.toLowerCase()} yet.</div>`
+              : branches.map(b=>`
+                <div class="region-card-branch-row">
+                  <span>${escapeHtml(b.branch)} <span class="hint" style="margin:0;">(${b.count})</span></span>
+                  <span class="region-table-value">${money(b.pipelineTotal)}</span>
+                </div>`).join('')
             }
-            return rowHtml + subRowsHtml;
-          }).join('')}
-        </tbody>
-      </table>
+          </div>` : ''}
+        </div>`;
+      }).join('')}
     </div>
   `;
 
@@ -5201,7 +5195,6 @@ function renderOverview(allEvents){
   `;
 
   return `
-    ${kpiHtml}
     ${actionStripHtml}
     <div class="overview-layout">
       <div>

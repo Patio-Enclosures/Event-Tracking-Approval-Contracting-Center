@@ -287,56 +287,45 @@
   .overview-layout{display:grid;grid-template-columns:1.1fr 1fr;gap:24px;align-items:start;}
   @media(max-width:920px){ .overview-layout{grid-template-columns:1fr;} }
 
-  .kpi-grid{
-    display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(150px,1fr));
-    gap:12px;
-    margin-bottom:22px;
-  }
-  .kpi-card{
-    background:var(--surface);
-    border:1px solid var(--border);
-    border-radius:10px;
-    padding:14px 16px;
-    border-top:3px solid var(--ink-faint);
-  }
-  .kpi-card.researching{border-top-color:var(--amber);}
-  .kpi-card.execute{border-top-color:var(--blue);}
-  .kpi-card.submitted{border-top-color:var(--green);}
-  .kpi-card.declined{border-top-color:var(--red);}
-  .kpi-card.not_pursuing{border-top-color:var(--slate);}
-  .kpi-card.total{border-top-color:var(--accent);}
-  .kpi-card.hero{
-    background:var(--accent-dark);
-    border:none;
-    color:#fff;
-    grid-column:span 2;
+  .summary-kpi-card{
     display:flex;
-    flex-direction:column;
-    justify-content:center;
+    flex-wrap:wrap;
+    gap:0;
+    background:var(--accent-dark);
+    border-radius:10px;
+    padding:18px 22px;
+    margin-bottom:20px;
   }
-  .kpi-card.hero .kpi-label{ color:#9FC7C5; }
-  .kpi-card.hero .kpi-value{ font-size:32px; color:#fff; }
-  .kpi-card.hero .kpi-sub{ color:#B7D9D7; }
-  .kpi-label{
+  .summary-kpi-item{
+    flex:1;
+    min-width:130px;
+    padding:0 20px;
+    border-left:1px solid rgba(255,255,255,0.15);
+  }
+  .summary-kpi-item:first-child{ border-left:none; padding-left:0; }
+  .summary-kpi-item.wide{ flex:1.6; }
+  .summary-kpi-label{
     font-family:var(--font-mono);
     font-size:10.5px;
     text-transform:uppercase;
     letter-spacing:0.06em;
-    color:var(--ink-faint);
+    color:#9FC7C5;
     margin-bottom:6px;
   }
-  .kpi-value{
+  .summary-kpi-value{
     font-family:var(--font-display);
     font-size:26px;
-    font-weight:600;
-    color:var(--ink);
+    font-weight:700;
+    color:#fff;
   }
-  .kpi-sub{
+  .summary-kpi-detail{
     font-family:var(--font-mono);
     font-size:11px;
-    color:var(--ink-faint);
-    margin-top:2px;
+    color:#B7D9D7;
+    margin-top:3px;
+  }
+  @media(max-width:700px){
+    .summary-kpi-item{ border-left:none; flex:1 1 45%; padding:8px 0; }
   }
 
   .region-cards-grid{
@@ -1641,13 +1630,13 @@ let state = {
   activityLog:[],
   activityFeedOpen:false,
   overviewSectionsOpen:{
-    awaitingContract:true,
+    awaitingContract:false,
     staleResearch:false,
-    needsDecision:true,
+    needsDecision:false,
     yearTrends:false,
     activity:false,
     budgetSummary:false,
-    overdueEvals:true
+    overdueEvals:false
   },
   budgetSummaryDateFrom:'',
   budgetSummaryDateTo:'',
@@ -4874,6 +4863,28 @@ function renderOverview(allEvents){
   const submittedValue = byStatus.submitted.reduce((s,e)=>s+totalCost(e),0);
   const pipelineValue = allEvents.filter(e=>e.status!==STATUS.DECLINED && e.status!==STATUS.NOT_PURSUING).reduce((s,e)=>s+totalCost(e),0);
 
+  // Aggregate Target Opps and Cost Per Opp across all Submitted events, for the top summary
+  // card -- CPO here is total submitted $ divided by total target opps (a weighted average),
+  // not an average of each event's individual CPO, since that would let a handful of tiny
+  // events skew the number away from where the actual dollars are concentrated.
+  const submittedTargetOpps = byStatus.submitted.reduce((s,e)=>s+num(e.forecastedOpps),0);
+  const submittedCPO = submittedTargetOpps>0 ? submittedValue/submittedTargetOpps : null;
+
+  // Post-event evaluation results, for events on or after this cutoff with a completed
+  // evaluation -- shared with the "still needed" reminder further down, so both use the exact
+  // same date boundary rather than two constants that could quietly drift apart.
+  const POST_EVENT_EVAL_REMINDER_CUTOFF = '2026-08-03';
+  const completedEvalEvents = allEvents.filter(ev =>
+    ev.postEventEvalCompleted && (ev.endDate || ev.startDate) && (ev.endDate || ev.startDate) >= POST_EVENT_EVAL_REMINDER_CUTOFF
+  );
+  const evalTotalLeads = completedEvalEvents.reduce((s,e)=>s+num(e.numberOfLeads),0);
+  const evalTargetOpps = completedEvalEvents.reduce((s,e)=>s+num(e.forecastedOpps),0);
+  // Leads per Hour is entered as free text on the evaluation form (not always a clean number),
+  // so only the entries that actually parse as numbers count toward the average -- averaging in
+  // blanks or stray text would silently skew the result.
+  const leadsPerHourValues = completedEvalEvents.map(e=>parseFloat(e.leadsPerHour)).filter(n=>!isNaN(n));
+  const avgLeadsPerHour = leadsPerHourValues.length>0 ? leadsPerHourValues.reduce((s,n)=>s+n,0)/leadsPerHourValues.length : null;
+
   // Per-region rollup, sorted by total value desc -- scoped to the selected month/quarter period
   const periodFilteredEvents = allEvents.filter(ev => eventMatchesPeriod(ev, state.regionSummaryPeriodType, state.regionSummaryPeriod));
   const regionRollups = state.regionNames.map((name, idx)=>{
@@ -5102,7 +5113,6 @@ function renderOverview(allEvents){
   // Post-event evaluations still needed: event date has passed, no evaluation saved yet, and
   // only for events on or after the cutoff date -- older events are exempt on purpose, so this
   // doesn't surface a backlog of ancient events nobody intends to go back and evaluate.
-  const POST_EVENT_EVAL_REMINDER_CUTOFF = '2026-08-03';
   const overdueEvaluations = allEvents.filter(ev => {
     const effectiveDate = ev.endDate || ev.startDate;
     return hasEventDatePassed(ev) && !ev.postEventEvalCompleted && effectiveDate && effectiveDate >= POST_EVENT_EVAL_REMINDER_CUTOFF;
@@ -5186,17 +5196,59 @@ function renderOverview(allEvents){
   `;
 
   return `
+    <div class="summary-kpi-card">
+      <div class="summary-kpi-item">
+        <div class="summary-kpi-label">Total Events</div>
+        <div class="summary-kpi-value">${allEvents.length}</div>
+      </div>
+      <div class="summary-kpi-item">
+        <div class="summary-kpi-label">Est. Pipeline Value</div>
+        <div class="summary-kpi-value">${money(pipelineValue)}</div>
+      </div>
+      <div class="summary-kpi-item wide">
+        <div class="summary-kpi-label">Submitted Contract Value</div>
+        <div class="summary-kpi-value">${money(submittedValue)}</div>
+        <div class="summary-kpi-detail">${submittedTargetOpps} target opps${submittedCPO!==null ? ` · CPO ${money(submittedCPO)}` : ''}</div>
+      </div>
+      <div class="summary-kpi-item">
+        <div class="summary-kpi-label">Researching</div>
+        <div class="summary-kpi-value">${byStatus.researching.length}</div>
+      </div>
+      <div class="summary-kpi-item wide">
+        <div class="summary-kpi-label">Leads vs. Target Opps <span style="opacity:0.7;">(since 8/3/26)</span></div>
+        <div class="summary-kpi-value">${evalTotalLeads} / ${evalTargetOpps}${evalTargetOpps>0 ? ` <span style="font-size:15px;font-weight:500;">(${Math.round(evalTotalLeads/evalTargetOpps*100)}%)</span>` : ''}</div>
+        <div class="summary-kpi-detail">${avgLeadsPerHour!==null ? `${avgLeadsPerHour.toFixed(1)} avg leads/hr` : 'No leads/hr data yet'} · ${completedEvalEvents.length} evaluation${completedEvalEvents.length===1?'':'s'} completed</div>
+      </div>
+    </div>
     <div class="overview-layout">
+      <div>
+        ${sectionHeader('awaitingContract', `Awaiting Contract Processing — Submitted for Approval (${awaitingContract.length})`, 'pendingApprovalSection', '📨')}
+        ${state.overviewSectionsOpen.awaitingContract ? awaitingContractHtml : ''}
+
+        ${sectionHeader('needsDecision', `Needs a Decision — ${NEXT_MONTH_LABEL} (${needsDecision.length})`, 'needsDecisionSection', '⏰')}
+        ${state.overviewSectionsOpen.needsDecision ? `
+          ${needsDecisionHtml}
+          ${excludedCount>0 && needsDecision.length>0 ? `<div class="hint" style="margin:8px 0 0 2px;">${excludedCount} more researching event${excludedCount===1?'':'s'} not shown — no date set, not in ${NEXT_MONTH_LABEL}, or its submission cutoff has already passed (see Stale Research).</div>` : ''}
+        ` : ''}
+
+        ${sectionHeader('overdueEvals', `Post-Event Evaluations Needed (${overdueEvaluations.length})`, null, '📋')}
+        ${state.overviewSectionsOpen.overdueEvals ? `
+          <div class="hint" style="margin:-6px 0 10px 2px;">Events that have already happened (on or after ${new Date(POST_EVENT_EVAL_REMINDER_CUTOFF+'T00:00:00').toLocaleDateString()}) but don't have a completed post-event evaluation yet, grouped by ${state.regionLabelSingular.toLowerCase()}.</div>
+          ${overdueEvalsHtml}
+        ` : ''}
+      </div>
+
       <div>
         <div class="overview-section-title">📊 Full Summary by ${state.regionLabelSingular}</div>
         <div class="hint" style="margin:-6px 0 10px 2px;">Click a region to see its branch-level breakdown.</div>
         ${periodFilterHtml}
         ${regionTableHtml}
 
-        ${sectionHeader('overdueEvals', `Post-Event Evaluations Needed (${overdueEvaluations.length})`, null, '📋')}
-        ${state.overviewSectionsOpen.overdueEvals ? `
-          <div class="hint" style="margin:-6px 0 10px 2px;">Events that have already happened (on or after ${new Date(POST_EVENT_EVAL_REMINDER_CUTOFF+'T00:00:00').toLocaleDateString()}) but don't have a completed post-event evaluation yet, grouped by ${state.regionLabelSingular.toLowerCase()}.</div>
-          ${overdueEvalsHtml}
+        ${sectionHeader('staleResearch', `Stale Research — Needs Attention (${staleResearch.length})`, 'staleResearchSection', '⚠️')}
+        ${state.overviewSectionsOpen.staleResearch ? `
+          <div class="hint" style="margin:-6px 0 10px 2px;">Researching events with no start date, a passed submission cutoff, or a start date already behind us. Use Not Pursuing or Edit right here to clear these out.</div>
+          ${eventPassedCount>0 ? `<div style="margin-bottom:10px;"><button class="btn btn-red btn-sm" id="bulkCleanupEventPassed">🧹 Mark all ${eventPassedCount} "Event Date Passed" as Not Pursuing</button></div>` : ''}
+          ${staleResearchHtml}
         ` : ''}
 
         ${sectionHeader('budgetSummary', 'Budget Summary by Category', null, '💰')}
@@ -5215,23 +5267,6 @@ function renderOverview(allEvents){
         ${sectionHeader('activity', 'Recent Activity', null, '📋')}
         ${state.overviewSectionsOpen.activity ? renderActivityFeed(20) : ''}
       </div>
-
-      <div>
-        ${sectionHeader('awaitingContract', `Awaiting Contract Processing — Submitted for Approval (${awaitingContract.length})`, 'pendingApprovalSection', '📨')}
-        ${state.overviewSectionsOpen.awaitingContract ? awaitingContractHtml : ''}
-
-        ${sectionHeader('needsDecision', `Needs a Decision — ${NEXT_MONTH_LABEL} (${needsDecision.length})`, 'needsDecisionSection', '⏰')}
-        ${state.overviewSectionsOpen.needsDecision ? `
-          ${needsDecisionHtml}
-          ${excludedCount>0 && needsDecision.length>0 ? `<div class="hint" style="margin:8px 0 0 2px;">${excludedCount} more researching event${excludedCount===1?'':'s'} not shown — no date set, not in ${NEXT_MONTH_LABEL}, or its submission cutoff has already passed (see Stale Research).</div>` : ''}
-        ` : ''}
-
-        ${sectionHeader('staleResearch', `Stale Research — Needs Attention (${staleResearch.length})`, 'staleResearchSection', '⚠️')}
-        ${state.overviewSectionsOpen.staleResearch ? `
-          <div class="hint" style="margin:-6px 0 10px 2px;">Researching events with no start date, a passed submission cutoff, or a start date already behind us. Use Not Pursuing or Edit right here to clear these out.</div>
-          ${eventPassedCount>0 ? `<div style="margin-bottom:10px;"><button class="btn btn-red btn-sm" id="bulkCleanupEventPassed">🧹 Mark all ${eventPassedCount} "Event Date Passed" as Not Pursuing</button></div>` : ''}
-          ${staleResearchHtml}
-        ` : ''}
       </div>
     </div>
   `;

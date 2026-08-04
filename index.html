@@ -5261,9 +5261,6 @@ function renderOverview(allEvents){
         <div class="hint" style="margin:-6px 0 10px 2px;">Submitted contract value by year, grouped by each event's start date.</div>
         ${yearTrendsHtml}
       ` : ''}
-
-      ${sectionHeader('activity', 'Recent Activity', null, '📋')}
-      ${state.overviewSectionsOpen.activity ? renderActivityFeed(20) : ''}
     </div>
 
     <div style="margin-top:8px;">
@@ -5271,6 +5268,11 @@ function renderOverview(allEvents){
       <div class="hint" style="margin:-6px 0 10px 2px;">Click a region to see its branch-level breakdown.</div>
       ${periodFilterHtml}
       ${regionTableHtml}
+    </div>
+
+    <div style="margin-top:8px;">
+      ${sectionHeader('activity', 'Recent Activity', null, '📋')}
+      ${state.overviewSectionsOpen.activity ? renderActivityFeed(20) : ''}
     </div>
   `;
 }

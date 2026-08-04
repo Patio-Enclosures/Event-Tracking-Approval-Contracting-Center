@@ -1601,6 +1601,7 @@ let state = {
   postEventEvalEventId:null,
   postEventEvalDraft:null,
   attachmentConfirmPending:null,
+  additionalOccurrences:[],
   customServiceableZips:{},
   serviceableZipsStatus:'',
   customBranchOptions:{},
@@ -2737,6 +2738,7 @@ function openAddPanel(){
     if(confirm(`We found an unsaved new-event draft from ${minutesAgoLabel(recovery.savedAt)} (possibly lost to a browser issue). Restore it and keep editing?\n\nChoose Cancel to discard it and start a fresh blank event instead.`)){
       state.draft = recovery.draft;
       state.editingEventId = null;
+      state.additionalOccurrences = [];
       state.panelOpen = true;
       render();
       return;
@@ -2745,6 +2747,7 @@ function openAddPanel(){
   }
   state.draft = emptyDraft(state.activeRegion);
   state.editingEventId = null;
+  state.additionalOccurrences = [];
   state.panelOpen = true;
   render();
 }
@@ -2762,6 +2765,7 @@ function openEditPanel(ev){
     if(confirm(`We found unsaved changes to "${ev.eventName}" from ${minutesAgoLabel(recovery.savedAt)} (possibly lost to a browser issue). Restore them and keep editing?\n\nChoose Cancel to discard them and open the event as it's currently saved instead.`)){
       state.draft = recovery.draft;
       state.editingEventId = ev.id;
+      state.additionalOccurrences = [];
       state.panelOpen = true;
       render();
       return;
@@ -2777,6 +2781,7 @@ function openEditPanel(ev){
     state.draft.milesPerDay = state.draft.mileage;
   }
   state.editingEventId = ev.id;
+  state.additionalOccurrences = [];
   state.panelOpen = true;
   render();
 }
@@ -2967,24 +2972,24 @@ async function saveDraft(){
     d.history = [];
   }
 
-  // Recurring events: only offered when creating a brand-new event. Reads straight from the
-  // form (not part of the normal draft-field pipeline, since these are one-time creation
-  // parameters, not properties that live on the saved event itself).
-  const recurrenceCheckbox = document.getElementById('f_recurrenceEnabled');
-  const isRecurring = isNew && recurrenceCheckbox && recurrenceCheckbox.checked;
-  let extraOccurrences = [];
-  if(isRecurring){
-    const intervalDays = num(document.getElementById('f_recurrenceFrequency')?.value) || 7;
-    const totalCount = Math.max(2, Math.min(52, num(document.getElementById('f_recurrenceCount')?.value) || 4));
-    for(let i=1; i<totalCount; i++){
-      const copy = JSON.parse(JSON.stringify(d));
-      copy.id = uid();
-      copy.startDate = shiftDateByDays(d.startDate, intervalDays * i);
-      copy.endDate = shiftDateByDays(d.endDate, intervalDays * i);
-      copy.history = [];
-      extraOccurrences.push(copy);
-    }
+  // Additional occurrences: each one gets its own independently-entered dates (not
+  // auto-calculated), and works whether this is a brand-new event or an edit -- editing only
+  // adds new separate events for each occurrence row, it never changes the dates of the event
+  // being edited itself.
+  const occurrencesWithDates = state.additionalOccurrences.filter(o => o.startDate && o.endDate);
+  if(state.additionalOccurrences.length > occurrencesWithDates.length){
+    alert('One or more additional occurrences is missing a Start Date or End Date. Please fill both in, or remove that row, before saving.');
+    return;
   }
+  let extraOccurrences = occurrencesWithDates.map(occ => {
+    const copy = JSON.parse(JSON.stringify(d));
+    copy.id = uid();
+    copy.startDate = occ.startDate;
+    copy.endDate = occ.endDate;
+    copy.history = [];
+    copy.needsReconfirmation = false;
+    return copy;
+  });
 
   // Deliberately NOT touching state.events here -- persistEventChangeAtomic reads the true
   // latest data from Firestore, merges in just this one change, and adopts the merged result
@@ -3010,13 +3015,16 @@ async function saveDraft(){
 
   if(isNew){
     logActivity(d.id, d.eventName, 'Created event');
-    extraOccurrences.forEach(copy => logActivity(copy.id, copy.eventName, 'Created event', 'Recurring occurrence'));
   } else if(changedFields.length>0){
     logActivity(d.id, d.eventName, 'Edited event', changedFields.join(', '));
   }
+  extraOccurrences.forEach(copy => logActivity(copy.id, copy.eventName, 'Created event', 'Additional occurrence'));
   closePanel(true);
   if(extraOccurrences.length > 0){
-    alert(`Created ${extraOccurrences.length + 1} events -- one for each occurrence. Each one tracks its own research, approval, and contracting independently.`);
+    const totalMsg = isNew
+      ? `Created ${extraOccurrences.length + 1} events -- one for each occurrence. Each one tracks its own research, approval, and contracting independently.`
+      : `Saved this event, and created ${extraOccurrences.length} additional new event${extraOccurrences.length===1?'':'s'} for the occurrence${extraOccurrences.length===1?'':'s'} you added. Each tracks its own research, approval, and contracting independently.`;
+    alert(totalMsg);
   }
   render();
 }
@@ -4005,13 +4013,21 @@ function generateContractingEmail(ev, afterFired){
   };
   const hasAttachment = !!(ev.contractFileName && ev.contractFileUrl);
   if(hasAttachment){
+    // The confirmation modal's own "Continue" click is a fresh user gesture, separate from this
+    // one, so firing the mailto from there doesn't have the same risk of being blocked -- both
+    // files can download right away, matching what the confirmation text describes.
     downloadContractFile(ev);
     downloadEventPDF(ev);
     requestAttachmentConfirmation([ev.contractFileName, 'the summary PDF'], fire);
     return;
   }
+  // No attachment: fire the email FIRST, before the PDF download. Browsers can silently block a
+  // second download/navigation triggered right after another one from the same click -- this
+  // matches what was reported (worked on a retry, not the first click, the exact signature of
+  // that kind of blocking). Putting the actual email first gives it priority.
+  fireContractingEmail(ev, to);
   downloadEventPDF(ev);
-  fire();
+  if(afterFired) afterFired();
 }
 function fireContractingEmail(ev, to){
   const subject = sanitizeHeader(`Contract Processing: ${ev.eventName}`);
@@ -4032,7 +4048,17 @@ function fireContractingEmail(ev, to){
 
 function downloadContractFile(ev){
   if(!(ev.contractFileName && ev.contractFileUrl)) return;
-  window.open(ev.contractFileUrl, '_blank', 'noopener');
+  // Uses a real download instead of window.open(url, '_blank') -- that approach opens a new tab
+  // and typically switches the browser's focus to it, pulling the person away from the
+  // dashboard. A programmatic download link fetches the file in the background instead, so the
+  // dashboard stays the active tab the whole time.
+  const link = document.createElement('a');
+  link.href = ev.contractFileUrl;
+  link.download = ev.contractFileName;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 // Escapes a single CSV field: wraps in quotes and doubles up any internal quotes whenever the
@@ -5921,30 +5947,24 @@ function renderPanel(){
         <div class="field"><label>End Date <span style="color:var(--red);">*</span>${reconfirmMark(d)}</label><input id="f_endDate" type="date" class="${(d.startDate && d.endDate && d.endDate < d.startDate) ? 'field-invalid' : ''}" value="${escapeHtml(d.endDate)}"/></div>
       </div>
       <div id="dateSanityWarning">${(d.startDate && d.endDate && d.endDate < d.startDate) ? `<div class="field-note-warn">End Date is before Start Date — double-check these.</div>` : ''}</div>
-      ${!state.editingEventId ? `
       <div class="field" style="background:var(--bg);border-radius:8px;padding:10px 12px;">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-          <input type="checkbox" id="f_recurrenceEnabled" style="width:auto;"/>
-          🔁 This event repeats (e.g., runs weekly for a few weeks)
+          <input type="checkbox" id="f_recurrenceEnabled" ${state.additionalOccurrences.length>0?'checked':''} style="width:auto;"/>
+          🔁 This event repeats (add each occurrence's own dates below)
         </label>
-        <div id="recurrenceOptions" style="display:none;margin-top:10px;">
-          <div class="field-row">
-            <div class="field">
-              <label>Repeats</label>
-              <select id="f_recurrenceFrequency">
-                <option value="7">Weekly</option>
-                <option value="14">Every 2 weeks</option>
-                <option value="30">Monthly (every 30 days)</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>Total occurrences (including this one)</label>
-              <input type="number" id="f_recurrenceCount" value="4" min="2" max="52"/>
-            </div>
+        <div id="recurrenceOptions" style="display:${state.additionalOccurrences.length>0?'block':'none'};margin-top:10px;">
+          <div class="hint" style="margin-bottom:8px;">${state.editingEventId ? 'Add extra occurrences with their own dates -- each becomes its own new, independent event when you save, tracked through research, approval, and contracting on its own. This event keeps its own dates above, unchanged.' : 'Add one row per additional occurrence, with its own dates -- doesn\u2019t need to be evenly spaced. Each becomes its own independent event when you save.'}</div>
+          <div id="occurrenceRows">
+            ${state.additionalOccurrences.map((occ, i) => `
+              <div class="field-row" data-occurrence-row="${i}" style="align-items:flex-end;">
+                <div class="field"><label>Occurrence ${i+2} — Start Date</label><input type="date" data-occ-start="${i}" value="${escapeHtml(occ.startDate)}"/></div>
+                <div class="field"><label>Occurrence ${i+2} — End Date</label><input type="date" data-occ-end="${i}" value="${escapeHtml(occ.endDate)}"/></div>
+                <button type="button" class="btn btn-outline btn-sm" data-remove-occurrence="${i}" style="margin-bottom:14px;">Remove</button>
+              </div>`).join('')}
           </div>
-          <div class="hint">Creates a separate, independent event for each occurrence -- same Start/End Date span as above, shifted forward each time. Each one gets tracked through research, approval, and contracting on its own.</div>
+          <button type="button" class="btn btn-outline btn-sm" id="addOccurrenceBtn">+ Add Another Occurrence</button>
         </div>
-      </div>` : ''}
+      </div>
       <div class="field">
         <label>Location Zip Code <span style="color:var(--red);">*</span>${reconfirmMark(d)}</label><input id="f_zip" value="${escapeHtml(d.zip)}"/>
         <div id="zipTypoWarning">${renderZipTypoWarning(d.branch, d.zip)}</div>
@@ -7247,13 +7267,50 @@ function attachHandlers(){
       toggleWrap('wrap_paymentPhone', paymentMethodSelect.value === 'phone_payment');
     });
   }
+  // Reads whatever is currently typed into each occurrence row's date inputs back into state,
+  // so adding/removing a row (which re-renders) doesn't lose values already entered elsewhere.
+  const syncOccurrenceRowsFromDOM = () => {
+    document.querySelectorAll('[data-occ-start]').forEach(input=>{
+      const i = parseInt(input.getAttribute('data-occ-start'), 10);
+      if(state.additionalOccurrences[i]) state.additionalOccurrences[i].startDate = input.value;
+    });
+    document.querySelectorAll('[data-occ-end]').forEach(input=>{
+      const i = parseInt(input.getAttribute('data-occ-end'), 10);
+      if(state.additionalOccurrences[i]) state.additionalOccurrences[i].endDate = input.value;
+    });
+  };
   const recurrenceCheckbox = document.getElementById('f_recurrenceEnabled');
   const recurrenceOptionsEl = document.getElementById('recurrenceOptions');
   if(recurrenceCheckbox && recurrenceOptionsEl){
     recurrenceCheckbox.addEventListener('change', ()=>{
-      recurrenceOptionsEl.style.display = recurrenceCheckbox.checked ? 'block' : 'none';
+      if(recurrenceCheckbox.checked){
+        if(state.additionalOccurrences.length === 0) state.additionalOccurrences.push({ startDate:'', endDate:'' });
+        recurrenceOptionsEl.style.display = 'block';
+      } else {
+        state.additionalOccurrences = [];
+      }
+      render();
     });
   }
+  const addOccurrenceBtn = document.getElementById('addOccurrenceBtn');
+  if(addOccurrenceBtn){
+    addOccurrenceBtn.addEventListener('click', ()=>{
+      syncOccurrenceRowsFromDOM();
+      state.additionalOccurrences.push({ startDate:'', endDate:'' });
+      render();
+    });
+  }
+  document.querySelectorAll('[data-remove-occurrence]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      syncOccurrenceRowsFromDOM();
+      const i = parseInt(btn.getAttribute('data-remove-occurrence'), 10);
+      state.additionalOccurrences.splice(i, 1);
+      render();
+    });
+  });
+  document.querySelectorAll('[data-occ-start], [data-occ-end]').forEach(input=>{
+    input.addEventListener('change', syncOccurrenceRowsFromDOM);
+  });
 
   const eventNameInput = document.getElementById('f_eventName');
   const duplicateWarningEl = document.getElementById('duplicateEventWarning');
@@ -7298,9 +7355,17 @@ function attachHandlers(){
       }
       const cityEl = document.getElementById('f_venueCity');
       const stateEl = document.getElementById('f_venueState');
+      // Only overwrite City/State if they're empty, OR if the current value matches what THIS
+      // lookup mechanism auto-filled last time (meaning the person hasn't manually edited it
+      // since) -- that way, correcting a mistyped zip can still update a wrong auto-filled
+      // value, without ever overwriting something the person actually typed themselves.
+      const cityIsAutoFilled = !cityEl.value.trim() || cityEl.value === state.draft._autoFilledCity;
+      const stateIsAutoFilled = !stateEl.value.trim() || stateEl.value === state.draft._autoFilledState;
       let filled = [];
-      if(cityEl && !cityEl.value.trim()){ cityEl.value = result.city; filled.push('City'); }
-      if(stateEl && !stateEl.value.trim() && result.state){ stateEl.value = result.state; filled.push('State'); }
+      if(cityEl && cityIsAutoFilled && cityEl.value !== result.city){ cityEl.value = result.city; filled.push('City'); }
+      if(stateEl && stateIsAutoFilled && result.state && stateEl.value !== result.state){ stateEl.value = result.state; filled.push('State'); }
+      state.draft._autoFilledCity = cityEl.value;
+      state.draft._autoFilledState = stateEl.value;
       if(filled.length>0){
         readDraftFromForm();
         saveDraftToLocalStorage();

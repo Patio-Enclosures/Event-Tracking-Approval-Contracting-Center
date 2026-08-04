@@ -4129,7 +4129,8 @@ function csvField(v){
   return s;
 }
 
-function downloadEventsCSV(){
+function downloadEventsCSV(eventsToExport, filenameSuffix){
+  const events = eventsToExport || state.events;
   const columns = [
     ['Region', ev=>state.regionNames[ev.region]],
     ['Branch', ev=>ev.branch],
@@ -4184,13 +4185,13 @@ function downloadEventsCSV(){
     ['Submitted', ev=>ev.submittedAt ? new Date(ev.submittedAt).toLocaleDateString() : '']
   ];
   const header = columns.map(c=>csvField(c[0])).join(',');
-  const rows = state.events.map(ev => columns.map(c=>csvField(c[1](ev))).join(','));
+  const rows = events.map(ev => columns.map(c=>csvField(c[1](ev))).join(','));
   const csv = [header, ...rows].join('\r\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `events-export_${toDateInputValue(new Date())}.csv`;
+  a.download = `events-export${filenameSuffix ? '-'+filenameSuffix : ''}_${toDateInputValue(new Date())}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -5201,6 +5202,10 @@ function renderOverview(allEvents){
     </div>
   `;
 
+  // Stashed here (not recomputed) so the per-section CSV download buttons below export exactly
+  // what's on screen, with no risk of the export quietly drifting from a duplicated filter.
+  state._overviewSectionExports = { awaitingContract, needsDecision, overdueEvals: overdueEvaluations, staleResearch };
+
   return `
     <div class="summary-kpi-card">
       <div class="summary-kpi-item">
@@ -5228,18 +5233,23 @@ function renderOverview(allEvents){
     </div>
     <div>
       ${sectionHeader('awaitingContract', `Awaiting Contract Processing — Submitted for Approval (${awaitingContract.length})`, 'pendingApprovalSection', '📨')}
-      ${state.overviewSectionsOpen.awaitingContract ? awaitingContractHtml : ''}
+      ${state.overviewSectionsOpen.awaitingContract ? `
+        ${awaitingContractHtml}
+        ${awaitingContract.length>0 ? `<button class="btn btn-outline btn-sm" style="margin-top:8px;" data-download-section-csv="awaitingContract">⬇ Download CSV</button>` : ''}
+      ` : ''}
 
       ${sectionHeader('needsDecision', `Needs a Decision — ${NEXT_MONTH_LABEL} (${needsDecision.length})`, 'needsDecisionSection', '⏰')}
       ${state.overviewSectionsOpen.needsDecision ? `
         ${needsDecisionHtml}
         ${excludedCount>0 && needsDecision.length>0 ? `<div class="hint" style="margin:8px 0 0 2px;">${excludedCount} more researching event${excludedCount===1?'':'s'} not shown — no date set, not in ${NEXT_MONTH_LABEL}, or its submission cutoff has already passed (see Stale Research).</div>` : ''}
+        ${needsDecision.length>0 ? `<button class="btn btn-outline btn-sm" style="margin-top:8px;" data-download-section-csv="needsDecision">⬇ Download CSV</button>` : ''}
       ` : ''}
 
       ${sectionHeader('overdueEvals', `Post-Event Evaluations Needed (${overdueEvaluations.length})`, null, '📋')}
       ${state.overviewSectionsOpen.overdueEvals ? `
         <div class="hint" style="margin:-6px 0 10px 2px;">Events that have already happened (on or after ${new Date(POST_EVENT_EVAL_REMINDER_CUTOFF+'T00:00:00').toLocaleDateString()}) but don't have a completed post-event evaluation yet, grouped by ${state.regionLabelSingular.toLowerCase()}.</div>
         ${overdueEvalsHtml}
+        ${overdueEvaluations.length>0 ? `<button class="btn btn-outline btn-sm" style="margin-top:8px;" data-download-section-csv="overdueEvals">⬇ Download CSV</button>` : ''}
       ` : ''}
 
       ${sectionHeader('staleResearch', `Stale Research — Needs Attention (${staleResearch.length})`, 'staleResearchSection', '⚠️')}
@@ -5247,6 +5257,7 @@ function renderOverview(allEvents){
         <div class="hint" style="margin:-6px 0 10px 2px;">Researching events with no start date, a passed submission cutoff, or a start date already behind us. Use Not Pursuing or Edit right here to clear these out.</div>
         ${eventPassedCount>0 ? `<div style="margin-bottom:10px;"><button class="btn btn-red btn-sm" id="bulkCleanupEventPassed">🧹 Mark all ${eventPassedCount} "Event Date Passed" as Not Pursuing</button></div>` : ''}
         ${staleResearchHtml}
+        ${staleResearch.length>0 ? `<button class="btn btn-outline btn-sm" style="margin-top:8px;" data-download-section-csv="staleResearch">⬇ Download CSV</button>` : ''}
       ` : ''}
 
       ${sectionHeader('budgetSummary', 'Budget Summary by Category', null, '💰')}
@@ -6693,8 +6704,15 @@ function attachHandlers(){
 
   const exportCsvBtn = document.getElementById('exportCsvBtn');
   if(exportCsvBtn){
-    exportCsvBtn.addEventListener('click', downloadEventsCSV);
+    exportCsvBtn.addEventListener('click', ()=> downloadEventsCSV());
   }
+  document.querySelectorAll('[data-download-section-csv]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const key = btn.getAttribute('data-download-section-csv');
+      const list = state._overviewSectionExports && state._overviewSectionExports[key];
+      if(list) downloadEventsCSV(list, key);
+    });
+  });
   const importCsvBtn = document.getElementById('importCsvBtn');
   const importCsvFile = document.getElementById('importCsvFile');
   if(importCsvBtn && importCsvFile){

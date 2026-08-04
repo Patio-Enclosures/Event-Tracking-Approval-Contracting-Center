@@ -1641,7 +1641,6 @@ let state = {
   activityLog:[],
   activityFeedOpen:false,
   overviewSectionsOpen:{
-    regionSummary:false,
     awaitingContract:true,
     staleResearch:false,
     needsDecision:true,
@@ -5070,14 +5069,6 @@ function renderOverview(allEvents){
     </div>
   `;
 
-  const actionStripHtml = `
-    <div class="action-strip">
-      ${awaitingContract.length>0 ? `<div class="action-pill urgent" data-action-pill="pendingApprovalSection" data-action-open="awaitingContract"><span class="dot"></span> ${awaitingContract.length} Pending Approval</div>` : ''}
-      ${needsDecision.length>0 ? `<div class="action-pill warn" data-action-pill="needsDecisionSection" data-action-open="needsDecision"><span class="dot"></span> ${needsDecision.length} Need a Decision</div>` : ''}
-      ${staleResearch.length>0 ? `<div class="action-pill info" data-action-pill="staleResearchSection" data-action-open="staleResearch"><span class="dot"></span> ${staleResearch.length} Stale Research</div>` : ''}
-    </div>
-  `;
-
   // Year-over-year rollup, grouped by each event's Start Date year (events with no date are
   // excluded, since they can't be placed on a timeline). Sorted most recent year first.
   const yearGroups = {};
@@ -5195,15 +5186,12 @@ function renderOverview(allEvents){
   `;
 
   return `
-    ${actionStripHtml}
     <div class="overview-layout">
       <div>
-        ${sectionHeader('regionSummary', `Full Summary by ${state.regionLabelSingular}`, null, '📊')}
-        ${state.overviewSectionsOpen.regionSummary ? `
-          <div class="hint" style="margin:-6px 0 10px 2px;">Click a region to see its branch-level breakdown.</div>
-          ${periodFilterHtml}
-          ${regionTableHtml}
-        ` : ''}
+        <div class="overview-section-title">📊 Full Summary by ${state.regionLabelSingular}</div>
+        <div class="hint" style="margin:-6px 0 10px 2px;">Click a region to see its branch-level breakdown.</div>
+        ${periodFilterHtml}
+        ${regionTableHtml}
 
         ${sectionHeader('overdueEvals', `Post-Event Evaluations Needed (${overdueEvaluations.length})`, null, '📋')}
         ${state.overviewSectionsOpen.overdueEvals ? `

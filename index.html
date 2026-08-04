@@ -4972,27 +4972,31 @@ function renderOverview(allEvents){
 
   // Events needing a decision (status = researching) with a start date in the next 45 days,
   // soonest first. Undated or out-of-window events are counted but not listed here.
-  const DECISION_WINDOW_DAYS = 45;
   const now = new Date();
-  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const windowEnd = new Date(todayMidnight);
-  windowEnd.setDate(windowEnd.getDate() + DECISION_WINDOW_DAYS);
+  // "Needs a Decision" now matches the actual submission rule exactly: next month's events are
+  // due by the last day of *this* month (e.g., every September event must be submitted by
+  // August 31) -- so next calendar month is precisely the set of events currently on deadline,
+  // no more, no less. A rolling day-count window doesn't line up with that rule as cleanly.
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const nextMonthEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0); // day 0 = last day of next month
+  const NEXT_MONTH_LABEL = nextMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-  function isWithinDecisionWindow(dateStr){
+  function isInNextCalendarMonth(dateStr){
     if(!dateStr) return false;
     const d = new Date(dateStr + 'T00:00:00');
     if(isNaN(d.getTime())) return false;
-    return d >= todayMidnight && d <= windowEnd;
+    return d >= nextMonthStart && d <= nextMonthEnd;
   }
 
   const allResearching = allEvents.filter(e=>e.status===STATUS.RESEARCHING);
   const needsDecision = allResearching
-    .filter(e=>isWithinDecisionWindow(e.startDate))
+    .filter(e=>isInNextCalendarMonth(e.startDate))
+    .filter(e=>getStalenessFlag(e) !== 'cutoff_passed')
     .sort((a,b)=> (a.startDate||'9999').localeCompare(b.startDate||'9999'));
   const excludedCount = allResearching.length - needsDecision.length;
 
   const needsDecisionHtml = needsDecision.length===0
-    ? `<div class="empty" style="padding:28px;"><div class="empty-title" style="font-size:16px;">Nothing awaiting a decision in the next ${DECISION_WINDOW_DAYS} days</div><div>${excludedCount>0 ? `${excludedCount} researching event${excludedCount===1?'':'s'} ${excludedCount===1?'has':'have'} no date or falls outside this window.` : 'Every logged event has been approved, declined, or submitted.'}</div></div>`
+    ? `<div class="empty" style="padding:28px;"><div class="empty-title" style="font-size:16px;">Nothing awaiting a decision for ${NEXT_MONTH_LABEL}</div><div>${excludedCount>0 ? `${excludedCount} researching event${excludedCount===1?'':'s'} ${excludedCount===1?'has':'have'} no date, falls outside ${NEXT_MONTH_LABEL}, or its submission cutoff has already passed.` : 'Every logged event has been approved, declined, or submitted.'}</div></div>`
     : `<div class="needs-decision-list">` + needsDecision.map(ev=>`
         <div class="needs-decision-row" data-goto-event="${ev.id}" data-goto-event-region="${ev.region}">
           <div class="needs-decision-main">
@@ -5235,10 +5239,10 @@ function renderOverview(allEvents){
         ${sectionHeader('awaitingContract', `Awaiting Contract Processing — Submitted for Approval (${awaitingContract.length})`, 'pendingApprovalSection', '📨')}
         ${state.overviewSectionsOpen.awaitingContract ? awaitingContractHtml : ''}
 
-        ${sectionHeader('needsDecision', `Needs a Decision — next ${DECISION_WINDOW_DAYS} days (${needsDecision.length})`, 'needsDecisionSection', '⏰')}
+        ${sectionHeader('needsDecision', `Needs a Decision — ${NEXT_MONTH_LABEL} (${needsDecision.length})`, 'needsDecisionSection', '⏰')}
         ${state.overviewSectionsOpen.needsDecision ? `
           ${needsDecisionHtml}
-          ${excludedCount>0 && needsDecision.length>0 ? `<div class="hint" style="margin:8px 0 0 2px;">${excludedCount} more researching event${excludedCount===1?'':'s'} not shown — no date set or starting beyond ${DECISION_WINDOW_DAYS} days out.</div>` : ''}
+          ${excludedCount>0 && needsDecision.length>0 ? `<div class="hint" style="margin:8px 0 0 2px;">${excludedCount} more researching event${excludedCount===1?'':'s'} not shown — no date set, not in ${NEXT_MONTH_LABEL}, or its submission cutoff has already passed (see Stale Research).</div>` : ''}
         ` : ''}
 
         ${sectionHeader('staleResearch', `Stale Research — Needs Attention (${staleResearch.length})`, 'staleResearchSection', '⚠️')}

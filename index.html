@@ -3202,7 +3202,7 @@ async function setDecision(id, newStatus){
 async function denyBySupervisor(id){
   const ev = state.events.find(e=>e.id===id);
   if(!ev) return;
-  const reason = prompt(`Mark "${ev.eventName}" as denied by supervisor? This moves it to Declined.\n\nReason for the denial (shown on the event and flagged on its ${state.regionLabelSingular.toLowerCase()} tab):`);
+  const reason = prompt(`Mark "${ev.eventName}" as denied by approver? This moves it to Declined.\n\nReason for the denial (shown on the event and flagged on its ${state.regionLabelSingular.toLowerCase()} tab):`);
   if(reason === null) return; // cancelled
   const before = Object.assign({}, ev);
   ev.status = STATUS.DECLINED;
@@ -3216,7 +3216,7 @@ async function denyBySupervisor(id){
     render();
     return;
   }
-  logActivity(ev.id, ev.eventName, 'Denied by Supervisor', ev.deniedReason || undefined);
+  logActivity(ev.id, ev.eventName, 'Denied by Approver', ev.deniedReason || undefined);
   render();
 }
 
@@ -4601,8 +4601,8 @@ function render(){
   const regionTabsHtml = state.regionNames.map((name, idx)=>{
     const count = allEvents.filter(e=>e.region===idx).length;
     const hasDenied = allEvents.some(e=>e.region===idx && e.status===STATUS.DECLINED && e.deniedBySupervisor);
-    return `<button class="region-tab ${idx===state.activeRegion?'active':''}" data-region="${idx}" style="--region-color:${regionColor(idx)};" ${hasDenied ? `title="This ${state.regionLabelSingular.toLowerCase()} has an event denied by a supervisor"` : ''}>
-      <span class="region-tab-dot" style="background:${regionColor(idx)};"></span>${escapeHtml(name)} <span class="tab-count">${count}</span>${hasDenied ? ` <span style="color:var(--red);" aria-label="Denied by supervisor">\u26a0</span>` : ''}
+    return `<button class="region-tab ${idx===state.activeRegion?'active':''}" data-region="${idx}" style="--region-color:${regionColor(idx)};" ${hasDenied ? `title="This ${state.regionLabelSingular.toLowerCase()} has an event denied by an approver"` : ''}>
+      <span class="region-tab-dot" style="background:${regionColor(idx)};"></span>${escapeHtml(name)} <span class="tab-count">${count}</span>${hasDenied ? ` <span style="color:var(--red);" aria-label="Denied by approver">\u26a0</span>` : ''}
     </button>`;
   }).join('');
 
@@ -5450,16 +5450,24 @@ function renderEventDetail(ev){
     const missingForDirectContract = allowSkipApproval ? getMissingFields(ev).concat(missingApproval) : [];
     const directContractBtn = !allowSkipApproval ? '' : (
       missingForDirectContract.length===0
-        ? `<button class="btn btn-green btn-sm" data-submit="${ev.id}">Submit for Approval &amp; Contracting</button>`
-        : `<button class="btn btn-green btn-sm" disabled title="Missing: ${escapeHtml(missingForDirectContract.join(', '))}">Submit for Approval &amp; Contracting</button>`
+        ? `<button class="btn btn-green btn-sm" data-submit="${ev.id}">Submit for Approval and Contract Processing</button>`
+        : `<button class="btn btn-green btn-sm" disabled title="Missing: ${escapeHtml(missingForDirectContract.join(', '))}">Submit for Approval and Contract Processing</button>`
     );
+    // Universal Windows runs one combined stage instead of two -- Submit for Approval doesn't
+    // exist as a separate step for this brand, so it's hidden entirely rather than shown
+    // alongside the combined button. Denied by Approver moves here too, since there's no
+    // longer a later Submitted-for-Approval stage to deny from.
+    const submitForApprovalBtn = allowSkipApproval ? '' : `<button class="btn btn-blue btn-sm" data-execute="${ev.id}">Submit for Approval</button>`;
+    const submitForApprovalBtnDisabled = allowSkipApproval ? '' : `<button class="btn btn-blue btn-sm" disabled title="Complete the pre-approval checklist before submitting for approval">Submit for Approval</button>`;
+    const denyBtn = allowSkipApproval ? `<button class="btn btn-red btn-sm" data-deny="${ev.id}">Denied by Approver</button>` : '';
     if(missingApproval.length===0){
       decisionButtons = `
         <div class="decision-note">Determination pending — decide whether to proceed.</div>
         <div class="decision-bar-actions">
           <button class="btn btn-outline btn-sm" data-notpursuing="${ev.id}">Not Pursuing</button>
-          <button class="btn btn-blue btn-sm" data-execute="${ev.id}">Submit for Approval</button>
+          ${submitForApprovalBtn}
           ${directContractBtn}
+          ${denyBtn}
         </div>`;
     } else {
       decisionButtons = `
@@ -5467,8 +5475,9 @@ function renderEventDetail(ev){
         <div class="decision-bar-actions">
           <button class="btn btn-outline btn-sm" data-notpursuing="${ev.id}">Not Pursuing</button>
           <button class="btn btn-outline btn-sm" data-edit="${ev.id}">Complete Checklist</button>
-          <button class="btn btn-blue btn-sm" disabled title="Complete the pre-approval checklist before submitting for approval">Submit for Approval</button>
+          ${submitForApprovalBtnDisabled}
           ${directContractBtn}
+          ${denyBtn}
         </div>`;
     }
   } else if(ev.status===STATUS.EXECUTE){
@@ -5486,7 +5495,7 @@ function renderEventDetail(ev){
             : `<button class="btn btn-outline btn-sm" disabled title="Only authorized approvers can send this">📧 Email for Contracting</button>`}
           ${state.teamsWebhookUrl ? `<button class="btn btn-outline btn-sm" data-notify-teams="${ev.id}">Notify Teams</button>` : ''}
           <button class="btn btn-outline btn-sm" data-notpursuing="${ev.id}">Not Pursuing</button>
-          <button class="btn btn-red btn-sm" data-deny="${ev.id}">Denied by Supervisor</button>
+          <button class="btn btn-red btn-sm" data-deny="${ev.id}">Denied by Approver</button>
           ${authorized
             ? `<button class="btn btn-green btn-sm" data-submit="${ev.id}">Submit for Contract Processing</button>`
             : `<button class="btn btn-green btn-sm" disabled title="Only authorized approvers can submit for contract processing">Submit for Contract Processing</button>`}
@@ -5498,13 +5507,13 @@ function renderEventDetail(ev){
           <button class="btn btn-outline btn-sm" data-research="${ev.id}">Return to Research</button>
           <button class="btn btn-outline btn-sm" data-edit="${ev.id}">Complete Event Details</button>
           <button class="btn btn-outline btn-sm" data-notpursuing="${ev.id}">Not Pursuing</button>
-          <button class="btn btn-red btn-sm" data-deny="${ev.id}">Denied by Supervisor</button>
+          <button class="btn btn-red btn-sm" data-deny="${ev.id}">Denied by Approver</button>
           <button class="btn btn-green btn-sm" disabled title="Fill in all fields before submitting for contract processing">Submit for Contract Processing</button>
         </div>`;
     }
   } else if(ev.status===STATUS.DECLINED){
     decisionButtons = `
-      <div class="decision-note">${ev.deniedBySupervisor ? `Denied by supervisor${ev.deniedAt ? ' on '+new Date(ev.deniedAt).toLocaleDateString() : ''}.${ev.deniedReason ? ` Reason: ${escapeHtml(ev.deniedReason)}` : ''}` : 'Declined — not moving forward.'}</div>
+      <div class="decision-note">${ev.deniedBySupervisor ? `Denied by approver${ev.deniedAt ? ' on '+new Date(ev.deniedAt).toLocaleDateString() : ''}.${ev.deniedReason ? ` Reason: ${escapeHtml(ev.deniedReason)}` : ''}` : 'Declined — not moving forward.'}</div>
       <div class="decision-bar-actions">
         <button class="btn btn-outline btn-sm" data-research="${ev.id}">Reopen for Research</button>
       </div>`;

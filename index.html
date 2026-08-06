@@ -2257,7 +2257,12 @@ async function persistEventsBulkAtomic(transformFn){
     for(let i=0; i<finalEvents.length; i += batchSize){
       const batch = writeBatch(fbDb());
       finalEvents.slice(i, i+batchSize).forEach(ev=>{
-        batch.set(doc(fbDb(), EVENTS_COLLECTION, ev.id), ev);
+        // Same undefined-stripping as persistEventChangeAtomic -- Firestore rejects any field
+        // whose value is literally undefined, which can happen for older events missing a field
+        // the schema has since grown to expect.
+        const cleanEv = {};
+        Object.keys(ev).forEach(k => { if(ev[k] !== undefined) cleanEv[k] = ev[k]; });
+        batch.set(doc(fbDb(), EVENTS_COLLECTION, ev.id), cleanEv);
       });
       await batch.commit();
     }
@@ -2990,9 +2995,16 @@ async function persistEventChangeAtomic(changedEvent, isDelete){
       await deleteDoc(docRef);
       state.events = state.events.filter(e => e.id !== changedEvent.id);
     } else {
-      await setDoc(docRef, changedEvent);
+      // Firestore rejects any field whose value is literally undefined (as opposed to just
+      // being absent) -- this can happen for older events missing a field the schema has since
+      // grown to expect (confirmed 8/5/2026: an event missing "history" entirely). Stripping
+      // undefined keys here, right before the actual write, protects every save against this
+      // same failure for any field, not just the one that happened to surface it first.
+      const cleanEvent = {};
+      Object.keys(changedEvent).forEach(k => { if(changedEvent[k] !== undefined) cleanEvent[k] = changedEvent[k]; });
+      await setDoc(docRef, cleanEvent);
       const idx = state.events.findIndex(e => e.id === changedEvent.id);
-      if(idx > -1) state.events[idx] = changedEvent; else state.events.push(changedEvent);
+      if(idx > -1) state.events[idx] = cleanEvent; else state.events.push(cleanEvent);
     }
     return true;
   }catch(e){
@@ -3023,7 +3035,7 @@ async function saveDraft(){
   if(state.editingEventId){
     before = state.events.find(e=>e.id===state.editingEventId);
     changedFields = diffEventFields(before, d);
-    d.history = before ? before.history : [];
+    d.history = (before && before.history) ? before.history : [];
     // Saving after review counts as reconfirming -- clear the marker so it doesn't linger on
     // every future edit of this event.
     d.needsReconfirmation = false;

@@ -3762,6 +3762,18 @@ function generateApprovalEmail(ev){
   }
   fireApprovalEmail(ev);
 }
+// Opens a mailto: link via a programmatic anchor click rather than setting window.location.href
+// directly -- functionally similar, but some browsers and extensions treat an anchor click as a
+// more unambiguous, direct user action than a raw location change, making it a more reliable
+// trigger in practice.
+function openMailto(mailtoUrl){
+  const link = document.createElement('a');
+  link.href = mailtoUrl;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 function fireApprovalEmail(ev){
   const to = sanitizeHeader(ev.supervisorEmail);
   const subject = sanitizeHeader(`Approval Request: ${ev.eventName}`);
@@ -3775,7 +3787,7 @@ function fireApprovalEmail(ev){
   }
 
   const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
-  window.location.href = mailtoUrl;
+  openMailto(mailtoUrl);
 }
 
 const CONTRACTING_EMAIL = 'shanautica.sales@greatdayimprovements.com';
@@ -4099,16 +4111,17 @@ function generateContractingEmail(ev, afterFired){
     // one, so firing the mailto from there doesn't have the same risk of being blocked -- both
     // files can download right away, matching what the confirmation text describes.
     downloadContractFile(ev);
-    downloadEventPDF(ev);
+    setTimeout(() => downloadEventPDF(ev), 150);
     requestAttachmentConfirmation([ev.contractFileName, 'the summary PDF'], fire);
     return;
   }
-  // No attachment: fire the email FIRST, before the PDF download. Browsers can silently block a
-  // second download/navigation triggered right after another one from the same click -- this
-  // matches what was reported (worked on a retry, not the first click, the exact signature of
-  // that kind of blocking). Putting the actual email first gives it priority.
+  // No attachment: fire the email FIRST, before the PDF download, and put a small delay before
+  // the download specifically -- even with the email going first, some browsers can still get
+  // confused by two actions landing in the exact same synchronous tick. A short delay moves the
+  // download to a genuinely separate task, which is a more reliable way to avoid that than
+  // ordering alone.
   fireContractingEmail(ev, to);
-  downloadEventPDF(ev);
+  setTimeout(() => downloadEventPDF(ev), 150);
   if(afterFired) afterFired();
 }
 function fireContractingEmail(ev, to){
@@ -4124,7 +4137,7 @@ function fireContractingEmail(ev, to){
   }
 
   const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
-  window.location.href = mailtoUrl;
+  openMailto(mailtoUrl);
   logActivity(ev.id, ev.eventName, 'Emailed to contracting', to);
 }
 

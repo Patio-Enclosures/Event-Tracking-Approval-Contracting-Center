@@ -1634,6 +1634,9 @@ let state = {
   userName:'',
   userNameDraft:'',
   activityLog:[],
+  activityFilterUser:'',
+  activityFilterDateFrom:'',
+  activityFilterDateTo:'',
   activityFeedOpen:false,
   overviewSectionsOpen:{
     awaitingContract:false,
@@ -5060,6 +5063,7 @@ function renderOverview(allEvents){
           <div class="needs-decision-main">
             <div class="needs-decision-name">${escapeHtml(ev.eventName)}</div>
             <div class="needs-decision-meta">${escapeHtml(state.regionNames[ev.region])} · ${escapeHtml(ev.startDate)||'No start date'} · Est. ${money(totalCost(ev))}${missing.length>0 ? ` · <span style="color:var(--red);">${missing.length} field${missing.length===1?'':'s'} missing</span>` : ''}</div>
+            <div class="needs-decision-meta">Approver: ${ev.supervisorEmail ? escapeHtml(ev.supervisorEmail) : '<span style="color:var(--red);">Not set</span>'}</div>
           </div>
           ${relativeTimeBadgeHtml(ev.startDate)}
           <span class="badge execute">${STATUS_LABEL.execute}</span>
@@ -5317,11 +5321,43 @@ function renderOverview(allEvents){
 }
 
 function renderActivityFeed(limit){
-  const entries = state.activityLog.slice(0, limit);
-  if(entries.length===0){
-    return `<div class="empty" style="padding:24px;"><div class="empty-title" style="font-size:15px;">No activity yet</div><div>Actions like creating events, changing status, and edits will show up here.</div></div>`;
+  const distinctUsers = Array.from(new Set(state.activityLog.map(e=>e.user).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+
+  let entries = state.activityLog;
+  if(state.activityFilterUser){
+    entries = entries.filter(e=>e.user === state.activityFilterUser);
   }
-  return `<div class="activity-feed">` + entries.map(e=>{
+  if(state.activityFilterDateFrom){
+    const fromTs = new Date(state.activityFilterDateFrom + 'T00:00:00').getTime();
+    entries = entries.filter(e=>e.ts >= fromTs);
+  }
+  if(state.activityFilterDateTo){
+    const toTs = new Date(state.activityFilterDateTo + 'T23:59:59').getTime();
+    entries = entries.filter(e=>e.ts <= toTs);
+  }
+  const isFiltered = state.activityFilterUser || state.activityFilterDateFrom || state.activityFilterDateTo;
+  // Filtered views show everything that matches (up to a sane cap) rather than just the most
+  // recent handful -- someone checking "what did Jane do last week" wants the full picture, not
+  // a truncated preview. The default unfiltered view stays capped at `limit` to keep the normal
+  // Overview page from being dominated by an ever-growing log.
+  const displayEntries = isFiltered ? entries.slice(0, 200) : entries.slice(0, limit);
+
+  const filterBarHtml = `
+    <div class="search-sort-bar" style="margin-bottom:10px;">
+      <select id="activityFilterUser">
+        <option value="">All Users</option>
+        ${distinctUsers.map(u=>`<option value="${escapeHtml(u)}" ${state.activityFilterUser===u?'selected':''}>${escapeHtml(u)}</option>`).join('')}
+      </select>
+      <input type="date" id="activityFilterDateFrom" value="${state.activityFilterDateFrom}" title="From date"/>
+      <input type="date" id="activityFilterDateTo" value="${state.activityFilterDateTo}" title="To date"/>
+      ${isFiltered ? `<button class="btn btn-outline btn-sm" id="clearActivityFiltersBtn">Clear Filters</button>` : ''}
+    </div>
+  `;
+
+  if(displayEntries.length===0){
+    return filterBarHtml + `<div class="empty" style="padding:24px;"><div class="empty-title" style="font-size:15px;">${isFiltered ? 'No activity matches these filters' : 'No activity yet'}</div><div>${isFiltered ? 'Try a different user or date range.' : 'Actions like creating events, changing status, and edits will show up here.'}</div></div>`;
+  }
+  return filterBarHtml + `<div class="activity-feed">` + displayEntries.map(e=>{
     const stillExists = e.eventId && state.events.some(x=>x.id===e.eventId);
     const evRegion = stillExists ? state.events.find(x=>x.id===e.eventId).region : null;
     return `
@@ -5330,7 +5366,8 @@ function renderActivityFeed(limit){
       <span class="activity-feed-user">${escapeHtml(e.user)}</span>
       <span class="activity-feed-action">${escapeHtml(e.action)}${e.eventName ? ` — <strong>${escapeHtml(e.eventName)}</strong>` : ''}${e.details ? ` (${escapeHtml(e.details)})` : ''}</span>
     </div>
-  `;}).join('') + `</div>`;
+  `;}).join('') + `</div>`
+    + (isFiltered && entries.length > 200 ? `<div class="hint" style="margin-top:8px;">Showing the first 200 of ${entries.length} matching entries -- narrow the date range to see a more specific slice.</div>` : '');
 }
 
 function renderFinancialsMini(ev){
@@ -6616,6 +6653,37 @@ function attachHandlers(){
       state.budgetSummaryDateTo = '';
       state.budgetSummaryRegions = [];
       state.budgetSummaryBranches = [];
+      render();
+    });
+  }
+
+  const activityFilterUserSelect = document.getElementById('activityFilterUser');
+  if(activityFilterUserSelect){
+    activityFilterUserSelect.addEventListener('change', ()=>{
+      state.activityFilterUser = activityFilterUserSelect.value;
+      render();
+    });
+  }
+  const activityFilterDateFromInput = document.getElementById('activityFilterDateFrom');
+  if(activityFilterDateFromInput){
+    activityFilterDateFromInput.addEventListener('change', ()=>{
+      state.activityFilterDateFrom = activityFilterDateFromInput.value;
+      render();
+    });
+  }
+  const activityFilterDateToInput = document.getElementById('activityFilterDateTo');
+  if(activityFilterDateToInput){
+    activityFilterDateToInput.addEventListener('change', ()=>{
+      state.activityFilterDateTo = activityFilterDateToInput.value;
+      render();
+    });
+  }
+  const clearActivityFiltersBtn = document.getElementById('clearActivityFiltersBtn');
+  if(clearActivityFiltersBtn){
+    clearActivityFiltersBtn.addEventListener('click', ()=>{
+      state.activityFilterUser = '';
+      state.activityFilterDateFrom = '';
+      state.activityFilterDateTo = '';
       render();
     });
   }

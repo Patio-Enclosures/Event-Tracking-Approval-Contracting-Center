@@ -1770,6 +1770,7 @@ function emptyDraft(regionIdx){
     staffComplianceRating:'',
     status: STATUS.RESEARCHING,
     createdAt: Date.now(),
+    createdBy: state.userName || 'Someone',
     submittedAt: null,
     deniedBySupervisor: false,
     deniedAt: null,
@@ -1939,9 +1940,22 @@ async function lookupZipCityState(zip){
   }
 }
 
+// Pulls the branch code (e.g. "NVB") off the front of a branch value, regardless of exactly
+// how it's punctuated after that -- "NVB - Norfolk/Virginia Beach", "NVB-Norfolk...", "NVB"
+// alone, extra spaces, all work the same way. Branch codes are consistently 2-4 uppercase
+// letters, so matching that pattern directly is far more forgiving than requiring an exact
+// " - " separator, which silently breaks on real-world formatting variations (confirmed
+// 8/12/2026: this was the actual cause of a branch failing to sync to Exhibit Day even though
+// its code was already correctly in the translation table).
+function extractBranchCode(branchValue){
+  if(!branchValue) return '';
+  const match = String(branchValue).trim().match(/^([A-Z]{2,4})/);
+  return match ? match[1] : '';
+}
+
 function checkZipServiceable(branchLabelValue, zip){
   if(!branchLabelValue || !zip) return 'unknown';
-  const code = branchLabelValue.split(' - ')[0].trim().toUpperCase();
+  const code = extractBranchCode(branchLabelValue);
   // Patio Enclosures keeps its original built-in list; every other brand uses whatever it has
   // uploaded in Settings (Section: Serviceable Zip Codes), since each brand's own set of
   // branches and territories is different.
@@ -1963,17 +1977,18 @@ function renderZipTypoWarning(branchLabelValue, zip){
   if(!branchLabelValue || !zip) return '';
   const result = checkZipServiceable(branchLabelValue, zip);
   if(result !== 'no') return '';
-  const branchCode = (branchLabelValue||'').split(' - ')[0];
+  const branchCode = extractBranchCode(branchLabelValue);
   return `<div class="zip-typo-warning">⚠ This ZIP doesn't match ${escapeHtml(branchCode)}'s territory — double-check it for a typo before continuing.</div>`;
 }
 
 function renderZipCheckIndicator(branchLabelValue, zip){
   const result = checkZipServiceable(branchLabelValue, zip);
+  const branchCode = extractBranchCode(branchLabelValue);
   if(result==='yes'){
-    return `<div class="field-note-ok">✓ Auto-check: ZIP ${escapeHtml(zip)} is within ${escapeHtml((branchLabelValue||'').split(' - ')[0])}'s serviceable territory.</div>`;
+    return `<div class="field-note-ok">✓ Auto-check: ZIP ${escapeHtml(zip)} is within ${escapeHtml(branchCode)}'s serviceable territory.</div>`;
   }
   if(result==='no'){
-    return `<div class="field-note-warn">⚠ Auto-check: ZIP ${escapeHtml(zip)} does not appear to be in ${escapeHtml((branchLabelValue||'').split(' - ')[0])}'s serviceable territory — double-check before confirming.</div>`;
+    return `<div class="field-note-warn">⚠ Auto-check: ZIP ${escapeHtml(zip)} does not appear to be in ${escapeHtml(branchCode)}'s serviceable territory — double-check before confirming.</div>`;
   }
   return `<div class="hint" style="margin:0;">No automatic service-area data loaded for this branch yet.</div>`;
 }
@@ -2746,7 +2761,7 @@ function humanizeFieldKey(key){
 }
 
 const DIFF_IGNORE_KEYS = new Set([
-  'id','history','createdAt','submittedAt','deniedAt','deniedBySupervisor','deniedReason','notPursuingAt',
+  'id','history','createdAt','createdBy','submittedAt','deniedAt','deniedBySupervisor','deniedReason','notPursuingAt',
   'contractFileUrl','contractFileType','status','needsReconfirmation',
   'importBatchId','importFileName','importedAt','importedBy'
 ]);
@@ -3162,6 +3177,7 @@ async function duplicateEventNextYear(id){
   copy.endDate = shiftDateNextYear(original.endDate);
   copy.status = STATUS.RESEARCHING;
   copy.createdAt = Date.now();
+  copy.createdBy = state.userName || 'Someone';
   copy.submittedAt = null;
   copy.deniedAt = null;
   copy.deniedBySupervisor = false;
@@ -4009,12 +4025,16 @@ function buildExhibitDaySyncPayload(ev){
   const custom_fields = {};
   const addField = (key, value) => { if(fieldIds[key]) custom_fields[fieldIds[key]] = value; };
   addField('region', state.regionNames[ev.region] || '');
+  // Both translation tables require an exact match to a strict dropdown's known values --
+  // Exhibit Day rejects an empty string just as readily as a wrong one, so a failed lookup
+  // (branch code not in the table, or renamed/new since it was built) needs to skip the field
+  // entirely rather than send '' and produce the exact same 400 error either way.
   const branchValueForSync = state.currentBrand === 'universal-windows-bath-authority'
-    ? (UNIVERSAL_WINDOWS_OFFICE_TRANSLATION[ev.branch] || '')
+    ? UNIVERSAL_WINDOWS_OFFICE_TRANSLATION[ev.branch]
     : state.currentBrand === 'patio-enclosures'
-    ? (PATIO_BRANCH_CODE_TO_EXHIBITDAY_OFFICE[(ev.branch || '').split(' - ')[0].trim()] || '')
-    : (ev.branch || '');
-  addField('branch', branchValueForSync);
+    ? PATIO_BRANCH_CODE_TO_EXHIBITDAY_OFFICE[extractBranchCode(ev.branch)]
+    : (ev.branch || undefined);
+  if(branchValueForSync) addField('branch', branchValueForSync);
   addField('contactName', ev.contactName || '');
   addField('contactPhone', ev.contactPhone || '');
   addField('contactEmail', ev.contactEmail || '');
@@ -4222,6 +4242,7 @@ function downloadEventsCSV(eventsToExport, filenameSuffix){
     ['Actual Phone Cost', ev=>ev.actualPhoneCost],
     ['Actual Mileage Cost', ev=>ev.actualMileageCost],
     ['Created', ev=>ev.createdAt ? new Date(ev.createdAt).toLocaleDateString() : ''],
+    ['Created By', ev=>ev.createdBy || ''],
     ['Submitted', ev=>ev.submittedAt ? new Date(ev.submittedAt).toLocaleDateString() : '']
   ];
   const header = columns.map(c=>csvField(c[0])).join(',');
@@ -5603,6 +5624,7 @@ function renderEventDetail(ev){
   <div class="event-detail">
     ${isLegacyImportEvent(ev) ? `<div class="hint" style="background:#EDE7F6;color:#6A4C93;padding:8px 12px;border-radius:6px;margin-bottom:14px;font-weight:600;">🗂️ This event came from the original bulk import and hasn't necessarily been reviewed for accuracy — double-check the details, including status, before relying on them.</div>` : ''}
     ${ev.onMasterList ? `<div class="hint" style="background:var(--green-soft);color:var(--green);padding:8px 12px;border-radius:6px;margin-bottom:14px;font-weight:600;">📑 This event matched an entry (by name) in the most recently uploaded master list${ev.masterListCheckedAt ? ' — checked '+new Date(ev.masterListCheckedAt).toLocaleDateString() : ''}.</div>` : ''}
+    ${ev.createdAt ? `<div class="hint" style="margin:-4px 0 14px 2px;">Added ${new Date(ev.createdAt).toLocaleDateString()}${ev.createdBy ? ' by '+escapeHtml(ev.createdBy) : ''}</div>` : ''}
     <div class="detail-grid">
       <div class="detail-section-label">Event Details</div>
       ${item('Region', val(region))}

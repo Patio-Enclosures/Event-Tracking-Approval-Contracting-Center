@@ -129,28 +129,6 @@
     padding:1px 5px;
     border-radius:4px;
   }
-  .name-banner{
-    display:flex;
-    align-items:center;
-    gap:12px;
-    flex-wrap:wrap;
-    background:var(--accent-soft);
-    border-bottom:1px solid var(--accent);
-    padding:10px 28px;
-    font-family:var(--font-body);
-    font-size:13px;
-    color:var(--accent-dark);
-  }
-  .name-banner input{
-    font-family:var(--font-body);
-    font-size:13px;
-    padding:6px 10px;
-    border:1px solid var(--accent);
-    border-radius:6px;
-    background:var(--surface);
-    color:var(--ink);
-    max-width:200px;
-  }
   .tab-strip{
     display:flex;
     gap:4px;
@@ -397,6 +375,17 @@
     border-bottom:1px solid var(--bg);
   }
   .region-card-branch-row:last-child{ border-bottom:none; }
+
+  .contract-file-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:6px 10px;
+    font-size:13px;
+    background:var(--bg);
+    border-radius:6px;
+    margin-top:6px;
+  }
 
   .overview-section-title{
     font-family:var(--font-body);
@@ -1316,7 +1305,7 @@ const EVENTS_COLLECTION = 'dashboardEvents';
 // Personal, per-user values (currently just the display name) are kept in this browser's
 // localStorage rather than round-tripped to Firestore -- simpler, and perfectly fine here since
 // this page (unlike the Claude.ai version) is a normal, unsandboxed browser page.
-const FB_PERSONAL_KEYS = new Set(['user-display-name']);
+const FB_PERSONAL_KEYS = new Set([]); // no personal (localStorage-routed) keys currently in use
 
 let _fbApp = null;
 function fbApp(){
@@ -1632,7 +1621,6 @@ let state = {
   teamsWebhookStatus:'',
   teamsAlertName:'Event Tracking, Approval & Contracting Center',
   userName:'',
-  userNameDraft:'',
   activityLog:[],
   activityFilterUser:'',
   activityFilterDateFrom:'',
@@ -1733,9 +1721,15 @@ function emptyDraft(regionIdx){
     boothSize:'',
     boothSizeOther:'',
     boothLocation:'',
+    boothNumber:'',
+    tags:'',
     contractFileName:'',
     contractFileType:'',
     contractFileUrl:'',    // Firebase Storage download URL -- the file itself lives in Storage, not Firestore
+    // Legacy single-file fields above are kept only so older events (saved before multi-file
+    // support existed) keep reading correctly via getContractFiles() below -- every new upload
+    // goes into this array instead, regardless of how many files there are.
+    contractFiles:[],
     paymentDueDate:'',
     paymentMethod:'',            // 'credit_card' | 'pay_at_gate' | 'other'
     creditCardLink:'',           // required only if paymentMethod === 'credit_card'
@@ -2134,7 +2128,7 @@ function getMissingApprovalFields(ev){
   if(blank(ev.organizer)) missing.push('Event Organizer Company Name');
   if(blank(ev.venueName)) missing.push('Venue Name');
   if(!hasVenueAddress(ev)) missing.push('Venue Address (Street, City, State)');
-  if(blank(ev.registrationLink) && blank(ev.contractFileName)){
+  if(blank(ev.registrationLink) && getContractFiles(ev).length === 0){
     missing.push('Show Registration Link or Contract Document Upload (at least one required)');
   }
   if(blank(ev.paymentDueDate)) missing.push('Payment Due Date');
@@ -2520,15 +2514,6 @@ async function loadData(){
   }
 
   try{
-    const userNameRes = await window.storage.get('user-display-name', false);
-    if(userNameRes && userNameRes.value){
-      state.userName = userNameRes.value;
-    }
-  }catch(e){
-    // no name saved yet for this person
-  }
-
-  try{
     const logRes = await window.storage.get('activity-log', true);
     if(logRes && logRes.value){
       state.activityLog = JSON.parse(logRes.value) || [];
@@ -2711,17 +2696,11 @@ async function persistActivityLog(){
   }
 }
 
-async function saveUserName(name){
-  state.userName = name.trim();
-  try{
-    await window.storage.set('user-display-name', state.userName, false);
-  }catch(e){
-    console.error('Could not save display name', e);
-  }
-}
-
 // Records one entry in the shared, dashboard-wide activity feed, and (when an eventId is given)
-// mirrors a lighter version onto that event's own history for its detail-view timeline.
+// mirrors a lighter version onto that event's own history for its detail-view timeline -- this
+// second part is saved to Firestore explicitly (not just held in memory), confirmed 8/13/2026
+// that it previously wasn't, silently losing an event's own history the next time anyone
+// reloaded the page after the session that generated it.
 function logActivity(eventId, eventName, action, details){
   const entry = {
     ts: Date.now(),
@@ -2732,7 +2711,7 @@ function logActivity(eventId, eventName, action, details){
     details: details || ''
   };
   state.activityLog.unshift(entry);
-  if(state.activityLog.length > 500) state.activityLog.length = 500;
+  if(state.activityLog.length > 2000) state.activityLog.length = 2000;
   persistActivityLog();
 
   if(eventId){
@@ -2741,6 +2720,9 @@ function logActivity(eventId, eventName, action, details){
       if(!ev.history) ev.history = [];
       ev.history.unshift({ ts: entry.ts, user: entry.user, action, details: entry.details });
       if(ev.history.length > 100) ev.history.length = 100;
+      // Fire-and-forget, matching persistActivityLog()'s own pattern just above -- logActivity
+      // stays synchronous for its many callers, while this save resolves independently.
+      persistEventChangeAtomic(ev, false).catch(e => console.error('Could not persist history update', e));
     }
   }
 }
@@ -2762,7 +2744,7 @@ function humanizeFieldKey(key){
 
 const DIFF_IGNORE_KEYS = new Set([
   'id','history','createdAt','createdBy','submittedAt','deniedAt','deniedBySupervisor','deniedReason','notPursuingAt',
-  'contractFileUrl','contractFileType','status','needsReconfirmation',
+  'contractFileUrl','contractFileType','contractFiles','status','needsReconfirmation',
   'importBatchId','importFileName','importedAt','importedBy'
 ]);
 
@@ -2906,7 +2888,7 @@ const POST_EVENT_EVAL_FIELDS = [
   'eventActivationStatus','numberOfLeads','roiNotes','overallEventRating','issuesEncountered',
   'whatWentWell','notesForNextYear','boothPhotoFileName','boothPhotoFileType','boothPhotoFileUrl',
   'whoWorkedEvent','totalAppointments','leadsPerHour','totalCallToSets','staffComplianceRating',
-  'actualLaborCost','actualPerDiem','actualPhoneCost','actualMileageCost'
+  'actualLaborCost','actualPerDiem','actualPhoneCost','actualMileageCost','actualMiscExpenses'
 ];
 function openPostEventEvalPanel(id){
   const ev = state.events.find(e=>e.id===id);
@@ -3187,6 +3169,7 @@ async function duplicateEventNextYear(id){
   copy.contractFileName = '';
   copy.contractFileType = '';
   copy.contractFileUrl = '';
+  copy.contractFiles = [];
   copy.history = [];
   // A duplicated event is, by definition, a renewal of a show that already ran -- mark it as
   // such so the pre-approval checklist requires a Historical Show Code before it can move
@@ -3373,7 +3356,7 @@ async function submitContract(id){
   if(!isAuthorizedApprover()){
     alert(state.userName
       ? `"${state.userName}" isn't on the list of authorized approvers, so this event can't be submitted for contract processing. Check with whoever manages the approver list in Settings.`
-      : 'Only authorized approvers can submit for contract processing. Set your name first (top of the page), then check with whoever manages the approver list.');
+      : 'Only authorized approvers can submit for contract processing, and you need to be signed in for that check to work.');
     return;
   }
   const before = Object.assign({}, ev);
@@ -3507,7 +3490,7 @@ function generateApprovalPDF(ev){
   addRow('Submission Type', ev.submissionType==='new'?'New Show':ev.submissionType==='renewal'?'Show Renewal':'');
   if(ev.submissionType==='renewal') addRow('Historical Show Code', ev.historicalShowCode);
   addRow('Show Registration Link', ev.registrationLink);
-  addRow('Contract Document', ev.contractFileName ? `${ev.contractFileName} (attached to approval email)` : '');
+  addRow('Contract Document', (() => { const names = getContractFiles(ev).map(f=>f.name); return names.length ? `${names.join(', ')} (attached to approval email)` : ''; })());
 
   addSectionHeader('Payment Information');
   addRow('Due Date', ev.paymentDueDate);
@@ -3636,7 +3619,7 @@ function downloadEventPDF(ev){
   addRow('Submission Type', ev.submissionType==='new'?'New Show':ev.submissionType==='renewal'?'Show Renewal':'');
   if(ev.submissionType==='renewal') addRow('Historical Show Code', ev.historicalShowCode);
   addRow('Show Registration Link', ev.registrationLink);
-  addRow('Contract Document', ev.contractFileName || '');
+  addRow('Contract Document', getContractFiles(ev).map(f=>f.name).join(', '));
 
   addSectionHeader('Payment Information');
   addRow('Due Date', ev.paymentDueDate);
@@ -3704,9 +3687,10 @@ function buildFullEventTextSummary(ev){
     : ev.paymentMethod==='phone_payment' ? 'Phone Payment'
     : ev.paymentMethod==='check' ? 'Check (not preferred)'
     : ev.paymentMethod==='other' ? 'Other' : '—';
-  const hasAttachment = !!(ev.contractFileName && ev.contractFileUrl);
+  const contractFilesForSummary = getContractFiles(ev);
+  const hasAttachment = contractFilesForSummary.length > 0;
   const attachmentNote = hasAttachment
-    ? `${ev.contractFileName} (opened in a new tab — save it from there and attach it before sending)`
+    ? `${contractFilesForSummary.map(f=>f.name).join(', ')} (opened in a new tab — save it from there and attach it before sending)`
     : '—';
 
   const lines = [
@@ -3770,10 +3754,11 @@ function buildFullEventTextSummary(ev){
 }
 
 function generateApprovalEmail(ev){
-  const hasAttachment = !!(ev.contractFileName && ev.contractFileUrl);
+  const contractFiles = getContractFiles(ev);
+  const hasAttachment = contractFiles.length > 0;
   if(hasAttachment){
-    downloadContractFile(ev);
-    requestAttachmentConfirmation([ev.contractFileName], () => fireApprovalEmail(ev));
+    downloadContractFiles(ev);
+    requestAttachmentConfirmation(contractFiles.map(f=>f.name), () => fireApprovalEmail(ev));
     return;
   }
   fireApprovalEmail(ev);
@@ -3929,7 +3914,10 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     registrationLink: 'custom_267574',
     registrationUsername: 'custom_267575',
     registrationPassword: 'custom_267576',
-    boothLocation: 'custom_251294'
+    boothLocation: 'custom_251294',
+    // "Event Code" under Event Information, confirmed present in this brand's original 41-field
+    // discovery (7/28/2026) but never wired up until now -- wasn't requested at the time.
+    eventCode: 'custom_123531'
   },
   // Discovered 7/28/2026 via Settings -> List Custom Field Names.
   // eventActivationStatus stays null -- not present anywhere in this workspace's 39 custom
@@ -3990,7 +3978,10 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     totalAppointments: 'custom_251292',
     leadsPerHour: 'custom_251258',
     totalCallToSets: 'custom_251293',
-    staffComplianceRating: 'custom_251296'
+    staffComplianceRating: 'custom_251296',
+    // "Event Code" under Event Information, confirmed present in this brand's original
+    // discovery (7/28/2026) but never wired up until now -- wasn't requested at the time.
+    eventCode: 'custom_123531'
   },
   // TODO: run Settings -> List Custom Field Names while signed into this brand, then fill these in.
   'leafguard': null
@@ -4056,6 +4047,10 @@ function buildExhibitDaySyncPayload(ev){
   addField('registrationUsername', ev.registrationUsername || '');
   addField('registrationPassword', ev.registrationPassword || '');
   addField('boothLocation', ev.boothLocation || '');
+  // "Event Code" is a plain text field in Exhibit Day (not a strict dropdown like Branch/Payment
+  // Type), so an empty string here is safe -- unlike those, this doesn't need to be skipped when
+  // there's nothing to send. Only meaningful for renewals, but harmless to send blank otherwise.
+  addField('eventCode', ev.historicalShowCode || '');
 
   // Confirmed 7/28/2026 via a raw Events API response: these three are standard, built-in
   // Exhibit Day fields present in every workspace -- not custom fields -- so they're sent the
@@ -4083,14 +4078,23 @@ function buildExhibitDaySyncPayload(ev){
     budget_travel: mileageDollars(ev) + hotelDollars(ev) + perDiemDollars(ev),
     budget_misc_expenses: num(ev.miscCosts),
     // Actual costs, entered on the Post-Event Evaluation (not the pre-event Financials budget
-    // estimates above) -- Per Diem, Phone, and Mileage all land together under Exhibit Day's
-    // Misc. Expenses and Credits, confirmed 8/4/2026.
-    cost_misc_expenses: num(ev.actualPerDiem) + num(ev.actualPhoneCost) + num(ev.actualMileageCost),
+    // estimates above) -- Per Diem, Phone, Mileage, and Additional Misc. Expenses all land
+    // together under Exhibit Day's Misc. Expenses and Credits, confirmed 8/4/2026.
+    cost_misc_expenses: num(ev.actualPerDiem) + num(ev.actualPhoneCost) + num(ev.actualMileageCost) + num(ev.actualMiscExpenses),
     budget_attendee_registrations: laborDollars(ev),
     // Confirmed 8/4/2026: Exhibit Day's "Staff" tab is internally named attendee_registrations
     // -- cost_ is the actual-spend counterpart to the budget_ estimate directly above.
     cost_attendee_registrations: num(ev.actualLaborCost),
     booth_size: boothSizeStandard,
+    // Confirmed 8/13/2026 via a raw Events API response: booth_number is a standard, built-in
+    // field (same category as booth_size, roi_notes, roi_num_leads below) -- not a custom field,
+    // which is why it never showed up in any custom-fields discovery.
+    booth_number: ev.boothNumber || '',
+    // Confirmed 8/13/2026: tags is a standard array field, not a custom one. The dashboard's own
+    // Tags field is a single comma-separated text box, so this splits it into the array Exhibit
+    // Day actually expects -- trimming whitespace and dropping any empty entries from things
+    // like a trailing comma.
+    tags: (ev.tags || '').split(',').map(t => t.trim()).filter(Boolean),
     roi_notes: ev.roiNotes || '',
     roi_num_leads: num(ev.numberOfLeads),
     custom_fields
@@ -4125,14 +4129,15 @@ function generateContractingEmail(ev, afterFired){
     fireContractingEmail(ev, to);
     if(afterFired) afterFired();
   };
-  const hasAttachment = !!(ev.contractFileName && ev.contractFileUrl);
+  const hasAttachment = getContractFiles(ev).length > 0;
   if(hasAttachment){
     // The confirmation modal's own "Continue" click is a fresh user gesture, separate from this
     // one, so firing the mailto from there doesn't have the same risk of being blocked -- both
     // files can download right away, matching what the confirmation text describes.
-    downloadContractFile(ev);
+    const contractFilesForEmail = getContractFiles(ev);
+    downloadContractFiles(ev);
     setTimeout(() => downloadEventPDF(ev), 150);
-    requestAttachmentConfirmation([ev.contractFileName, 'the summary PDF'], fire);
+    requestAttachmentConfirmation([...contractFilesForEmail.map(f=>f.name), 'the summary PDF'], fire);
     return;
   }
   // No attachment: fire the email FIRST, before the PDF download, and put a small delay before
@@ -4161,23 +4166,45 @@ function fireContractingEmail(ev, to){
   logActivity(ev.id, ev.eventName, 'Emailed to contracting', to);
 }
 
-function downloadContractFile(ev){
-  if(!(ev.contractFileName && ev.contractFileUrl)) return;
+function downloadOneContractFile(file){
   // Uses a real download instead of window.open(url, '_blank') -- that approach opens a new tab
   // and typically switches the browser's focus to it, pulling the person away from the
   // dashboard. A programmatic download link fetches the file in the background instead, so the
   // dashboard stays the active tab the whole time.
   const link = document.createElement('a');
-  link.href = ev.contractFileUrl;
-  link.download = ev.contractFileName;
+  link.href = file.url;
+  link.download = file.name;
   link.rel = 'noopener';
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
 }
 
+function downloadContractFiles(ev){
+  const files = getContractFiles(ev);
+  // Staggered, same reasoning as the PDF-download delay fixed earlier -- browsers can be
+  // unreliable about multiple downloads landing in the exact same synchronous tick, so each
+  // one after the first gets a small, increasing delay rather than firing all at once.
+  files.forEach((file, i) => {
+    if(i === 0) downloadOneContractFile(file);
+    else setTimeout(() => downloadOneContractFile(file), i * 150);
+  });
+}
+
 // Escapes a single CSV field: wraps in quotes and doubles up any internal quotes whenever the
 // value contains a comma, quote, or newline that would otherwise break the CSV structure.
+// Normalizes contract file access across old events (saved before multi-file support existed,
+// with a single flat contractFileName/Url/Type) and new ones (contractFiles array). Every place
+// that reads an event's contract documents should go through this rather than touching the
+// legacy fields directly, so both kinds of events display and export identically.
+function getContractFiles(ev){
+  if(ev.contractFiles && ev.contractFiles.length > 0) return ev.contractFiles;
+  if(ev.contractFileName && ev.contractFileUrl){
+    return [{ name: ev.contractFileName, url: ev.contractFileUrl, type: ev.contractFileType || '' }];
+  }
+  return [];
+}
+
 function csvField(v){
   if(v===undefined || v===null) return '';
   const s = String(v);
@@ -4222,6 +4249,8 @@ function downloadEventsCSV(eventsToExport, filenameSuffix){
     ['Registration Password', ev=>ev.registrationPassword],
     ['Booth Size', ev=>ev.boothSize==='other' ? ev.boothSizeOther : ev.boothSize],
     ['Booth Location', ev=>ev.boothLocation],
+    ['Booth Number', ev=>ev.boothNumber],
+    ['Tags', ev=>ev.tags],
     ['Not Pursuing Reason', ev=>ev.notPursuingReason],
     ['Research Notes', ev=>ev.notes],
     ['Final Notes', ev=>ev.finalNotes],
@@ -4241,6 +4270,7 @@ function downloadEventsCSV(eventsToExport, filenameSuffix){
     ['Actual Per Diem', ev=>ev.actualPerDiem],
     ['Actual Phone Cost', ev=>ev.actualPhoneCost],
     ['Actual Mileage Cost', ev=>ev.actualMileageCost],
+    ['Additional Misc. Expenses', ev=>ev.actualMiscExpenses],
     ['Created', ev=>ev.createdAt ? new Date(ev.createdAt).toLocaleDateString() : ''],
     ['Created By', ev=>ev.createdBy || ''],
     ['Submitted', ev=>ev.submittedAt ? new Date(ev.submittedAt).toLocaleDateString() : '']
@@ -4355,6 +4385,8 @@ const CSV_IMPORT_COLUMNS = {
     else if(clean){ ev.boothSize = 'other'; ev.boothSizeOther = clean; }
   },
   'booth location': (ev,v)=>{ ev.boothLocation = v; },
+  'booth number': (ev,v)=>{ ev.boothNumber = v; },
+  'tags': (ev,v)=>{ ev.tags = v; },
   'not pursuing reason': (ev,v)=>{ ev.notPursuingReason = v; },
   'research notes': (ev,v)=>{ ev.notes = v; },
   'final notes': (ev,v)=>{ ev.finalNotes = v; },
@@ -4373,7 +4405,8 @@ const CSV_IMPORT_COLUMNS = {
   'actual labor cost': (ev,v)=>{ ev.actualLaborCost = v; },
   'actual per diem': (ev,v)=>{ ev.actualPerDiem = v; },
   'actual phone cost': (ev,v)=>{ ev.actualPhoneCost = v; },
-  'actual mileage cost': (ev,v)=>{ ev.actualMileageCost = v; }
+  'actual mileage cost': (ev,v)=>{ ev.actualMileageCost = v; },
+  'additional misc. expenses': (ev,v)=>{ ev.actualMiscExpenses = v; }
 };
 
 // Parses CSV text and returns { events, skipped } -- new event drafts ready to add to
@@ -4879,13 +4912,6 @@ function render(){
     ${!FIREBASE_CONFIGURED ? `
     <div class="sp-warning-banner">
       ⚠ Firebase isn't configured yet — saving and loading data will not work. Open this file in a text editor, find <code>FIREBASE_CONFIG</code> near the top of the script, and paste in your real Firebase project values (see the setup guide).
-    </div>` : ''}
-
-    ${!state.userName ? `
-    <div class="name-banner">
-      <span>👋 What should we call you? Actions you take will be logged under this name in the activity history.</span>
-      <input type="text" id="userNameInput" placeholder="Your name" value="${escapeHtml(state.userNameDraft)}"/>
-      <button class="btn btn-primary btn-sm" id="saveUserNameBtn">Save</button>
     </div>` : ''}
 
     <div class="main">
@@ -5568,7 +5594,7 @@ function renderEventDetail(ev){
     const authorized = isAuthorizedApprover();
     if(missing.length===0){
       decisionButtons = `
-        <div class="decision-note">Approved — a PDF summary was downloaded. Email and Teams notification are optional, below. Ready to process contract.${!authorized ? ` <span style="color:var(--red);">Only authorized approvers can submit for contract processing — ${state.userName ? `"${escapeHtml(state.userName)}" isn't on that list` : 'set your name first'}.</span>` : ''}</div>
+        <div class="decision-note">Approved — a PDF summary was downloaded. Email and Teams notification are optional, below. Ready to process contract.${!authorized ? ` <span style="color:var(--red);">Only authorized approvers can submit for contract processing — ${state.userName ? `"${escapeHtml(state.userName)}" isn't on that list` : 'you need to be signed in'}.</span>` : ''}</div>
         <div class="decision-bar-actions">
           <button class="btn btn-outline btn-sm" data-research="${ev.id}">Return to Research</button>
           <button class="btn btn-outline btn-sm" data-regen="${ev.id}">Download PDF Again</button>
@@ -5662,9 +5688,12 @@ function renderEventDetail(ev){
       ${item('Submission Type', val(ev.submissionType==='new'?'New Show':ev.submissionType==='renewal'?'Show Renewal':''), isEmptyV(ev.submissionType))}
       ${ev.submissionType==='renewal' ? item('Historical Show Code', val(ev.historicalShowCode), isEmptyV(ev.historicalShowCode)) : ''}
       ${item('Show Registration Link', val(ev.registrationLink), isEmptyV(ev.registrationLink))}
-      ${ev.contractFileName
-          ? `<div class="detail-item"><span class="detail-label">Contract Document</span><span class="detail-value"><a href="${escapeHtml(ev.contractFileUrl)}" target="_blank" rel="noopener" style="color:var(--accent-dark);text-decoration:underline;">${escapeHtml(ev.contractFileName)}</a></span></div>`
-          : item('Contract Document', val(''), true)}
+      ${(() => {
+        const files = getContractFiles(ev);
+        return files.length > 0
+          ? `<div class="detail-item"><span class="detail-label">Contract Document${files.length===1?'':'s'}</span><span class="detail-value">${files.map(f=>`<a href="${escapeHtml(f.url)}" target="_blank" rel="noopener" style="color:var(--accent-dark);text-decoration:underline;display:block;">${escapeHtml(f.name)}</a>`).join('')}</span></div>`
+          : item('Contract Document', val(''), true);
+      })()}
       ${item('Payment Due Date', val(ev.paymentDueDate), isEmptyV(ev.paymentDueDate))}
       ${item('Payment Method', val(ev.paymentMethod==='credit_card'?'Credit Card':ev.paymentMethod==='pay_at_gate'?'Pay at the Gate':ev.paymentMethod==='phone_payment'?'Phone Payment':ev.paymentMethod==='check'?'Check (not preferred)':ev.paymentMethod==='other'?'Other':''), isEmptyV(ev.paymentMethod))}
       ${ev.paymentMethod==='credit_card' ? item('Credit Card Payment Link', val(ev.creditCardLink), isEmptyV(ev.creditCardLink)) : ''}
@@ -5887,6 +5916,10 @@ function renderPostEventEvalPanel(){
           <input id="pe_actualMileageCost" type="number" step="0.01" value="${escapeHtml(d.actualMileageCost)}"/>
         </div>
       </div>
+      <div class="field">
+        <label>Additional Misc. Expenses</label>
+        <input id="pe_actualMiscExpenses" type="number" step="0.01" value="${escapeHtml(d.actualMiscExpenses)}"/>
+      </div>
     </div>
   </div>
   <div class="panel-footer">
@@ -6048,12 +6081,12 @@ function renderSettingsPanel(){
 
     <div class="field-group">
       <div class="field-group-title">Approval Access Control</div>
-      <div class="hint" style="margin-bottom:10px;">Restrict who can click "Submit for Contract Processing" to specific people, by name. This is a workflow guardrail, not a hard security boundary — it checks against whatever display name is on the signed-in account. Leave this empty to let anyone submit (the default).</div>
+      <div class="hint" style="margin-bottom:10px;">Restrict who can click "Submit for Contract Processing" to specific people, by email. This is a workflow guardrail, not a hard security boundary — it checks against the signed-in account's email address. Leave this empty to let anyone submit (the default).</div>
       <div class="field">
-        <label>Authorized Approvers (one name per line)</label>
-        <textarea id="f_authorizedApprovers" rows="4" placeholder="Jane Smith&#10;John Doe">${escapeHtml((state.authorizedApprovers||[]).join('\n'))}</textarea>
+        <label>Authorized Approvers (one email per line)</label>
+        <textarea id="f_authorizedApprovers" rows="4" placeholder="jane.doe@greatdayimprovements.com&#10;john.smith@greatdayimprovements.com">${escapeHtml((state.authorizedApprovers||[]).join('\n'))}</textarea>
       </div>
-      <div class="hint" style="margin-top:6px;">Matched case-insensitively against the signed-in account's name, or the part of their email before the @ if no display name is set on their Firebase account (e.g. "jane.doe" for jane.doe@company.com).</div>
+      <div class="hint" style="margin-top:6px;">Matched case-insensitively against the signed-in account's email address.</div>
       ${state.approversStatus ? `<div class="hint" style="margin-top:8px;color:var(--accent-dark);font-weight:600;">${escapeHtml(state.approversStatus)}</div>` : ''}
       <div style="margin-top:10px;">
         <button class="btn btn-primary btn-sm" id="saveApproversBtn">Save Approvers</button>
@@ -6282,14 +6315,19 @@ function renderPanel(){
         </div>
       </div>
       <div class="field">
-        <label>Contract Document${reconfirmMark(d)}</label>
-        <input id="f_contractFile" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"/>
-        <div class="hint" id="contractFileStatus">
-          ${d.contractFileName
-            ? `Attached: <strong>${escapeHtml(d.contractFileName)}</strong> — <a href="#" id="removeContractFile" style="color:var(--red);">remove</a>`
-            : 'Upload the signed contract — it will be attached to the approval email. PDF, Word, or image, up to 10MB.'}
+        <label>Contract Documents${reconfirmMark(d)}</label>
+        <input id="f_contractFile" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" multiple/>
+        <div class="hint">Upload signed contracts — they'll be attached to the approval email. PDF, Word, or image, up to 10MB each. Select multiple at once, or use this again to add more later.</div>
+        <div id="contractFileStatus"></div>
+        <div id="contractFilesList">
+          ${(d.contractFiles||[]).map((f, i) => `
+            <div class="contract-file-row">
+              <span>📎 ${escapeHtml(f.name)}</span>
+              <a href="#" data-remove-contract-file="${i}" style="color:var(--red);">remove</a>
+            </div>
+          `).join('')}
         </div>
-        <div id="regOrContractNote">${(d.registrationLink||d.contractFileName) ? `<div class="field-note-ok">✓ Requirement satisfied</div>` : ''}</div>
+        <div id="regOrContractNote">${(d.registrationLink||(d.contractFiles&&d.contractFiles.length>0)) ? `<div class="field-note-ok">✓ Requirement satisfied</div>` : ''}</div>
       </div>
       <div class="field-row">
         <div class="field">
@@ -6308,6 +6346,17 @@ function renderPanel(){
         <div class="field">
           <label>Booth Location${reconfirmMark(d)}</label>
           <input id="f_boothLocation" value="${escapeHtml(d.boothLocation)}" placeholder="e.g. Aisle 4, Booth 12"/>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Booth Number${reconfirmMark(d)}</label>
+          <input id="f_boothNumber" value="${escapeHtml(d.boothNumber)}" placeholder="e.g. 412"/>
+        </div>
+        <div class="field">
+          <label>Tags</label>
+          <input id="f_tags" value="${escapeHtml(d.tags)}" placeholder="e.g. outdoor, weekend, high-priority"/>
+          <div class="hint">Separate multiple tags with commas.</div>
         </div>
       </div>
 
@@ -6444,6 +6493,8 @@ function readDraftFromForm(){
   d.boothSize = g('f_boothSize').value;
   d.boothSizeOther = g('f_boothSizeOther').value;
   d.boothLocation = g('f_boothLocation').value;
+  d.boothNumber = g('f_boothNumber').value;
+  d.tags = g('f_tags').value;
   d.paymentDueDate = g('f_paymentDueDate').value;
   d.paymentMethod = g('f_paymentMethod').value;
   d.creditCardLink = g('f_creditCardLink') ? g('f_creditCardLink').value : d.creditCardLink;
@@ -6484,7 +6535,7 @@ function refreshLiveFormValidation(){
     venueState: val('f_venueState'),
     venueAddress: state.draft ? state.draft.venueAddress : '',
     registrationLink: val('f_registrationLink'),
-    contractFileName: state.draft ? state.draft.contractFileName : '',
+    contractFiles: state.draft ? (state.draft.contractFiles || []) : [],
     paymentDueDate: val('f_paymentDueDate'),
     paymentMethod: val('f_paymentMethod'),
     creditCardLink: val('f_creditCardLink'),
@@ -6522,7 +6573,7 @@ function refreshLiveFormValidation(){
   // 3. Either/or satisfied indicator
   const regNote = g('regOrContractNote');
   if(regNote){
-    regNote.innerHTML = (live.registrationLink || live.contractFileName)
+    regNote.innerHTML = (live.registrationLink || getContractFiles(live).length > 0)
       ? `<div class="field-note-ok">✓ Requirement satisfied</div>` : '';
   }
 
@@ -6786,26 +6837,6 @@ function attachHandlers(){
     filterDataSourceSelect.addEventListener('change', ()=>{
       state.filterDataSource = filterDataSourceSelect.value;
       render();
-    });
-  }
-
-  const userNameInput = document.getElementById('userNameInput');
-  const saveUserNameBtn = document.getElementById('saveUserNameBtn');
-  if(userNameInput){
-    userNameInput.addEventListener('input', ()=>{
-      state.userNameDraft = userNameInput.value;
-    });
-    userNameInput.addEventListener('keydown', (e)=>{
-      if(e.key === 'Enter' && userNameInput.value.trim()){
-        saveUserName(userNameInput.value).then(render);
-      }
-    });
-  }
-  if(saveUserNameBtn){
-    saveUserNameBtn.addEventListener('click', ()=>{
-      const val = userNameInput ? userNameInput.value.trim() : '';
-      if(!val){ alert('Please enter a name first.'); return; }
-      saveUserName(val).then(render);
     });
   }
 
@@ -7623,46 +7654,52 @@ function attachHandlers(){
   const contractFileStatusEl = document.getElementById('contractFileStatus');
   if(contractFileInput){
     contractFileInput.addEventListener('change', async ()=>{
-      const file = contractFileInput.files && contractFileInput.files[0];
-      if(!file) return;
-      if(file.size > MAX_ATTACHMENT_BYTES){
-        alert(`"${file.name}" is ${(file.size/1024/1024).toFixed(1)}MB, which is over the 10MB limit for an attached file. Please choose a smaller file, or compress it first.`);
+      const files = contractFileInput.files ? Array.from(contractFileInput.files) : [];
+      if(files.length === 0) return;
+      const oversized = files.filter(f => f.size > MAX_ATTACHMENT_BYTES);
+      if(oversized.length > 0){
+        alert(`${oversized.map(f=>`"${f.name}" is ${(f.size/1024/1024).toFixed(1)}MB`).join(', ')} — over the 10MB limit for an attached file. Please choose smaller files, or compress them first. None of the selected files were uploaded.`);
         contractFileInput.value = '';
         return;
       }
       readDraftFromForm(); // preserve any other in-progress field edits
-      if(contractFileStatusEl) contractFileStatusEl.innerHTML = `Uploading "${escapeHtml(file.name)}"\u2026`;
+      if(!state.draft.contractFiles) state.draft.contractFiles = [];
       contractFileInput.disabled = true;
-      try{
-        // A random path component keeps files from colliding, independent of whether this
-        // event has been saved yet (new events don't have a real id until Save is clicked).
-        const storagePath = `contracts/${uid()}-${file.name}`;
-        const storageRef = storageRefFn(fbStorage(), storagePath);
-        await uploadBytes(storageRef, file);
-        const url = await getDownloadURL(storageRef);
-        state.draft.contractFileName = file.name;
-        state.draft.contractFileType = file.type || 'application/octet-stream';
-        state.draft.contractFileUrl = url;
-      }catch(e){
-        console.error('Contract file upload failed', e);
-        alert('That file could not be uploaded -- likely a connection issue. Please try again.');
-        contractFileInput.value = '';
+      let failedCount = 0;
+      for(let i = 0; i < files.length; i++){
+        const file = files[i];
+        if(contractFileStatusEl) contractFileStatusEl.innerHTML = `Uploading "${escapeHtml(file.name)}" (${i+1} of ${files.length})\u2026`;
+        try{
+          // A random path component keeps files from colliding, independent of whether this
+          // event has been saved yet (new events don't have a real id until Save is clicked).
+          const storagePath = `contracts/${uid()}-${file.name}`;
+          const storageRef = storageRefFn(fbStorage(), storagePath);
+          await uploadBytes(storageRef, file);
+          const url = await getDownloadURL(storageRef);
+          state.draft.contractFiles.push({ name: file.name, url, type: file.type || 'application/octet-stream' });
+        }catch(e){
+          console.error('Contract file upload failed', file.name, e);
+          failedCount++;
+        }
       }
+      if(contractFileStatusEl) contractFileStatusEl.innerHTML = '';
+      if(failedCount > 0){
+        alert(`${failedCount} of ${files.length} file${files.length===1?'':'s'} could not be uploaded -- likely a connection issue. Please try the failed one${failedCount===1?'':'s'} again.`);
+      }
+      contractFileInput.value = '';
       contractFileInput.disabled = false;
       render();
     });
   }
-  const removeContractFileLink = document.getElementById('removeContractFile');
-  if(removeContractFileLink){
-    removeContractFileLink.addEventListener('click', (e)=>{
+  document.querySelectorAll('[data-remove-contract-file]').forEach(link=>{
+    link.addEventListener('click', (e)=>{
       e.preventDefault();
       readDraftFromForm();
-      state.draft.contractFileName = '';
-      state.draft.contractFileType = '';
-      state.draft.contractFileUrl = '';
+      const idx = parseInt(link.getAttribute('data-remove-contract-file'), 10);
+      if(state.draft.contractFiles) state.draft.contractFiles.splice(idx, 1);
       render();
     });
-  }
+  });
 
   // Post-Event Evaluation panel -- separate from the main form entirely, see openPostEventEvalPanel.
   document.querySelectorAll('[data-post-event-eval]').forEach(btn=>{
@@ -7709,6 +7746,7 @@ function attachHandlers(){
     d.actualPerDiem = g('pe_actualPerDiem').value;
     d.actualPhoneCost = g('pe_actualPhoneCost').value;
     d.actualMileageCost = g('pe_actualMileageCost').value;
+    d.actualMiscExpenses = g('pe_actualMiscExpenses').value;
     return true;
   };
 
@@ -7826,7 +7864,10 @@ if(FIREBASE_CONFIGURED){
     state.currentUser = user;
     state.signInLoading = false;
     if(user){
-      state.userName = user.displayName || (user.email ? user.email.split('@')[0] : 'Someone');
+      // Tracking/attribution now always uses the signed-in email directly -- no more asking
+      // people to type in a display name, and no more risk of that name being inconsistent
+      // (typos, nicknames, capitalization) across sessions.
+      state.userName = user.email || 'Someone';
       // Which brand's database this account should connect to is set server-side (a custom
       // claim assigned via the assignUserBrand Cloud Function, not anything adjustable from the
       // browser). Force a token refresh so a brand assigned moments ago is picked up correctly,

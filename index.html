@@ -1685,6 +1685,7 @@ function emptyDraft(regionIdx){
     region: regionIdx,
     branch:'',
     eventName:'',
+    subBrand:'',
     zip:'',
     startDate:'',
     endDate:'',
@@ -2816,7 +2817,12 @@ function openAddPanel(){
   render();
 }
 function openEditPanel(ev){
-  if(ev.status===STATUS.SUBMITTED){
+  // Universal Windows/Bath Authority runs approval and contracting as one combined step -- since
+  // there's no later stage where an approver would normally get a chance to fix something, their
+  // approvers keep edit access even after Submitted for Contract. Every other brand stays locked
+  // at this stage, same as before.
+  const canEditAfterSubmission = state.currentBrand === 'universal-windows-bath-authority' && isAuthorizedApprover();
+  if(ev.status===STATUS.SUBMITTED && !canEditAfterSubmission){
     alert('This event has already been submitted for contract processing and can no longer be edited.');
     return;
   }
@@ -3019,9 +3025,12 @@ async function saveDraft(){
   // Universal Windows calling it "Branch") -- for those, the tab itself already represents
   // the branch, and leaving the separate Branch field blank is expected, not an error.
   const usesCustomTerminology = state.regionLabelSingular !== 'Region';
-  const requiredFields = usesCustomTerminology
+  let requiredFields = usesCustomTerminology
     ? REQUIRED_BASE_FIELDS.filter(([key]) => key !== 'branch')
     : REQUIRED_BASE_FIELDS;
+  if(state.currentBrand === 'universal-windows-bath-authority'){
+    requiredFields = requiredFields.concat([['subBrand', 'Submission For']]);
+  }
   const missing = requiredFields
     .filter(([key])=> !d[key] || !String(d[key]).trim())
     .map(([, label])=>label);
@@ -3993,10 +4002,15 @@ function buildExhibitDaySyncPayload(ev){
   // Free | ACH. This dashboard's own payment method options don't map 1:1, so anything without
   // a clean match either uses the closest real equivalent or is left blank (an empty value is
   // accepted as "not set"; an unrecognized word is rejected outright, which is what broke here).
+  // Exhibit Day's Payment Type field is a strict dropdown -- confirmed 7/29/2026 it only
+  // accepts: Cash/Expense | Check | Credit Card | Free | ACH. Whether an empty string is
+  // actually accepted as "not set" was never directly confirmed (only Branch/Office was tested
+  // for that specifically, and it rejects empty) -- so this skips the field entirely rather than
+  // assume, same as Branch does, when there's no clean mapping (Other, or nothing selected yet).
   const paymentMethodLabel = ev.paymentMethod==='credit_card' ? 'Credit Card'
     : ev.paymentMethod==='pay_at_gate' ? 'Cash/Expense'
     : ev.paymentMethod==='phone_payment' ? 'Credit Card'
-    : ev.paymentMethod==='check' ? 'Check' : '';
+    : ev.paymentMethod==='check' ? 'Check' : undefined;
   const paymentLink = ev.paymentMethod==='credit_card' ? ev.creditCardLink : '';
 
   // Venue Address has no custom field configured in Exhibit Day, so it's the only one still
@@ -4029,7 +4043,7 @@ function buildExhibitDaySyncPayload(ev){
   addField('contactName', ev.contactName || '');
   addField('contactPhone', ev.contactPhone || '');
   addField('contactEmail', ev.contactEmail || '');
-  addField('paymentType', paymentMethodLabel || '');
+  if(paymentMethodLabel) addField('paymentType', paymentMethodLabel);
   addField('paymentLink', paymentLink || '');
   addField('targetOpps', ev.forecastedOpps ? String(ev.forecastedOpps) : '');
   addField('eventActivationStatus', ev.eventActivationStatus || '');
@@ -4218,6 +4232,7 @@ function downloadEventsCSV(eventsToExport, filenameSuffix){
     ['Region', ev=>state.regionNames[ev.region]],
     ['Branch', ev=>ev.branch],
     ['Event Name', ev=>ev.eventName],
+    ['Submission For', ev=>ev.subBrand],
     ['Status', ev=>STATUS_LABEL[ev.status]],
     ['Start Date', ev=>ev.startDate],
     ['End Date', ev=>ev.endDate],
@@ -4353,6 +4368,7 @@ const CSV_IMPORT_COLUMNS = {
   'region': (ev,v)=>{ ev.region = regionIndexFromName(v); },
   'branch': (ev,v)=>{ ev.branch = v; },
   'event name': (ev,v)=>{ ev.eventName = v; },
+  'submission for': (ev,v)=>{ ev.subBrand = v; },
   'status': (ev,v)=>{ ev.status = statusKeyFromLabel(v); },
   'start date': (ev,v)=>{ ev.startDate = normalizeCsvDate(v); },
   'end date': (ev,v)=>{ ev.endDate = normalizeCsvDate(v); },
@@ -5641,8 +5657,10 @@ function renderEventDetail(ev){
         <button class="btn btn-outline btn-sm" data-redownload="${ev.id}">Download Summary Again</button>
         <button class="btn btn-outline btn-sm" data-email-contracting="${ev.id}">📧 Email for Contracting Again</button>
         <button class="btn btn-outline btn-sm" data-sync-exhibitday="${ev.id}">📊 ${ev.exhibitDaySyncedAt ? 'Re-sync' : 'Sync'} to Exhibit Day</button>
+        ${(state.currentBrand === 'universal-windows-bath-authority' && isAuthorizedApprover()) ? `<button class="btn btn-outline btn-sm" data-edit="${ev.id}">Edit</button>` : ''}
         ${isAuthorizedApprover() ? `<button class="btn btn-red btn-sm" data-notpursuing="${ev.id}">Mark as Not Pursuing</button>` : ''}
       </div>
+      ${(state.currentBrand === 'universal-windows-bath-authority' && isAuthorizedApprover()) ? `<div class="hint" style="margin-top:6px;">Since approval and contracting are combined for this brand, approvers can still correct details here if something was wrong at submission -- re-sync to Exhibit Day afterward if the correction affects synced data.</div>` : ''}
       ${isAuthorizedApprover() ? `<div class="hint" style="margin-top:6px;">If something falls through after submission (venue backs out, event's cancelled, etc.), use Mark as Not Pursuing rather than leaving this stuck here.</div>` : ''}`;
   }
 
@@ -5655,6 +5673,7 @@ function renderEventDetail(ev){
       <div class="detail-section-label">Event Details</div>
       ${item('Region', val(region))}
       ${item('Branch', val(ev.branch), isEmptyV(ev.branch))}
+      ${state.currentBrand === 'universal-windows-bath-authority' ? item('Submission For', val(ev.subBrand), isEmptyV(ev.subBrand)) : ''}
       ${item('Venue Name', val(ev.venueName), isEmptyV(ev.venueName))}
       ${item('Venue Address', val(venueAddressDisplay(ev)), !hasVenueAddress(ev))}
       ${item('Location Zip Code', val(ev.zip), isEmptyV(ev.zip))}
@@ -6135,6 +6154,15 @@ function renderPanel(){
         <input id="f_eventName" value="${escapeHtml(d.eventName)}" placeholder="e.g. Downtown Fall Festival"/>
         <div id="duplicateEventWarning">${renderDuplicateEventWarning(d.eventName, state.editingEventId)}</div>
       </div>
+      ${state.currentBrand === 'universal-windows-bath-authority' ? `
+      <div class="field">
+        <label>Submission For <span style="color:var(--red);">*</span></label>
+        <select id="f_subBrand">
+          <option value="" ${!d.subBrand?'selected':''}>Select…</option>
+          <option value="Universal Windows" ${d.subBrand==='Universal Windows'?'selected':''}>Universal Windows</option>
+          <option value="Bath Authority" ${d.subBrand==='Bath Authority'?'selected':''}>Bath Authority</option>
+        </select>
+      </div>` : ''}
       <div class="field-row">
         <div class="field">
           <label>${escapeHtml(state.regionLabelSingular)}</label>
@@ -6457,60 +6485,69 @@ function renderPanel(){
 function readDraftFromForm(){
   const d = state.draft;
   const g = id => document.getElementById(id);
-  d.region = parseInt(g('f_region').value, 10);
-  d.eventName = g('f_eventName').value;
-  d.branch = g('f_branch').value;
-  d.venueName = g('f_venueName').value;
-  d.venueStreet = g('f_venueStreet').value;
-  d.venueCity = g('f_venueCity').value;
-  d.venueState = g('f_venueState').value;
-  d.zip = g('f_zip').value;
-  d.forecastedOpps = g('f_forecastedOpps').value;
-  d.organizer = g('f_organizer').value;
-  d.website = g('f_website').value;
-  d.startDate = g('f_startDate').value;
-  d.endDate = g('f_endDate').value;
-  d.contractCost = g('f_contractCost').value;
-  d.miscCosts = g('f_miscCosts').value;
-  d.laborHours = g('f_laborHours').value;
-  d.travelDays = g('f_travelDays').value;
-  d.milesPerDay = g('f_milesPerDay').value;
-  d.hotelNights = g('f_hotelNights').value;
-  d.vehicleRentalDays = g('f_vehicleRentalDays') ? g('f_vehicleRentalDays').value : '';
-  d.contactName = g('f_contactName').value;
-  d.contactPhone = g('f_contactPhone').value;
-  d.contactEmail = g('f_contactEmail').value;
-  d.notes = g('f_notes').value;
+  // Every read goes through this rather than calling .value directly -- a single missing
+  // element used to be able to throw and silently stop every field after it from being read at
+  // all (confirmed 8/13/2026: this is how Payment Method and everything below it could end up
+  // never actually saved, with no visible error anywhere). val() falls back to the field's
+  // current value instead of throwing, so one missing element can never cascade into others.
+  const val = (id, fallback) => { const el = g(id); return el ? el.value : (fallback !== undefined ? fallback : ''); };
 
-  d.confirmedAcceptance = g('f_confirmedAcceptance').value;
-  d.supervisorEmail = g('f_supervisorEmail').value;
-  d.priorityLevel = g('f_priorityLevel').value;
-  d.submissionType = g('f_submissionType').value;
-  d.historicalShowCode = g('f_historicalShowCode') ? g('f_historicalShowCode').value : d.historicalShowCode;
-  d.registrationLink = g('f_registrationLink').value;
-  d.registrationUsername = g('f_registrationUsername').value;
-  d.registrationPassword = g('f_registrationPassword').value;
-  d.boothSize = g('f_boothSize').value;
-  d.boothSizeOther = g('f_boothSizeOther').value;
-  d.boothLocation = g('f_boothLocation').value;
-  d.boothNumber = g('f_boothNumber').value;
-  d.tags = g('f_tags').value;
-  d.paymentDueDate = g('f_paymentDueDate').value;
-  d.paymentMethod = g('f_paymentMethod').value;
-  d.creditCardLink = g('f_creditCardLink') ? g('f_creditCardLink').value : d.creditCardLink;
-  d.paymentPhoneNumber = g('f_paymentPhoneNumber') ? g('f_paymentPhoneNumber').value : d.paymentPhoneNumber;
-  d.paymentNotes = g('f_paymentNotes').value;
-  d.coiRequired = g('f_coiRequired').value;
-  d.coiCertificateHolder = g('f_coiCertificateHolder') ? g('f_coiCertificateHolder').value : d.coiCertificateHolder;
-  d.coiStreet = g('f_coiStreet') ? g('f_coiStreet').value : d.coiStreet;
-  d.coiCity = g('f_coiCity') ? g('f_coiCity').value : d.coiCity;
-  d.coiState = g('f_coiState') ? g('f_coiState').value : d.coiState;
-  d.coiZip = g('f_coiZip') ? g('f_coiZip').value : d.coiZip;
-  d.thirdPartyPayment = g('f_thirdPartyPayment').value;
-  d.thirdPartyName = g('f_thirdPartyName') ? g('f_thirdPartyName').value : d.thirdPartyName;
-  d.thirdPartyPhone = g('f_thirdPartyPhone') ? g('f_thirdPartyPhone').value : d.thirdPartyPhone;
-  d.thirdPartyPaymentInfo = g('f_thirdPartyPaymentInfo') ? g('f_thirdPartyPaymentInfo').value : d.thirdPartyPaymentInfo;
-  d.finalNotes = g('f_finalNotes').value;
+  d.region = parseInt(val('f_region', '0'), 10);
+  d.eventName = val('f_eventName', d.eventName);
+  const subBrandEl = g('f_subBrand');
+  if(subBrandEl) d.subBrand = subBrandEl.value;
+  d.branch = val('f_branch', d.branch);
+  d.venueName = val('f_venueName', d.venueName);
+  d.venueStreet = val('f_venueStreet', d.venueStreet);
+  d.venueCity = val('f_venueCity', d.venueCity);
+  d.venueState = val('f_venueState', d.venueState);
+  d.zip = val('f_zip', d.zip);
+  d.forecastedOpps = val('f_forecastedOpps', d.forecastedOpps);
+  d.organizer = val('f_organizer', d.organizer);
+  d.website = val('f_website', d.website);
+  d.startDate = val('f_startDate', d.startDate);
+  d.endDate = val('f_endDate', d.endDate);
+  d.contractCost = val('f_contractCost', d.contractCost);
+  d.miscCosts = val('f_miscCosts', d.miscCosts);
+  d.laborHours = val('f_laborHours', d.laborHours);
+  d.travelDays = val('f_travelDays', d.travelDays);
+  d.milesPerDay = val('f_milesPerDay', d.milesPerDay);
+  d.hotelNights = val('f_hotelNights', d.hotelNights);
+  d.vehicleRentalDays = val('f_vehicleRentalDays', d.vehicleRentalDays);
+  d.contactName = val('f_contactName', d.contactName);
+  d.contactPhone = val('f_contactPhone', d.contactPhone);
+  d.contactEmail = val('f_contactEmail', d.contactEmail);
+  d.notes = val('f_notes', d.notes);
+
+  d.confirmedAcceptance = val('f_confirmedAcceptance', d.confirmedAcceptance);
+  d.supervisorEmail = val('f_supervisorEmail', d.supervisorEmail);
+  d.priorityLevel = val('f_priorityLevel', d.priorityLevel);
+  d.submissionType = val('f_submissionType', d.submissionType);
+  d.historicalShowCode = val('f_historicalShowCode', d.historicalShowCode);
+  d.registrationLink = val('f_registrationLink', d.registrationLink);
+  d.registrationUsername = val('f_registrationUsername', d.registrationUsername);
+  d.registrationPassword = val('f_registrationPassword', d.registrationPassword);
+  d.boothSize = val('f_boothSize', d.boothSize);
+  d.boothSizeOther = val('f_boothSizeOther', d.boothSizeOther);
+  d.boothLocation = val('f_boothLocation', d.boothLocation);
+  d.boothNumber = val('f_boothNumber', d.boothNumber);
+  d.tags = val('f_tags', d.tags);
+  d.paymentDueDate = val('f_paymentDueDate', d.paymentDueDate);
+  d.paymentMethod = val('f_paymentMethod', d.paymentMethod);
+  d.creditCardLink = val('f_creditCardLink', d.creditCardLink);
+  d.paymentPhoneNumber = val('f_paymentPhoneNumber', d.paymentPhoneNumber);
+  d.paymentNotes = val('f_paymentNotes', d.paymentNotes);
+  d.coiRequired = val('f_coiRequired', d.coiRequired);
+  d.coiCertificateHolder = val('f_coiCertificateHolder', d.coiCertificateHolder);
+  d.coiStreet = val('f_coiStreet', d.coiStreet);
+  d.coiCity = val('f_coiCity', d.coiCity);
+  d.coiState = val('f_coiState', d.coiState);
+  d.coiZip = val('f_coiZip', d.coiZip);
+  d.thirdPartyPayment = val('f_thirdPartyPayment', d.thirdPartyPayment);
+  d.thirdPartyName = val('f_thirdPartyName', d.thirdPartyName);
+  d.thirdPartyPhone = val('f_thirdPartyPhone', d.thirdPartyPhone);
+  d.thirdPartyPaymentInfo = val('f_thirdPartyPaymentInfo', d.thirdPartyPaymentInfo);
+  d.finalNotes = val('f_finalNotes', d.finalNotes);
 }
 
 // Reads the current form field values directly from the DOM (not state.draft, so it works

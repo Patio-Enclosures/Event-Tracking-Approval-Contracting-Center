@@ -1735,6 +1735,11 @@ function emptyDraft(regionIdx){
     paymentMethod:'',            // 'credit_card' | 'pay_at_gate' | 'other'
     creditCardLink:'',           // required only if paymentMethod === 'credit_card'
     paymentPhoneNumber:'',       // required only if paymentMethod === 'phone_payment'
+    checkPayableTo:'',           // required only if paymentMethod === 'check'
+    checkMailingStreet:'',
+    checkMailingCity:'',
+    checkMailingState:'',
+    checkMailingZip:'',
     paymentNotes:'',
     coiRequired:'',              // 'yes' | 'no'
     coiCertificateHolder:'',     // who must be named on the certificate -- required if coiRequired === 'yes'
@@ -1806,9 +1811,18 @@ function coiAddressDisplay(ev){
   if(parts.length>0) return parts.join(', ');
   return ev.coiAddress || '';
 }
+function checkMailingAddressDisplay(ev){
+  const parts = [ev.checkMailingStreet, ev.checkMailingCity, [ev.checkMailingState, ev.checkMailingZip].filter(Boolean).join(' ')].filter(v=>v && String(v).trim());
+  return parts.join(', ');
+}
 function hasCoiAddress(ev){
   return !!(ev.coiStreet && ev.coiStreet.trim()) || !!(ev.coiCity && ev.coiCity.trim())
     || !!(ev.coiState && ev.coiState.trim()) || !!(ev.coiZip && ev.coiZip.trim()) || !!(ev.coiAddress && ev.coiAddress.trim());
+}
+
+function hasCheckMailingAddress(ev){
+  return !!(ev.checkMailingStreet && ev.checkMailingStreet.trim()) || !!(ev.checkMailingCity && ev.checkMailingCity.trim())
+    || !!(ev.checkMailingState && ev.checkMailingState.trim()) || !!(ev.checkMailingZip && ev.checkMailingZip.trim());
 }
 
 function moneyOrText(v){
@@ -2136,6 +2150,8 @@ function getMissingApprovalFields(ev){
   if(blank(ev.paymentMethod)) missing.push('Payment Method');
   if(ev.paymentMethod === 'credit_card' && blank(ev.creditCardLink)) missing.push('Credit Card Payment Link');
   if(ev.paymentMethod === 'phone_payment' && blank(ev.paymentPhoneNumber)) missing.push('Payment Phone Number');
+  if(ev.paymentMethod === 'check' && blank(ev.checkPayableTo)) missing.push('Check Payable To');
+  if(ev.paymentMethod === 'check' && !hasCheckMailingAddress(ev)) missing.push('Check Mailing Address');
   if(blank(ev.coiRequired)) missing.push('Certificate of Insurance required? (Yes/No)');
   if(ev.coiRequired === 'yes' && blank(ev.coiCertificateHolder)) missing.push('COI Certificate Holder Name');
   if(ev.coiRequired === 'yes' && !hasCoiAddress(ev)) missing.push('COI Certificate Holder Address');
@@ -3506,6 +3522,7 @@ function generateApprovalPDF(ev){
   addRow('Payment Method', ev.paymentMethod==='credit_card'?'Credit Card':ev.paymentMethod==='pay_at_gate'?'Pay at the Gate':ev.paymentMethod==='phone_payment'?'Phone Payment':ev.paymentMethod==='check'?'Check (not preferred)':ev.paymentMethod==='other'?'Other':'');
   if(ev.paymentMethod==='credit_card') addRow('Credit Card Payment Link', ev.creditCardLink);
   if(ev.paymentMethod==='phone_payment') addRow('Payment Phone Number', ev.paymentPhoneNumber);
+  if(ev.paymentMethod==='check'){ addRow('Check Payable To', ev.checkPayableTo); addRow('Check Mailing Address', checkMailingAddressDisplay(ev)); }
   addRow('Payment Notes', ev.paymentNotes);
   addRow('COI Required', ev.coiRequired==='yes'?'Yes':ev.coiRequired==='no'?'No':'');
   if(ev.coiRequired==='yes') addRow('COI Certificate Holder', ev.coiCertificateHolder);
@@ -3635,6 +3652,7 @@ function downloadEventPDF(ev){
   addRow('Payment Method', ev.paymentMethod==='credit_card'?'Credit Card':ev.paymentMethod==='pay_at_gate'?'Pay at the Gate':ev.paymentMethod==='phone_payment'?'Phone Payment':ev.paymentMethod==='check'?'Check (not preferred)':ev.paymentMethod==='other'?'Other':'');
   if(ev.paymentMethod==='credit_card') addRow('Credit Card Payment Link', ev.creditCardLink);
   if(ev.paymentMethod==='phone_payment') addRow('Payment Phone Number', ev.paymentPhoneNumber);
+  if(ev.paymentMethod==='check'){ addRow('Check Payable To', ev.checkPayableTo); addRow('Check Mailing Address', checkMailingAddressDisplay(ev)); }
   addRow('Payment Notes', ev.paymentNotes);
   addRow('COI Required', ev.coiRequired==='yes'?'Yes':ev.coiRequired==='no'?'No':'');
   if(ev.coiRequired==='yes') addRow('COI Certificate Holder', ev.coiCertificateHolder);
@@ -3747,6 +3765,8 @@ function buildFullEventTextSummary(ev){
     `Payment Method: ${paymentMethodLabel}`,
     ev.paymentMethod==='credit_card' ? `Credit Card Payment Link: ${ev.creditCardLink || '—'}` : '',
     ev.paymentMethod==='phone_payment' ? `Payment Phone Number: ${ev.paymentPhoneNumber || '—'}` : '',
+    ev.paymentMethod==='check' ? `Check Payable To: ${ev.checkPayableTo || '—'}` : '',
+    ev.paymentMethod==='check' ? `Check Mailing Address: ${checkMailingAddressDisplay(ev) || '—'}` : '',
     ev.paymentNotes ? `Payment Notes: ${ev.paymentNotes}` : '',
     `COI Required: ${ev.coiRequired==='yes'?'Yes':ev.coiRequired==='no'?'No':'—'}`,
     ev.coiRequired==='yes' ? `COI Certificate Holder: ${ev.coiCertificateHolder || '—'}` : '',
@@ -4259,6 +4279,11 @@ function downloadEventsCSV(eventsToExport, filenameSuffix){
     ['Historical Show Code', ev=>ev.historicalShowCode],
     ['Payment Due Date', ev=>ev.paymentDueDate],
     ['Payment Method', ev=>ev.paymentMethod],
+    ['Check Payable To', ev=>ev.checkPayableTo],
+    ['Check Mailing Street', ev=>ev.checkMailingStreet],
+    ['Check Mailing City', ev=>ev.checkMailingCity],
+    ['Check Mailing State', ev=>ev.checkMailingState],
+    ['Check Mailing Zip', ev=>ev.checkMailingZip],
     ['Registration Link', ev=>ev.registrationLink],
     ['Registration Username', ev=>ev.registrationUsername],
     ['Registration Password', ev=>ev.registrationPassword],
@@ -4392,6 +4417,11 @@ const CSV_IMPORT_COLUMNS = {
   'historical show code': (ev,v)=>{ ev.historicalShowCode = v; },
   'payment due date': (ev,v)=>{ ev.paymentDueDate = normalizeCsvDate(v); },
   'payment method': (ev,v)=>{ ev.paymentMethod = v; },
+  'check payable to': (ev,v)=>{ ev.checkPayableTo = v; },
+  'check mailing street': (ev,v)=>{ ev.checkMailingStreet = v; },
+  'check mailing city': (ev,v)=>{ ev.checkMailingCity = v; },
+  'check mailing state': (ev,v)=>{ ev.checkMailingState = v; },
+  'check mailing zip': (ev,v)=>{ ev.checkMailingZip = v; },
   'registration link': (ev,v)=>{ ev.registrationLink = v; },
   'registration username': (ev,v)=>{ ev.registrationUsername = v; },
   'registration password': (ev,v)=>{ ev.registrationPassword = v; },
@@ -5717,6 +5747,8 @@ function renderEventDetail(ev){
       ${item('Payment Method', val(ev.paymentMethod==='credit_card'?'Credit Card':ev.paymentMethod==='pay_at_gate'?'Pay at the Gate':ev.paymentMethod==='phone_payment'?'Phone Payment':ev.paymentMethod==='check'?'Check (not preferred)':ev.paymentMethod==='other'?'Other':''), isEmptyV(ev.paymentMethod))}
       ${ev.paymentMethod==='credit_card' ? item('Credit Card Payment Link', val(ev.creditCardLink), isEmptyV(ev.creditCardLink)) : ''}
       ${ev.paymentMethod==='phone_payment' ? item('Payment Phone Number', val(ev.paymentPhoneNumber), isEmptyV(ev.paymentPhoneNumber)) : ''}
+      ${ev.paymentMethod==='check' ? item('Check Payable To', val(ev.checkPayableTo), isEmptyV(ev.checkPayableTo)) : ''}
+      ${ev.paymentMethod==='check' ? item('Check Mailing Address', val(checkMailingAddressDisplay(ev)), !checkMailingAddressDisplay(ev)) : ''}
       ${item('COI Required', val(ev.coiRequired==='yes'?'Yes':ev.coiRequired==='no'?'No':''), isEmptyV(ev.coiRequired))}
       ${ev.coiRequired==='yes' ? item('COI Certificate Holder', val(ev.coiCertificateHolder), isEmptyV(ev.coiCertificateHolder)) : ''}
       ${ev.coiRequired==='yes' ? item('COI Certificate Holder Address', val(coiAddressDisplay(ev)), !hasCoiAddress(ev)) : ''}
@@ -6158,7 +6190,7 @@ function renderPanel(){
       <div class="field">
         <label>Submission For <span style="color:var(--red);">*</span></label>
         <select id="f_subBrand">
-          <option value="" ${!d.subBrand?'selected':''}>Select…</option>
+          <option value="" ${!d.subBrand?'selected':''}>Select Brand</option>
           <option value="Universal Windows" ${d.subBrand==='Universal Windows'?'selected':''}>Universal Windows</option>
           <option value="Bath Authority" ${d.subBrand==='Bath Authority'?'selected':''}>Bath Authority</option>
         </select>
@@ -6412,6 +6444,17 @@ function renderPanel(){
         <input id="f_paymentPhoneNumber" type="tel" inputmode="tel" value="${escapeHtml(d.paymentPhoneNumber)}" placeholder="(555) 555-5555"/>
         <div class="hint">Numbers, spaces, parentheses, dashes, and a leading + only.</div>
       </div>
+      <div class="field conditional-subfield-box" id="wrap_checkDetails" style="${d.paymentMethod==='check'?'':'display:none;'}">
+        <label>Check Payable To${reconfirmMark(d)}</label>
+        <input id="f_checkPayableTo" value="${escapeHtml(d.checkPayableTo)}" placeholder="Who the check should be made out to"/>
+        <label style="margin-top:10px;">Check Mailing Address${reconfirmMark(d)}</label>
+        <input id="f_checkMailingStreet" value="${escapeHtml(d.checkMailingStreet)}" placeholder="Street address" style="margin-bottom:8px;"/>
+        <div class="field-row">
+          <div class="field"><input id="f_checkMailingCity" value="${escapeHtml(d.checkMailingCity)}" placeholder="City"/></div>
+          <div class="field"><input id="f_checkMailingState" value="${escapeHtml(d.checkMailingState)}" placeholder="State" maxlength="2" style="text-transform:uppercase;"/></div>
+          <div class="field"><input id="f_checkMailingZip" value="${escapeHtml(d.checkMailingZip)}" placeholder="Zip"/></div>
+        </div>
+      </div>
       <div class="field"><label>Payment Notes</label><textarea id="f_paymentNotes" rows="2">${escapeHtml(d.paymentNotes)}</textarea></div>
 
       <div class="field">
@@ -6536,6 +6579,11 @@ function readDraftFromForm(){
   d.paymentMethod = val('f_paymentMethod', d.paymentMethod);
   d.creditCardLink = val('f_creditCardLink', d.creditCardLink);
   d.paymentPhoneNumber = val('f_paymentPhoneNumber', d.paymentPhoneNumber);
+  d.checkPayableTo = val('f_checkPayableTo', d.checkPayableTo);
+  d.checkMailingStreet = val('f_checkMailingStreet', d.checkMailingStreet);
+  d.checkMailingCity = val('f_checkMailingCity', d.checkMailingCity);
+  d.checkMailingState = val('f_checkMailingState', d.checkMailingState);
+  d.checkMailingZip = val('f_checkMailingZip', d.checkMailingZip);
   d.paymentNotes = val('f_paymentNotes', d.paymentNotes);
   d.coiRequired = val('f_coiRequired', d.coiRequired);
   d.coiCertificateHolder = val('f_coiCertificateHolder', d.coiCertificateHolder);
@@ -6577,6 +6625,11 @@ function refreshLiveFormValidation(){
     paymentMethod: val('f_paymentMethod'),
     creditCardLink: val('f_creditCardLink'),
     paymentPhoneNumber: val('f_paymentPhoneNumber'),
+    checkPayableTo: val('f_checkPayableTo'),
+    checkMailingStreet: val('f_checkMailingStreet'),
+    checkMailingCity: val('f_checkMailingCity'),
+    checkMailingState: val('f_checkMailingState'),
+    checkMailingZip: val('f_checkMailingZip'),
     coiRequired: val('f_coiRequired'),
     coiCertificateHolder: val('f_coiCertificateHolder'),
     coiStreet: val('f_coiStreet'),
@@ -7540,6 +7593,7 @@ function attachHandlers(){
     paymentMethodSelect.addEventListener('change', ()=>{
       toggleWrap('wrap_creditCardLink', paymentMethodSelect.value === 'credit_card');
       toggleWrap('wrap_paymentPhone', paymentMethodSelect.value === 'phone_payment');
+      toggleWrap('wrap_checkDetails', paymentMethodSelect.value === 'check');
     });
   }
   // Reads whatever is currently typed into each occurrence row's date inputs back into state,

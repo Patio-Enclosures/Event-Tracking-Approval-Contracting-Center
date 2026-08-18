@@ -3946,7 +3946,11 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     boothLocation: 'custom_251294',
     // "Event Code" under Event Information, confirmed present in this brand's original 41-field
     // discovery (7/28/2026) but never wired up until now -- wasn't requested at the time.
-    eventCode: 'custom_123531'
+    eventCode: 'custom_123531',
+    // "Payable To" and "Sent Payment To" under Event Information, confirmed 8/13/2026 -- the
+    // dashboard's own Check Payable To and Check Mailing Address map onto these directly.
+    checkPayableTo: 'custom_267580',
+    checkMailingAddress: 'custom_267581'
   },
   // Discovered 7/28/2026 via Settings -> List Custom Field Names.
   // eventActivationStatus stays null -- not present anywhere in this workspace's 39 custom
@@ -3976,7 +3980,13 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     leadsPerHour: 'custom_252536',
     totalCallToSets: 'custom_267611',
     staffComplianceRating: 'custom_267610',
-    eventActivationStatus: null
+    eventActivationStatus: null,
+    // All three confirmed 8/13/2026 via List Custom Field Names -- deliberately NOT reusing
+    // Patio/Champion's IDs for these, since every other field on this brand has turned out to
+    // have a different ID despite the same field existing conceptually.
+    eventCode: 'custom_248950',
+    checkPayableTo: 'custom_258657',
+    checkMailingAddress: 'custom_258658'
   },
   // TODO: run Settings -> List Custom Field Names while signed into this brand, then fill these in.
   // Discovered 7/28/2026 via Settings -> List Custom Field Names. Unlike Universal Windows,
@@ -4010,7 +4020,11 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     staffComplianceRating: 'custom_251296',
     // "Event Code" under Event Information, confirmed present in this brand's original
     // discovery (7/28/2026) but never wired up until now -- wasn't requested at the time.
-    eventCode: 'custom_123531'
+    eventCode: 'custom_123531',
+    // "Payable To" and "Sent Payment To" under Event Information, confirmed 8/13/2026 -- the
+    // dashboard's own Check Payable To and Check Mailing Address map onto these directly.
+    checkPayableTo: 'custom_267580',
+    checkMailingAddress: 'custom_267581'
   },
   // TODO: run Settings -> List Custom Field Names while signed into this brand, then fill these in.
   'leafguard': null
@@ -4085,6 +4099,10 @@ function buildExhibitDaySyncPayload(ev){
   // Type), so an empty string here is safe -- unlike those, this doesn't need to be skipped when
   // there's nothing to send. Only meaningful for renewals, but harmless to send blank otherwise.
   addField('eventCode', ev.historicalShowCode || '');
+  // Only meaningful when Check is the actual payment method -- harmless to send blank
+  // otherwise, since both are plain text fields, not strict dropdowns like Branch/Payment Type.
+  addField('checkPayableTo', ev.paymentMethod==='check' ? (ev.checkPayableTo || '') : '');
+  addField('checkMailingAddress', ev.paymentMethod==='check' ? (checkMailingAddressDisplay(ev) || '') : '');
 
   // Confirmed 7/28/2026 via a raw Events API response: these three are standard, built-in
   // Exhibit Day fields present in every workspace -- not custom fields -- so they're sent the

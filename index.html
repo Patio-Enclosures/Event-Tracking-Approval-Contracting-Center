@@ -4047,10 +4047,15 @@ function buildExhibitDaySyncPayload(ev){
     : ev.paymentMethod==='check' ? 'Check' : undefined;
   const paymentLink = ev.paymentMethod==='credit_card' ? ev.creditCardLink : '';
 
-  // Venue Address has no custom field configured in Exhibit Day, so it's the only one still
-  // folded into event_notes. Everything else below goes straight into its own custom field.
+  // Confirmed 8/14/2026 via a raw Events API response: venue_address is a standard, built-in
+  // field -- a single combined string (street, city, state, zip), not separate fields, and not
+  // a custom field either. This replaces the earlier workaround of folding the address into
+  // event_notes as prefixed text, since that was only ever a stand-in for not having found the
+  // real field yet.
   const researchNotes = [ev.notes, ev.finalNotes].filter(Boolean).join('\n\n');
-  const event_notes = `Venue Address: ${venueAddressDisplay(ev) || '—'}` + (researchNotes ? '\n\n' + researchNotes : '');
+  const event_notes = researchNotes;
+  const venueAddressForSync = [ev.venueStreet, ev.venueCity, [ev.venueState, ev.zip].filter(Boolean).join(' ')]
+    .filter(v => v && String(v).trim()).join(', ');
 
   const fieldIds = EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND[state.currentBrand];
   if(!fieldIds){
@@ -4123,6 +4128,7 @@ function buildExhibitDaySyncPayload(ev){
     start_date: ev.startDate,
     end_date: ev.endDate,
     venue_name: ev.venueName || '',
+    venue_address: venueAddressForSync,
     website_url: ev.website || ev.registrationLink || '',
     event_notes,
     budget_notes: `Synced from Event Tracking, Approval & Contracting Center.`,

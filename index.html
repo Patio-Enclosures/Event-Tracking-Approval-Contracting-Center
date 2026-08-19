@@ -1651,6 +1651,8 @@ let state = {
   currentBrand:null,
   bulkSubmitSelectedIds:[],
   bulkSubmitStatus:'',
+  bulkSubmitSearch:'',
+  bulkSubmitOnlyMasterList:false,
   signInEmail:'',
   signInPassword:'',
   signInError:'',
@@ -5847,16 +5849,33 @@ function renderSettingsPanel(){
       ${(() => {
         const candidates = state.events.filter(ev => ev.status === STATUS.RESEARCHING).sort((a,b) => (a.startDate||'').localeCompare(b.startDate||''));
         if(candidates.length === 0) return `<div class="hint">No events currently in Researching status.</div>`;
+        const searchInput = `<input type="text" id="bulkSubmitSearchInput" value="${escapeHtml(state.bulkSubmitSearch)}" placeholder="Search by event name or branch..." style="margin-bottom:10px;"/>`;
+        const masterListToggle = `<label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;">
+          <input type="checkbox" id="bulkSubmitMasterListOnlyCheckbox" ${state.bulkSubmitOnlyMasterList?'checked':''}/>
+          <span>📑 Only show events on the Master List</span>
+        </label>`;
+        const q = (state.bulkSubmitSearch || '').trim().toLowerCase();
+        const filtered = candidates.filter(ev =>
+          (!q || (ev.eventName||'').toLowerCase().includes(q) || (ev.branch||'').toLowerCase().includes(q))
+          && (!state.bulkSubmitOnlyMasterList || ev.onMasterList));
         const selected = new Set(state.bulkSubmitSelectedIds || []);
-        const rows = candidates.map(ev => `
+        if(filtered.length === 0){
+          const noMatchDetail = q
+            ? `match "${escapeHtml(state.bulkSubmitSearch)}"${state.bulkSubmitOnlyMasterList ? ' and are on the Master List' : ''}.`
+            : (state.bulkSubmitOnlyMasterList ? 'are on the Master List.' : 'exist.');
+          return `${searchInput}${masterListToggle}<div class="hint">No Researching events ${noMatchDetail}</div>`;
+        }
+        const rows = filtered.map(ev => `
           <label style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer;">
             <input type="checkbox" data-bulk-submit-check="${ev.id}" ${selected.has(ev.id)?'checked':''}/>
-            <span style="min-width:220px;">${escapeHtml(ev.eventName)}</span>
+            <span style="min-width:220px;">${escapeHtml(ev.eventName)}${ev.onMasterList ? ' 📑' : ''}</span>
             <span class="hint" style="margin:0;">${escapeHtml(ev.branch)||'No branch'} · ${escapeHtml(ev.startDate)||'TBD'}</span>
           </label>`).join('');
         return `
+          ${searchInput}
+          ${masterListToggle}
           <div style="display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
-            <button class="btn btn-outline btn-sm" id="bulkSubmitSelectAllBtn" type="button">Select All (${candidates.length})</button>
+            <button class="btn btn-outline btn-sm" id="bulkSubmitSelectAllBtn" type="button">Select All Visible (${filtered.length})</button>
             <button class="btn btn-outline btn-sm" id="bulkSubmitSelectNoneBtn" type="button">Clear Selection</button>
           </div>
           <div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:0 10px;">${rows}</div>
@@ -7210,10 +7229,38 @@ function attachHandlers(){
       render();
     });
   });
+  const bulkSubmitSearchInput = document.getElementById('bulkSubmitSearchInput');
+  if(bulkSubmitSearchInput){
+    bulkSubmitSearchInput.addEventListener('input', ()=>{
+      const cursorPos = bulkSubmitSearchInput.selectionStart;
+      state.bulkSubmitSearch = bulkSubmitSearchInput.value;
+      render();
+      const newInput = document.getElementById('bulkSubmitSearchInput');
+      if(newInput){
+        newInput.focus();
+        newInput.setSelectionRange(cursorPos, cursorPos);
+      }
+    });
+  }
+  const bulkSubmitMasterListOnlyCheckbox = document.getElementById('bulkSubmitMasterListOnlyCheckbox');
+  if(bulkSubmitMasterListOnlyCheckbox){
+    bulkSubmitMasterListOnlyCheckbox.addEventListener('change', ()=>{
+      state.bulkSubmitOnlyMasterList = bulkSubmitMasterListOnlyCheckbox.checked;
+      render();
+    });
+  }
   const bulkSubmitSelectAllBtn = document.getElementById('bulkSubmitSelectAllBtn');
   if(bulkSubmitSelectAllBtn){
     bulkSubmitSelectAllBtn.addEventListener('click', ()=>{
-      state.bulkSubmitSelectedIds = state.events.filter(ev=>ev.status===STATUS.RESEARCHING).map(ev=>ev.id);
+      // Selects only what's currently visible under the search + Master List filters -- merged
+      // with whatever was already checked, so changing a filter doesn't lose a prior selection.
+      const q = (state.bulkSubmitSearch || '').trim().toLowerCase();
+      const visible = state.events.filter(ev => ev.status===STATUS.RESEARCHING
+        && (!q || (ev.eventName||'').toLowerCase().includes(q) || (ev.branch||'').toLowerCase().includes(q))
+        && (!state.bulkSubmitOnlyMasterList || ev.onMasterList));
+      const set = new Set(state.bulkSubmitSelectedIds || []);
+      visible.forEach(ev => set.add(ev.id));
+      state.bulkSubmitSelectedIds = Array.from(set);
       render();
     });
   }

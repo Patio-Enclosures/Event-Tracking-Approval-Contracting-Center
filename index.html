@@ -1649,6 +1649,8 @@ let state = {
   authChecked:false,
   currentUser:null,
   currentBrand:null,
+  bulkSubmitSelectedIds:[],
+  bulkSubmitStatus:'',
   signInEmail:'',
   signInPassword:'',
   signInError:'',
@@ -5840,6 +5842,31 @@ function renderSettingsPanel(){
       ${state.contractingEmailStatus ? `<div class="hint" style="margin-top:8px;color:var(--accent-dark);font-weight:600;">${escapeHtml(state.contractingEmailStatus)}</div>` : ''}
     </div>` : ''}
     <div class="field-group">
+      <div class="field-group-title">🧹 Bulk Cleanup — Move to Submitted for Contract</div>
+      <div class="hint" style="margin-bottom:10px;">For events you already know are contracted -- check any Researching events below and move them straight to Submitted for Contract in one step. This skips the normal approval checklist and does not generate a PDF, send an email, or sync to Exhibit Day automatically; do those individually afterward if needed.</div>
+      ${(() => {
+        const candidates = state.events.filter(ev => ev.status === STATUS.RESEARCHING).sort((a,b) => (a.startDate||'').localeCompare(b.startDate||''));
+        if(candidates.length === 0) return `<div class="hint">No events currently in Researching status.</div>`;
+        const selected = new Set(state.bulkSubmitSelectedIds || []);
+        const rows = candidates.map(ev => `
+          <label style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer;">
+            <input type="checkbox" data-bulk-submit-check="${ev.id}" ${selected.has(ev.id)?'checked':''}/>
+            <span style="min-width:220px;">${escapeHtml(ev.eventName)}</span>
+            <span class="hint" style="margin:0;">${escapeHtml(ev.branch)||'No branch'} · ${escapeHtml(ev.startDate)||'TBD'}</span>
+          </label>`).join('');
+        return `
+          <div style="display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" id="bulkSubmitSelectAllBtn" type="button">Select All (${candidates.length})</button>
+            <button class="btn btn-outline btn-sm" id="bulkSubmitSelectNoneBtn" type="button">Clear Selection</button>
+          </div>
+          <div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:0 10px;">${rows}</div>
+          <div style="margin-top:10px;">
+            <button class="btn btn-green btn-sm" id="bulkMoveToSubmittedBtn" ${selected.size===0?'disabled':''}>Move ${selected.size} Selected to Submitted for Contract</button>
+          </div>`;
+      })()}
+      ${state.bulkSubmitStatus ? `<div class="hint" style="margin-top:8px;color:var(--accent-dark);font-weight:600;">${escapeHtml(state.bulkSubmitStatus)}</div>` : ''}
+    </div>
+    <div class="field-group">
       <div class="field-group-title">CSV Import History</div>
       <div class="hint" style="margin-bottom:10px;">Every bulk CSV import you've run, with the option to cleanly remove an entire bad import in one action instead of deleting events one by one.</div>
       ${(() => {
@@ -7171,6 +7198,55 @@ function attachHandlers(){
         return;
       }
       targets.forEach(ev => logActivity(ev.id, ev.eventName, 'Marked Not Pursuing', 'Event date already passed (bulk cleanup)'));
+      render();
+    });
+  }
+  document.querySelectorAll('[data-bulk-submit-check]').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      const id = cb.getAttribute('data-bulk-submit-check');
+      const set = new Set(state.bulkSubmitSelectedIds || []);
+      if(cb.checked) set.add(id); else set.delete(id);
+      state.bulkSubmitSelectedIds = Array.from(set);
+      render();
+    });
+  });
+  const bulkSubmitSelectAllBtn = document.getElementById('bulkSubmitSelectAllBtn');
+  if(bulkSubmitSelectAllBtn){
+    bulkSubmitSelectAllBtn.addEventListener('click', ()=>{
+      state.bulkSubmitSelectedIds = state.events.filter(ev=>ev.status===STATUS.RESEARCHING).map(ev=>ev.id);
+      render();
+    });
+  }
+  const bulkSubmitSelectNoneBtn = document.getElementById('bulkSubmitSelectNoneBtn');
+  if(bulkSubmitSelectNoneBtn){
+    bulkSubmitSelectNoneBtn.addEventListener('click', ()=>{
+      state.bulkSubmitSelectedIds = [];
+      render();
+    });
+  }
+  const bulkMoveToSubmittedBtn = document.getElementById('bulkMoveToSubmittedBtn');
+  if(bulkMoveToSubmittedBtn){
+    bulkMoveToSubmittedBtn.addEventListener('click', async ()=>{
+      const targetIds = new Set(state.bulkSubmitSelectedIds || []);
+      if(targetIds.size===0) return;
+      if(!confirm(`Move ${targetIds.size} event${targetIds.size===1?'':'s'} straight to Submitted for Contract? This skips the normal approval checklist and does not generate a PDF, send an email, or sync to Exhibit Day automatically -- do those individually afterward if needed.`)) return;
+      const targets = state.events.filter(ev => targetIds.has(ev.id));
+      const ok = await persistEventsBulkAtomic((latestEvents) => {
+        latestEvents.forEach(ev=>{
+          if(targetIds.has(ev.id)){
+            ev.status = STATUS.SUBMITTED;
+            ev.submittedAt = Date.now();
+          }
+        });
+        return latestEvents;
+      });
+      if(!ok){
+        alert('This could not be saved -- likely a connection issue. Please try again.');
+        return;
+      }
+      targets.forEach(ev => logActivity(ev.id, ev.eventName, 'Submitted for contract processing', 'Bulk cleanup — moved directly from Researching (already known to be contracted)'));
+      state.bulkSubmitSelectedIds = [];
+      state.bulkSubmitStatus = `Moved ${targets.length} event${targets.length===1?'':'s'} to Submitted for Contract.`;
       render();
     });
   }

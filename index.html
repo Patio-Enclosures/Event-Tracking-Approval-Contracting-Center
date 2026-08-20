@@ -1407,7 +1407,8 @@ const MULTISELECT_FIELD_MAP = {
   regionTabBranchFilter: 'filterBranches',
   regionTabStatusFilter: 'filterStatuses',
   budgetRegionFilter: 'budgetSummaryRegions',
-  budgetBranchFilter: 'budgetSummaryBranches'
+  budgetBranchFilter: 'budgetSummaryBranches',
+  budgetStatusFilter: 'budgetSummaryStatuses'
 };
 // The "click anywhere outside to close" listener is bound to `document` itself, which survives
 // across re-renders (unlike the DOM elements inside #root) -- so it must only ever be attached
@@ -1618,6 +1619,7 @@ let state = {
   budgetSummaryDateTo:'',
   budgetSummaryRegions:[],
   budgetSummaryBranches:[],
+  budgetSummaryStatuses:[],
   openMultiSelectId:null,
   regionSummaryPeriodType:'all',
   regionSummaryPeriod:'',
@@ -4873,20 +4875,15 @@ function renderOverview(allEvents){
   // events skew the number away from where the actual dollars are concentrated.
   const submittedTargetOpps = byStatus.submitted.reduce((s,e)=>s+num(e.forecastedOpps),0);
   const submittedCPO = submittedTargetOpps>0 ? submittedValue/submittedTargetOpps : null;
-  // Post-event evaluation results, for events on or after this cutoff with a completed
-  // evaluation -- shared with the "still needed" reminder further down, so both use the exact
-  // same date boundary rather than two constants that could quietly drift apart.
-  const POST_EVENT_EVAL_REMINDER_CUTOFF = '2026-08-03';
-  const completedEvalEvents = allEvents.filter(ev =>
-    ev.postEventEvalCompleted && (ev.endDate || ev.startDate) && (ev.endDate || ev.startDate) >= POST_EVENT_EVAL_REMINDER_CUTOFF
-  );
-  const evalTotalLeads = completedEvalEvents.reduce((s,e)=>s+num(e.numberOfLeads),0);
-  const evalTargetOpps = completedEvalEvents.reduce((s,e)=>s+num(e.forecastedOpps),0);
-  // Leads per Hour is entered as free text on the evaluation form (not always a clean number),
-  // so only the entries that actually parse as numbers count toward the average -- averaging in
-  // blanks or stray text would silently skew the result.
-  const leadsPerHourValues = completedEvalEvents.map(e=>parseFloat(e.leadsPerHour)).filter(n=>!isNaN(n));
-  const avgLeadsPerHour = leadsPerHourValues.length>0 ? leadsPerHourValues.reduce((s,n)=>s+n,0)/leadsPerHourValues.length : null;
+  // How far back the "Post-Event Evaluations Needed" reminder looks -- events before this date
+  // never get flagged as needing an evaluation, no matter how long ago they happened.
+  // Bumped 8/20/2026 per request: cleared out the whole prior backlog of "needs evaluation"
+  // events by moving this forward to the Monday of the current week (2026-08-17) -- everything
+  // that happened before this week no longer gets flagged as needing a post-event evaluation.
+  // Events from this week onward are unaffected and still get flagged normally once they pass
+  // without a completed evaluation; this only changes how far back the reminder looks.
+  // (The "Leads vs. Target Opps" KPI that used to also read this cutoff was removed 8/20/2026.)
+  const POST_EVENT_EVAL_REMINDER_CUTOFF = '2026-08-17';
   // Per-region rollup, sorted by total value desc -- scoped to the selected month/quarter period
   const periodFilteredEvents = allEvents.filter(ev => eventMatchesPeriod(ev, state.regionSummaryPeriodType, state.regionSummaryPeriod));
   const regionRollups = state.regionNames.map((name, idx)=>{
@@ -5131,6 +5128,7 @@ function renderOverview(allEvents){
     if(state.budgetSummaryDateTo && !(ev.startDate && ev.startDate <= state.budgetSummaryDateTo)) return false;
     if(state.budgetSummaryRegions.length>0 && !state.budgetSummaryRegions.includes(String(ev.region))) return false;
     if(state.budgetSummaryBranches.length>0 && !state.budgetSummaryBranches.includes(ev.branch)) return false;
+    if(state.budgetSummaryStatuses.length>0 && !state.budgetSummaryStatuses.includes(ev.status)) return false;
     return true;
   });
   const budgetTotals = budgetFilteredEvents.reduce((acc, ev)=>{
@@ -5158,7 +5156,7 @@ function renderOverview(allEvents){
     ['Misc.', budgetTotals.misc]
   ];
   const budgetSummaryHtml = budgetFilteredEvents.length===0
-    ? `<div class="empty" style="padding:24px;"><div class="empty-title" style="font-size:15px;">No events match these filters</div><div>Adjust the date range, region, or branch filters above to see totals.</div></div>`
+    ? `<div class="empty" style="padding:24px;"><div class="empty-title" style="font-size:15px;">No events match these filters</div><div>Adjust the date range, region, branch, or status filters above to see totals.</div></div>`
     : `<div class="region-table-wrap" style="padding:16px 18px;">
         <div class="hint" style="margin:-2px 0 12px 0;">${budgetFilteredEvents.length} event${budgetFilteredEvents.length===1?'':'s'} in this view</div>
         ${budgetCategoryRows.map(([label,val])=>`
@@ -5177,7 +5175,8 @@ function renderOverview(allEvents){
       <label class="filter-date-label">To <input type="date" id="budgetSummaryDateTo" value="${escapeHtml(state.budgetSummaryDateTo)}"/></label>
       ${renderMultiSelectDropdown('budgetRegionFilter', state.regionLabelPlural, state.regionNames.map((n,i)=>[String(i),n]), state.budgetSummaryRegions)}
       ${renderMultiSelectDropdown('budgetBranchFilter', 'Branches', budgetSummaryDistinctBranches.map(b=>[b,b]), state.budgetSummaryBranches)}
-      ${(state.budgetSummaryDateFrom||state.budgetSummaryDateTo||state.budgetSummaryRegions.length>0||state.budgetSummaryBranches.length>0) ? `<button class="btn btn-outline btn-sm" id="clearBudgetSummaryFiltersBtn">Clear Filters</button>` : ''}
+      ${renderMultiSelectDropdown('budgetStatusFilter', 'Statuses', Object.keys(STATUS_LABEL).map(s=>[s,STATUS_LABEL[s]]), state.budgetSummaryStatuses)}
+      ${(state.budgetSummaryDateFrom||state.budgetSummaryDateTo||state.budgetSummaryRegions.length>0||state.budgetSummaryBranches.length>0||state.budgetSummaryStatuses.length>0) ? `<button class="btn btn-outline btn-sm" id="clearBudgetSummaryFiltersBtn">Clear Filters</button>` : ''}
     </div>
   `;
   // Stashed here (not recomputed) so the per-section CSV download buttons below export exactly
@@ -5201,11 +5200,6 @@ function renderOverview(allEvents){
       <div class="summary-kpi-item">
         <div class="summary-kpi-label">Researching</div>
         <div class="summary-kpi-value">${byStatus.researching.length}</div>
-      </div>
-      <div class="summary-kpi-item wide">
-        <div class="summary-kpi-label">Leads vs. Target Opps <span style="opacity:0.7;">(since 8/3/26)</span></div>
-        <div class="summary-kpi-value">${evalTotalLeads} / ${evalTargetOpps}${evalTargetOpps>0 ? ` <span style="font-size:15px;font-weight:500;">(${Math.round(evalTotalLeads/evalTargetOpps*100)}%)</span>` : ''}</div>
-        <div class="summary-kpi-detail">${avgLeadsPerHour!==null ? `${avgLeadsPerHour.toFixed(1)} avg leads/hr` : 'No leads/hr data yet'} · ${completedEvalEvents.length} evaluation${completedEvalEvents.length===1?'':'s'} completed</div>
       </div>
     </div>
     <div>
@@ -6657,6 +6651,7 @@ function attachHandlers(){
       state.budgetSummaryDateTo = '';
       state.budgetSummaryRegions = [];
       state.budgetSummaryBranches = [];
+      state.budgetSummaryStatuses = [];
       render();
     });
   }

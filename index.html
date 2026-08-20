@@ -1721,6 +1721,9 @@ function emptyDraft(regionIdx){
     checkMailingCity:'',
     checkMailingState:'',
     checkMailingZip:'',
+    w9FileName:'',
+    w9FileType:'',
+    w9FileUrl:'',                // Firebase Storage download URL -- same storage-not-Firestore pattern as Contract Documents above
     paymentNotes:'',
     coiRequired:'',              // 'yes' | 'no'
     coiCertificateHolder:'',     // who must be named on the certificate -- required if coiRequired === 'yes'
@@ -3074,6 +3077,9 @@ async function duplicateEventNextYear(id){
   copy.contractFileType = '';
   copy.contractFileUrl = '';
   copy.contractFiles = [];
+  copy.w9FileName = '';
+  copy.w9FileType = '';
+  copy.w9FileUrl = '';
   copy.history = [];
   // A duplicated event is, by definition, a renewal of a show that already ran -- mark it as
   // such so the pre-approval checklist requires a Historical Show Code before it can move
@@ -3382,7 +3388,7 @@ function generateApprovalPDF(ev){
   addRow('Payment Method', ev.paymentMethod==='credit_card'?'Credit Card':ev.paymentMethod==='pay_at_gate'?'Pay at the Gate':ev.paymentMethod==='phone_payment'?'Phone Payment':ev.paymentMethod==='check'?'Check (not preferred)':ev.paymentMethod==='other'?'Other':'');
   if(ev.paymentMethod==='credit_card') addRow('Credit Card Payment Link', ev.creditCardLink);
   if(ev.paymentMethod==='phone_payment') addRow('Payment Phone Number', ev.paymentPhoneNumber);
-  if(ev.paymentMethod==='check'){ addRow('Check Payable To', ev.checkPayableTo); addRow('Check Mailing Address', checkMailingAddressDisplay(ev)); }
+  if(ev.paymentMethod==='check'){ addRow('Check Payable To', ev.checkPayableTo); addRow('Check Mailing Address', checkMailingAddressDisplay(ev)); addRow('Check Request Amount', moneyOrText(ev.contractCost)); }
   addRow('Payment Notes', ev.paymentNotes);
   addRow('COI Required', ev.coiRequired==='yes'?'Yes':ev.coiRequired==='no'?'No':'');
   if(ev.coiRequired==='yes') addRow('COI Certificate Holder', ev.coiCertificateHolder);
@@ -3501,7 +3507,7 @@ function downloadEventPDF(ev){
   addRow('Payment Method', ev.paymentMethod==='credit_card'?'Credit Card':ev.paymentMethod==='pay_at_gate'?'Pay at the Gate':ev.paymentMethod==='phone_payment'?'Phone Payment':ev.paymentMethod==='check'?'Check (not preferred)':ev.paymentMethod==='other'?'Other':'');
   if(ev.paymentMethod==='credit_card') addRow('Credit Card Payment Link', ev.creditCardLink);
   if(ev.paymentMethod==='phone_payment') addRow('Payment Phone Number', ev.paymentPhoneNumber);
-  if(ev.paymentMethod==='check'){ addRow('Check Payable To', ev.checkPayableTo); addRow('Check Mailing Address', checkMailingAddressDisplay(ev)); }
+  if(ev.paymentMethod==='check'){ addRow('Check Payable To', ev.checkPayableTo); addRow('Check Mailing Address', checkMailingAddressDisplay(ev)); addRow('Check Request Amount', moneyOrText(ev.contractCost)); }
   addRow('Payment Notes', ev.paymentNotes);
   addRow('COI Required', ev.coiRequired==='yes'?'Yes':ev.coiRequired==='no'?'No':'');
   if(ev.coiRequired==='yes') addRow('COI Certificate Holder', ev.coiCertificateHolder);
@@ -3609,6 +3615,7 @@ function buildFullEventTextSummary(ev){
     ev.paymentMethod==='phone_payment' ? `Payment Phone Number: ${ev.paymentPhoneNumber || '—'}` : '',
     ev.paymentMethod==='check' ? `Check Payable To: ${ev.checkPayableTo || '—'}` : '',
     ev.paymentMethod==='check' ? `Check Mailing Address: ${checkMailingAddressDisplay(ev) || '—'}` : '',
+    ev.paymentMethod==='check' ? `Check Request Amount: ${moneyOrText(ev.contractCost)}` : '',
     ev.paymentNotes ? `Payment Notes: ${ev.paymentNotes}` : '',
     `COI Required: ${ev.coiRequired==='yes'?'Yes':ev.coiRequired==='no'?'No':'—'}`,
     ev.coiRequired==='yes' ? `COI Certificate Holder: ${ev.coiCertificateHolder || '—'}` : '',
@@ -3782,7 +3789,14 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     // "Payable To" and "Sent Payment To" under Event Information, confirmed 8/13/2026 -- the
     // dashboard's own Check Payable To and Check Mailing Address map onto these directly.
     checkPayableTo: 'custom_267580',
-    checkMailingAddress: 'custom_267581'
+    checkMailingAddress: 'custom_267581',
+    // Added 8/20/2026 for the new Check Request Amount line item and W9 Attachment upload --
+    // both stay null (addField() below silently skips them) until Settings -> List Custom
+    // Field Names is run again for this brand to confirm whether "Check Request $ Amount" and
+    // a "W9 Attachment" field exist here under the same names as Universal Windows/Bath
+    // Authority's workspace, and to get their real IDs.
+    checkRequestAmount: null,
+    w9Attachment: null
   },
   // Discovered 7/28/2026 via Settings -> List Custom Field Names.
   // eventActivationStatus stays null -- not present anywhere in this workspace's 39 custom
@@ -3819,6 +3833,21 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     eventCode: 'custom_248950',
     checkPayableTo: 'custom_258657',
     checkMailingAddress: 'custom_258658',
+    // Discovered 8/20/2026 via List Custom Field Names -- "Check Request $ Amount" under the
+    // "Check Request Payment" section (same section as Payable To / Send Payment To above),
+    // Text (Single-line). Fed by the dashboard's own Check Request Amount line item, which is
+    // just the event's Contract Cost, shown whenever Payment Method is Check.
+    checkRequestAmount: 'custom_258655',
+    // Confirmed 8/20/2026: "W9 Attachment" is a real custom field in this workspace (it just
+    // wasn't in the original 41-field discovery, likely added since) -- an independent line
+    // item, not part of the Check Request Payment section, and not tied to Payment Method being
+    // Check. Stays null until Settings -> List Custom Field Names is run again to get its real
+    // ID and field type. This sends the uploaded W9's Firebase Storage download URL as the
+    // value rather than the file itself -- every custom field type seen in this workspace so
+    // far has been Dropdown/Text/URL (no true File type), so if Exhibit Day rejects a URL
+    // string once an ID is filled in, that likely means it needs to be a URL-type field
+    // specifically, not Text.
+    w9Attachment: null,
     // Discovered 8/19/2026 via List Custom Field Names -- Exhibit Day calls this "Brands
     // Attending" (Event Information tab). This is the field the new UWD / TBA / UWD-TBA
     // "Submission For" dropdown syncs into; the UWD/TBA option sends one single event with both
@@ -3867,7 +3896,10 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     // "Payable To" and "Sent Payment To" under Event Information, confirmed 8/13/2026 -- the
     // dashboard's own Check Payable To and Check Mailing Address map onto these directly.
     checkPayableTo: 'custom_267580',
-    checkMailingAddress: 'custom_267581'
+    checkMailingAddress: 'custom_267581',
+    // Added 8/20/2026 -- see the matching comment on Patio Enclosures above; same situation here.
+    checkRequestAmount: null,
+    w9Attachment: null
   },
   // TODO: run Settings -> List Custom Field Names while signed into this brand, then fill these in.
   'leafguard': null
@@ -3949,6 +3981,14 @@ function buildExhibitDaySyncPayload(ev){
   // otherwise, since both are plain text fields, not strict dropdowns like Branch/Payment Type.
   addField('checkPayableTo', ev.paymentMethod==='check' ? (ev.checkPayableTo || '') : '');
   addField('checkMailingAddress', ev.paymentMethod==='check' ? (checkMailingAddressDisplay(ev) || '') : '');
+  // Same Contract Cost value shown as the dashboard's own Check Request Amount line item in
+  // the PDF/email/detail view -- see moneyOrText(ev.contractCost) elsewhere in this file.
+  addField('checkRequestAmount', ev.paymentMethod==='check' ? moneyOrText(ev.contractCost) : '');
+  // W9 Attachment -- independent of Payment Method (not gated on Check like the fields above),
+  // since a W9 can be on file for an event regardless of how it ends up being paid. Sends the
+  // uploaded file's Firebase Storage download URL, not the file itself -- see the w9Attachment
+  // comment on EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND above for why.
+  addField('w9Attachment', ev.w9FileUrl || '');
   // UWD / TBA / UWD-TBA "Submission For" -- always sent as one event regardless of which option
   // is selected (this function only ever builds a single payload for a single ev), with the
   // combined UWD/TBA option intentionally spelling out both brand names in this one field rather
@@ -5518,12 +5558,16 @@ function renderEventDetail(ev){
           ? `<div class="detail-item"><span class="detail-label">Contract Document${files.length===1?'':'s'}</span><span class="detail-value">${files.map(f=>`<a href="${escapeHtml(f.url)}" target="_blank" rel="noopener" style="color:var(--accent-dark);text-decoration:underline;display:block;">${escapeHtml(f.name)}</a>`).join('')}</span></div>`
           : item('Contract Document', val(''), true);
       })()}
+      ${ev.w9FileUrl
+        ? `<div class="detail-item"><span class="detail-label">W9 Attachment</span><span class="detail-value"><a href="${escapeHtml(ev.w9FileUrl)}" target="_blank" rel="noopener" style="color:var(--accent-dark);text-decoration:underline;">${escapeHtml(ev.w9FileName || 'View W9')}</a></span></div>`
+        : item('W9 Attachment', val(''), true)}
       ${item('Payment Due Date', val(ev.paymentDueDate), isEmptyV(ev.paymentDueDate))}
       ${item('Payment Method', val(ev.paymentMethod==='credit_card'?'Credit Card':ev.paymentMethod==='pay_at_gate'?'Pay at the Gate':ev.paymentMethod==='phone_payment'?'Phone Payment':ev.paymentMethod==='check'?'Check (not preferred)':ev.paymentMethod==='other'?'Other':''), isEmptyV(ev.paymentMethod))}
       ${ev.paymentMethod==='credit_card' ? item('Credit Card Payment Link', val(ev.creditCardLink), isEmptyV(ev.creditCardLink)) : ''}
       ${ev.paymentMethod==='phone_payment' ? item('Payment Phone Number', val(ev.paymentPhoneNumber), isEmptyV(ev.paymentPhoneNumber)) : ''}
       ${ev.paymentMethod==='check' ? item('Check Payable To', val(ev.checkPayableTo), isEmptyV(ev.checkPayableTo)) : ''}
       ${ev.paymentMethod==='check' ? item('Check Mailing Address', val(checkMailingAddressDisplay(ev)), !checkMailingAddressDisplay(ev)) : ''}
+      ${ev.paymentMethod==='check' ? item('Check Request Amount', val(moneyOrText(ev.contractCost)), isEmptyV(ev.contractCost)) : ''}
       ${item('COI Required', val(ev.coiRequired==='yes'?'Yes':ev.coiRequired==='no'?'No':''), isEmptyV(ev.coiRequired))}
       ${ev.coiRequired==='yes' ? item('COI Certificate Holder', val(ev.coiCertificateHolder), isEmptyV(ev.coiCertificateHolder)) : ''}
       ${ev.coiRequired==='yes' ? item('COI Certificate Holder Address', val(coiAddressDisplay(ev)), !hasCoiAddress(ev)) : ''}
@@ -6248,6 +6292,15 @@ function renderPanel(){
           <div class="field"><input id="f_checkMailingState" value="${escapeHtml(d.checkMailingState)}" placeholder="State" maxlength="2" style="text-transform:uppercase;"/></div>
           <div class="field"><input id="f_checkMailingZip" value="${escapeHtml(d.checkMailingZip)}" placeholder="Zip"/></div>
         </div>
+      </div>
+      <div class="field">
+        <label>W9 Attachment${reconfirmMark(d)}</label>
+        <input id="f_w9File" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"/>
+        <div class="hint">Upload a completed W9. PDF, Word, or image, up to 10MB.</div>
+        <div id="w9FileStatus"></div>
+        ${d.w9FileName
+          ? `<div class="contract-file-row"><span>📎 ${escapeHtml(d.w9FileName)}</span><a href="#" id="removeW9File" style="color:var(--red);">remove</a></div>`
+          : ''}
       </div>
       <div class="field"><label>Payment Notes</label><textarea id="f_paymentNotes" rows="2">${escapeHtml(d.paymentNotes)}</textarea></div>
       <div class="field">
@@ -7603,6 +7656,49 @@ function attachHandlers(){
       render();
     });
   });
+  const w9FileInput = document.getElementById('f_w9File');
+  const w9FileStatusEl = document.getElementById('w9FileStatus');
+  if(w9FileInput){
+    w9FileInput.addEventListener('change', async ()=>{
+      const file = w9FileInput.files && w9FileInput.files[0];
+      if(!file) return;
+      if(file.size > MAX_ATTACHMENT_BYTES){
+        alert(`"${file.name}" is ${(file.size/1024/1024).toFixed(1)}MB, which is over the 10MB limit for an attached file. Please choose a smaller file, or compress it first.`);
+        w9FileInput.value = '';
+        return;
+      }
+      readDraftFromForm(); // preserve any other in-progress field edits
+      if(w9FileStatusEl) w9FileStatusEl.innerHTML = `Uploading "${escapeHtml(file.name)}"…`;
+      w9FileInput.disabled = true;
+      try{
+        const storagePath = `w9-forms/${uid()}-${file.name}`;
+        const storageRef = storageRefFn(fbStorage(), storagePath);
+        await uploadBytes(storageRef, file);
+        const url = await getDownloadURL(storageRef);
+        state.draft.w9FileName = file.name;
+        state.draft.w9FileType = file.type || 'application/octet-stream';
+        state.draft.w9FileUrl = url;
+      }catch(e){
+        console.error('W9 file upload failed', e);
+        alert('That file could not be uploaded -- likely a connection issue. Please try again.');
+        w9FileInput.value = '';
+      }
+      if(w9FileStatusEl) w9FileStatusEl.innerHTML = '';
+      w9FileInput.disabled = false;
+      render();
+    });
+  }
+  const removeW9FileLink = document.getElementById('removeW9File');
+  if(removeW9FileLink){
+    removeW9FileLink.addEventListener('click', (e)=>{
+      e.preventDefault();
+      readDraftFromForm();
+      state.draft.w9FileName = '';
+      state.draft.w9FileType = '';
+      state.draft.w9FileUrl = '';
+      render();
+    });
+  }
   // Post-Event Evaluation panel -- separate from the main form entirely, see openPostEventEvalPanel.
   document.querySelectorAll('[data-post-event-eval]').forEach(btn=>{
     btn.addEventListener('click', ()=>{

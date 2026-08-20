@@ -3888,11 +3888,13 @@ function buildExhibitDaySyncPayload(ev){
     : ev.paymentMethod==='phone_payment' ? 'Credit Card'
     : ev.paymentMethod==='check' ? 'Check' : undefined;
   const paymentLink = ev.paymentMethod==='credit_card' ? ev.creditCardLink : '';
-  // Confirmed 8/14/2026 via a raw Events API response: venue_address is a standard, built-in
-  // field -- a single combined string (street, city, state, zip), not separate fields, and not
-  // a custom field either. This replaces the earlier workaround of folding the address into
-  // event_notes as prefixed text, since that was only ever a stand-in for not having found the
-  // real field yet.
+  // Confirmed 8/14/2026 via a raw Events API response, and re-confirmed 8/20/2026 against
+  // Exhibit Day support's own PATCH /v1/events parameter docs: venue_address is a standard,
+  // built-in field (String, max 1000 chars) -- a single combined string (street, city, state,
+  // zip), not separate fields, and not a custom field either. This replaces the earlier
+  // workaround of folding the address into event_notes as prefixed text, since that was only
+  // ever a stand-in for not having found the real field yet. Unlike event_tags below, the name
+  // and shape here already matched, so no change was needed.
   const researchNotes = [ev.notes, ev.finalNotes].filter(Boolean).join('\n\n');
   const event_notes = researchNotes;
   const venueAddressForSync = [ev.venueStreet, ev.venueCity, [ev.venueState, ev.zip].filter(Boolean).join(' ')]
@@ -3991,11 +3993,17 @@ function buildExhibitDaySyncPayload(ev){
     // field (same category as booth_size, roi_notes, roi_num_leads below) -- not a custom field,
     // which is why it never showed up in any custom-fields discovery.
     booth_number: ev.boothNumber || '',
-    // Confirmed 8/13/2026: tags is a standard array field, not a custom one. The dashboard's own
-    // Tags field is a single comma-separated text box, so this splits it into the array Exhibit
-    // Day actually expects -- trimming whitespace and dropping any empty entries from things
-    // like a trailing comma.
-    tags: (ev.tags || '').split(',').map(t => t.trim()).filter(Boolean),
+    // Corrected 8/20/2026 per Exhibit Day support's own PATCH /v1/events parameter docs: the
+    // real field is event_tags (String), not tags -- and it wants a comma-separated string, not
+    // an array, replacing the event's entire tag set on every sync. (The old `tags` key here
+    // going back to 8/13/2026 was apparently never a real write parameter -- it's possible that
+    // name only ever showed up in a raw GET response, which is why it looked confirmed at the
+    // time.) The dashboard's own Tags field is already a single comma-separated text box, so
+    // this just cleans it up -- trimming whitespace and dropping empty entries from things like
+    // a trailing comma -- then joins it back into the comma-separated string the API wants.
+    // Passing an empty string is intentional and matches Exhibit Day's documented behavior:
+    // it clears all tags on that event, same as leaving the dashboard's Tags field blank should.
+    event_tags: (ev.tags || '').split(',').map(t => t.trim()).filter(Boolean).join(', '),
     roi_notes: ev.roiNotes || '',
     roi_num_leads: num(ev.numberOfLeads),
     custom_fields

@@ -3790,12 +3790,14 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     // dashboard's own Check Payable To and Check Mailing Address map onto these directly.
     checkPayableTo: 'custom_267580',
     checkMailingAddress: 'custom_267581',
-    // Added 8/20/2026 for the new Check Request Amount line item and W9 Attachment upload --
-    // both stay null (addField() below silently skips them) until Settings -> List Custom
-    // Field Names is run again for this brand to confirm whether "Check Request $ Amount" and
-    // a "W9 Attachment" field exist here under the same names as Universal Windows/Bath
-    // Authority's workspace, and to get their real IDs.
-    checkRequestAmount: null,
+    // Confirmed 8/20/2026 via List Custom Field Names -- "Check Request $ Amount" under the
+    // "Check Request Payment" section, same as Universal Windows/Bath Authority's field. Also
+    // visible in that same list but not wired up (not requested yet): GL Code (custom_267579,
+    // Dropdown) and Check Number (custom_267583, Text).
+    checkRequestAmount: 'custom_267578',
+    // "W9 Attachment" is confirmed NOT present anywhere in this workspace's 42 custom fields as
+    // of the 8/20/2026 list -- stays null until it's created in Exhibit Day and List Custom
+    // Field Names is run again to get its real ID.
     w9Attachment: null
   },
   // Discovered 7/28/2026 via Settings -> List Custom Field Names.
@@ -3897,8 +3899,9 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     // dashboard's own Check Payable To and Check Mailing Address map onto these directly.
     checkPayableTo: 'custom_267580',
     checkMailingAddress: 'custom_267581',
-    // Added 8/20/2026 -- see the matching comment on Patio Enclosures above; same situation here.
-    checkRequestAmount: null,
+    // Confirmed 8/20/2026 via List Custom Field Names -- same list, and same field IDs, as
+    // Patio Enclosures above (this brand shares Patio's exact custom field template).
+    checkRequestAmount: 'custom_267578',
     w9Attachment: null
   },
   // TODO: run Settings -> List Custom Field Names while signed into this brand, then fill these in.
@@ -6099,6 +6102,10 @@ function renderPanel(){
       <div class="field"><label>Website${reconfirmMark(d)}</label><input id="f_website" value="${escapeHtml(d.website)}" placeholder="https://"/></div>
     </div>
     <div class="field-group">
+      <div class="field-group-title">Research Notes</div>
+      <div class="field"><textarea id="f_notes" rows="3" placeholder="Findings, considerations, risks...">${escapeHtml(d.notes)}</textarea></div>
+    </div>
+    <div class="field-group">
       <div class="field-group-title">Contact</div>
       <div class="field-row">
         <div class="field"><label>Name of Contact${reconfirmMark(d)}</label><input id="f_contactName" value="${escapeHtml(d.contactName)}"/></div>
@@ -6355,10 +6362,6 @@ function renderPanel(){
         <label>Final Notes</label>
         <textarea id="f_finalNotes" rows="3">${escapeHtml(d.finalNotes)}</textarea>
       </div>
-    </div>
-    <div class="field-group">
-      <div class="field-group-title">Research Notes</div>
-      <div class="field"><textarea id="f_notes" rows="3" placeholder="Findings, considerations, risks...">${escapeHtml(d.notes)}</textarea></div>
     </div>
   </div>
   <div class="panel-footer">

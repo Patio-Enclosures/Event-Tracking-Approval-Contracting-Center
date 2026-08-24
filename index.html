@@ -2818,6 +2818,12 @@ const POST_EVENT_EVAL_FIELDS = [
 function openPostEventEvalPanel(id){
   const ev = state.events.find(e=>e.id===id);
   if(!ev) return;
+  // Defense-in-depth: the buttons that call this are already disabled for events with no
+  // exhibitDayEventId, but guard here too in case this is ever reached another way.
+  if(!ev.exhibitDayEventId){
+    alert('This event was never synced to Exhibit Day, so a post-event evaluation can\'t be attached to it yet. Sync it to Exhibit Day first, then try again.');
+    return;
+  }
   const draft = {};
   POST_EVENT_EVAL_FIELDS.forEach(k => { draft[k] = ev[k] || ''; });
   state.postEventEvalEventId = id;
@@ -2856,6 +2862,7 @@ async function savePostEventEvalFields(){
   const id = state.postEventEvalEventId;
   const ev = state.events.find(e=>e.id===id);
   if(!ev || !state.postEventEvalDraft) return null;
+  if(!ev.exhibitDayEventId) return null; // defense-in-depth, see openPostEventEvalPanel
   const updated = Object.assign({}, ev, state.postEventEvalDraft);
   updated.postEventEvalCompleted = true;
   updated.postEventEvalCompletedAt = Date.now();
@@ -4890,13 +4897,16 @@ function renderOverview(allEvents){
   const submittedCPO = submittedTargetOpps>0 ? submittedValue/submittedTargetOpps : null;
   // How far back the "Post-Event Evaluations Needed" reminder looks -- events before this date
   // never get flagged as needing an evaluation, no matter how long ago they happened.
-  // Bumped 8/20/2026 per request: cleared out the whole prior backlog of "needs evaluation"
-  // events by moving this forward to the Monday of the current week (2026-08-17) -- everything
-  // that happened before this week no longer gets flagged as needing a post-event evaluation.
-  // Events from this week onward are unaffected and still get flagged normally once they pass
-  // without a completed evaluation; this only changes how far back the reminder looks.
+  // Changed 8/24/2026 per request: this used to be a hardcoded literal that had to be manually
+  // bumped in code every time the backlog needed clearing out (see dashboard review, 8/20/2026).
+  // It's now computed live as the Monday of the *current* week on every render, via
+  // getCurrentWeekRange() -- so it rolls forward automatically each week with no code change:
+  // any event that happened before the current week simply stops being flagged on its own,
+  // and events from this week onward still get flagged normally once they pass without a
+  // completed evaluation. This also has the effect of clearing out whatever backlog exists
+  // right now, the same way the one-time 8/20/2026 bump did.
   // (The "Leads vs. Target Opps" KPI that used to also read this cutoff was removed 8/20/2026.)
-  const POST_EVENT_EVAL_REMINDER_CUTOFF = '2026-08-17';
+  const POST_EVENT_EVAL_REMINDER_CUTOFF = getCurrentWeekRange().from;
   // Per-region rollup, sorted by total value desc -- scoped to the selected month/quarter period
   const periodFilteredEvents = allEvents.filter(ev => eventMatchesPeriod(ev, state.regionSummaryPeriodType, state.regionSummaryPeriod));
   const regionRollups = state.regionNames.map((name, idx)=>{
@@ -5129,7 +5139,9 @@ function renderOverview(allEvents){
             ${overdueEvalsByRegion[regionName].map(ev => `
               <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0 6px 10px;border-bottom:1px solid var(--border);">
                 <span>${escapeHtml(ev.eventName)} <span class="hint" style="margin:0;">— ended ${ev.endDate || ev.startDate}</span></span>
-                <button class="btn btn-outline btn-sm" data-post-event-eval="${ev.id}">📋 Complete Evaluation</button>
+                ${ev.exhibitDayEventId
+                  ? `<button class="btn btn-outline btn-sm" data-post-event-eval="${ev.id}">📋 Complete Evaluation</button>`
+                  : `<button class="btn btn-outline btn-sm" disabled title="This event was never synced to Exhibit Day, so there's nothing there to attach an evaluation to -- sync it first, from its own detail view.">📋 Complete Evaluation</button>`}
               </div>`).join('')}
           </div>`).join('') +
       `</div>`;
@@ -5607,7 +5619,11 @@ function renderEventDetail(ev){
         : `<button class="btn btn-outline btn-sm" data-edit="${ev.id}">Edit Event</button>`}
       <button class="btn btn-outline btn-sm" data-download-event="${ev.id}">📄 Download / Print PDF</button>
       <button class="btn btn-outline btn-sm" data-duplicate-event="${ev.id}">📅 Duplicate for Next Year</button>
-      ${hasEventDatePassed(ev) ? `<button class="btn btn-blue btn-sm" data-post-event-eval="${ev.id}">📋 Post-Event Evaluation</button>` : ''}
+      ${hasEventDatePassed(ev)
+        ? (ev.exhibitDayEventId
+            ? `<button class="btn btn-blue btn-sm" data-post-event-eval="${ev.id}">📋 Post-Event Evaluation</button>`
+            : `<button class="btn btn-blue btn-sm" disabled title="This event was never synced to Exhibit Day, so there's nothing there to attach an evaluation to -- sync it first using the button below.">📋 Post-Event Evaluation</button>`)
+        : ''}
       ${ev.status!==STATUS.SUBMITTED
         ? `<button class="btn btn-red btn-sm" data-delete="${ev.id}" style="margin-left:auto;">Delete</button>`
         : ''}

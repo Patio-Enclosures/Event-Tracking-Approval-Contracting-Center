@@ -3800,7 +3800,11 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     // "W9 Attachment" is confirmed NOT present anywhere in this workspace's 42 custom fields as
     // of the 8/20/2026 list -- stays null until it's created in Exhibit Day and List Custom
     // Field Names is run again to get its real ID.
-    w9Attachment: null
+    w9Attachment: null,
+    // Added 8/20/2026 -- the Post-Event Evaluation booth photo upload was never wired to any
+    // Exhibit Day field at all (not even a null placeholder), so it never synced. Not present
+    // in the 42-field list either. Stays null until confirmed to exist and its real ID is found.
+    boothPhoto: null
   },
   // Discovered 7/28/2026 via Settings -> List Custom Field Names.
   // eventActivationStatus stays null -- not present anywhere in this workspace's 39 custom
@@ -3852,6 +3856,9 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     // string once an ID is filled in, that likely means it needs to be a URL-type field
     // specifically, not Text.
     w9Attachment: null,
+    // Added 8/20/2026 -- see the matching comment on Patio Enclosures above; same situation
+    // here (never wired up at all, not present in the original 41-field discovery either).
+    boothPhoto: null,
     // Discovered 8/19/2026 via List Custom Field Names -- Exhibit Day calls this "Brands
     // Attending" (Event Information tab). This is the field the new UWD / TBA / UWD-TBA
     // "Submission For" dropdown syncs into; the UWD/TBA option sends one single event with both
@@ -3904,7 +3911,9 @@ const EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND = {
     // Confirmed 8/20/2026 via List Custom Field Names -- same list, and same field IDs, as
     // Patio Enclosures above (this brand shares Patio's exact custom field template).
     checkRequestAmount: 'custom_267578',
-    w9Attachment: null
+    w9Attachment: null,
+    // Added 8/20/2026 -- see the matching comment on Patio Enclosures above; same situation here.
+    boothPhoto: null
   },
   // TODO: run Settings -> List Custom Field Names while signed into this brand, then fill these in.
   'leafguard': null
@@ -3978,6 +3987,10 @@ function buildExhibitDaySyncPayload(ev){
   addField('registrationUsername', ev.registrationUsername || '');
   addField('registrationPassword', ev.registrationPassword || '');
   addField('boothLocation', ev.boothLocation || '');
+  // Added 8/20/2026 -- the Post-Event Evaluation booth photo was being saved on the event but
+  // never included in the sync payload at all. Sends the Firebase Storage download URL, same
+  // approach as W9 Attachment above.
+  addField('boothPhoto', ev.boothPhotoFileUrl || '');
   // "Event Code" is a plain text field in Exhibit Day (not a strict dropdown like Branch/Payment
   // Type), so an empty string here is safe -- unlike those, this doesn't need to be skipped when
   // there's nothing to send. Only meaningful for renewals, but harmless to send blank otherwise.
@@ -7766,6 +7779,12 @@ function attachHandlers(){
         peBoothPhotoFileInput.value = '';
         return;
       }
+      // Confirmed 8/20/2026: without this, the rest of the evaluation (ratings, notes, actual
+      // costs, everything read by readPostEventEvalForm) was silently wiped -- render() below
+      // rebuilds these inputs from state.postEventEvalDraft, which only reflects the DOM if a
+      // read happened first. Same class of bug the main Contract Documents/W9 upload handlers
+      // already guard against with an equivalent read-before-render call.
+      readPostEventEvalForm();
       if(peBoothPhotoFileStatusEl) peBoothPhotoFileStatusEl.innerHTML = `Uploading "${escapeHtml(file.name)}"\u2026`;
       peBoothPhotoFileInput.disabled = true;
       try{
@@ -7789,6 +7808,7 @@ function attachHandlers(){
   if(pe_removeBoothPhotoFileLink){
     pe_removeBoothPhotoFileLink.addEventListener('click', (e)=>{
       e.preventDefault();
+      readPostEventEvalForm(); // same fix as the upload handler above -- preserve in-progress edits
       state.postEventEvalDraft.boothPhotoFileName = '';
       state.postEventEvalDraft.boothPhotoFileType = '';
       state.postEventEvalDraft.boothPhotoFileUrl = '';

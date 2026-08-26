@@ -1518,6 +1518,14 @@ function hasEventDatePassed(ev){
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return eventDate < today;
 }
+// Date (YYYY-MM-DD, local time) of the most recent activity logged against this event -- pulled
+// from ev.history, which logActivity() keeps newest-first, so the first entry is the latest one.
+// Returns null when the event has no history yet, which the Last Activity filter below treats
+// the same way every other filter here treats a missing value: excluded once the filter is set.
+function getLastActivityDate(ev){
+  if(!ev.history || !ev.history.length || !ev.history[0] || !ev.history[0].ts) return null;
+  return toDateInputValue(new Date(ev.history[0].ts));
+}
 function getStalenessFlag(ev){
   if(ev.status !== STATUS.RESEARCHING) return null;
   const now = new Date();
@@ -1592,6 +1600,8 @@ let state = {
   filterStatuses:[],
   filterDateFrom:'',
   filterDateTo:'',
+  filterActivityDateFrom:'',
+  filterActivityDateTo:'',
   filterRegions:[],
   filterDataSource:'',
   masterListStatus:'',
@@ -4670,6 +4680,12 @@ function render(){
     if(state.filterDateTo){
       out = out.filter(ev => ev.startDate && ev.startDate <= state.filterDateTo);
     }
+    if(state.filterActivityDateFrom){
+      out = out.filter(ev => { const d = getLastActivityDate(ev); return d && d >= state.filterActivityDateFrom; });
+    }
+    if(state.filterActivityDateTo){
+      out = out.filter(ev => { const d = getLastActivityDate(ev); return d && d <= state.filterActivityDateTo; });
+    }
     if(isMaster && state.filterRegions.length > 0){
       out = out.filter(ev => state.filterRegions.includes(String(ev.region)));
     }
@@ -4726,7 +4742,7 @@ function render(){
       : allEvents;
     const distinctBranchesMaster = Array.from(new Set(branchSourceEvents.map(e=>e.branch).filter(b=>b && b.trim())))
       .sort((a,b)=>a.localeCompare(b));
-    const hasActiveFiltersMaster = state.filterBranches.length>0 || state.filterStatuses.length>0 || state.filterDateFrom || state.filterDateTo || state.filterRegions.length>0 || state.filterDataSource;
+    const hasActiveFiltersMaster = state.filterBranches.length>0 || state.filterStatuses.length>0 || state.filterDateFrom || state.filterDateTo || state.filterActivityDateFrom || state.filterActivityDateTo || state.filterRegions.length>0 || state.filterDataSource;
     const searchSortBarHtmlMaster = regionEventsAll.length===0 ? '' : `
       <div class="search-sort-bar">
         <div class="search-box">
@@ -4749,6 +4765,8 @@ function render(){
         </select>
         <label class="filter-date-label">From <input type="date" id="regionFilterDateFrom" value="${escapeHtml(state.filterDateFrom)}"/></label>
         <label class="filter-date-label">To <input type="date" id="regionFilterDateTo" value="${escapeHtml(state.filterDateTo)}"/></label>
+        <label class="filter-date-label">Last Activity From <input type="date" id="filterActivityDateFrom" value="${escapeHtml(state.filterActivityDateFrom)}"/></label>
+        <label class="filter-date-label">To <input type="date" id="filterActivityDateTo" value="${escapeHtml(state.filterActivityDateTo)}"/></label>
         ${hasActiveFiltersMaster ? `<button class="btn btn-outline btn-sm" id="clearFiltersBtn">Clear Filters</button>` : ''}
       </div>
     `;
@@ -4783,7 +4801,7 @@ function render(){
     }
     const distinctBranches = Array.from(new Set(regionEventsAll.map(e=>e.branch).filter(b=>b && b.trim())))
       .sort((a,b)=>a.localeCompare(b));
-    const hasActiveFilters = state.filterBranches.length>0 || state.filterStatuses.length>0 || state.filterDateFrom || state.filterDateTo || state.filterDataSource;
+    const hasActiveFilters = state.filterBranches.length>0 || state.filterStatuses.length>0 || state.filterDateFrom || state.filterDateTo || state.filterActivityDateFrom || state.filterActivityDateTo || state.filterDataSource;
     const searchSortBarHtml = regionEventsAll.length===0 ? '' : `
       <div class="search-sort-bar">
         <div class="search-box">
@@ -4805,6 +4823,8 @@ function render(){
         </select>
         <label class="filter-date-label">From <input type="date" id="regionFilterDateFrom" value="${escapeHtml(state.filterDateFrom)}"/></label>
         <label class="filter-date-label">To <input type="date" id="regionFilterDateTo" value="${escapeHtml(state.filterDateTo)}"/></label>
+        <label class="filter-date-label">Last Activity From <input type="date" id="filterActivityDateFrom" value="${escapeHtml(state.filterActivityDateFrom)}"/></label>
+        <label class="filter-date-label">To <input type="date" id="filterActivityDateTo" value="${escapeHtml(state.filterActivityDateTo)}"/></label>
         ${hasActiveFilters ? `<button class="btn btn-outline btn-sm" id="clearFiltersBtn">Clear Filters</button>` : ''}
       </div>
     `;
@@ -6603,6 +6623,8 @@ function attachHandlers(){
       state.filterStatuses = [];
       state.filterDateFrom = '';
       state.filterDateTo = '';
+      state.filterActivityDateFrom = '';
+      state.filterActivityDateTo = '';
       state.sortBy = 'startDateAsc';
       render();
       setTimeout(()=>{
@@ -6656,6 +6678,20 @@ function attachHandlers(){
   if(filterDateToInput){
     filterDateToInput.addEventListener('change', ()=>{
       state.filterDateTo = filterDateToInput.value;
+      render();
+    });
+  }
+  const filterActivityDateFromInput = document.getElementById('filterActivityDateFrom');
+  if(filterActivityDateFromInput){
+    filterActivityDateFromInput.addEventListener('change', ()=>{
+      state.filterActivityDateFrom = filterActivityDateFromInput.value;
+      render();
+    });
+  }
+  const filterActivityDateToInput = document.getElementById('filterActivityDateTo');
+  if(filterActivityDateToInput){
+    filterActivityDateToInput.addEventListener('change', ()=>{
+      state.filterActivityDateTo = filterActivityDateToInput.value;
       render();
     });
   }
@@ -6766,6 +6802,8 @@ function attachHandlers(){
       state.filterStatuses = [];
       state.filterDateFrom = '';
       state.filterDateTo = '';
+      state.filterActivityDateFrom = '';
+      state.filterActivityDateTo = '';
       state.filterRegions = [];
       state.filterDataSource = '';
       render();

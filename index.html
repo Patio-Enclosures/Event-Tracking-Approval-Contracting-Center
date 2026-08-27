@@ -2112,11 +2112,34 @@ function getMissingApprovalFields(ev){
   if(ev.submissionType === 'renewal' && blank(ev.historicalShowCode)) missing.push('Historical Show Code');
   if(blank(ev.priorityLevel)) missing.push('Priority Level');
   if(blank(ev.organizer)) missing.push('Event Organizer Company Name');
+  if(blank(ev.contactName)) missing.push('Name of Contact');
+  if(blank(ev.contactPhone)) missing.push('Phone');
+  if(blank(ev.contactEmail)) missing.push('Email');
+  if(blank(ev.website)) missing.push('Website');
   if(blank(ev.venueName)) missing.push('Venue Name');
   if(!hasVenueAddress(ev)) missing.push('Venue Address (Street, City, State)');
   if(blank(ev.registrationLink) && getContractFiles(ev).length === 0){
     missing.push('Show Registration Link or Contract Document Upload (at least one required)');
   }
+  if(blank(ev.boothSize)) missing.push('Booth Size');
+  if(ev.boothSize === 'other' && blank(ev.boothSizeOther)) missing.push('Booth Size (Other — specify)');
+  if(blank(ev.boothLocation)) missing.push('Booth Location');
+  if(blank(ev.boothNumber)) missing.push('Booth Number');
+  if(blank(ev.contractCost)) missing.push('Contract Cost');
+  if(blank(ev.miscCosts)) missing.push('Misc. Costs');
+  if(blank(ev.laborHours)) missing.push('Forecasted Labor Hours');
+  // Mileage moved from one flat field to Travel Days x Miles Per Day -- accept either the new
+  // pair, or (for older events that haven't been re-edited yet) the legacy flat total. Same
+  // either/or pattern getMissingFields() uses for the later contract-submission gate.
+  const hasNewMileage = ev.travelDays && String(ev.travelDays).trim()!=='' && ev.milesPerDay && String(ev.milesPerDay).trim()!=='';
+  const hasLegacyMileage = ev.mileage && String(ev.mileage).trim()!=='';
+  if(!hasNewMileage && !hasLegacyMileage) missing.push('Forecasted Mileage (Travel Days & Miles Per Day)');
+  if(blank(ev.hotelNights)) missing.push('# of Hotel Nights');
+  // Vehicle Rental Days isn't shown on the form at all for Patio Enclosures -- requiring it
+  // there would create a field nobody can ever fill in.
+  if(state.currentBrand !== 'patio-enclosures' && blank(ev.vehicleRentalDays)) missing.push('Vehicle Rental Days');
+  if(blank(ev.forecastedOpps)) missing.push('Target Opps');
+  if(blank(ev.notes)) missing.push('Research Notes');
   if(blank(ev.paymentDueDate)) missing.push('Payment Due Date');
   if(blank(ev.paymentMethod)) missing.push('Payment Method');
   if(ev.paymentMethod === 'credit_card' && blank(ev.creditCardLink)) missing.push('Credit Card Payment Link');

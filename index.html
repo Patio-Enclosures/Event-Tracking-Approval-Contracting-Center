@@ -1314,6 +1314,47 @@ function setCurrentBrand(brand){
   _currentBrandDatabaseId = BRAND_DATABASE_MAP.hasOwnProperty(brand) ? BRAND_DATABASE_MAP[brand] : null;
   _fbDb = null; // force fbDb() to reconnect to the correct database next time it's called
 }
+// Lets the super admin (Paula) look at any brand's data without a separate login for each one --
+// every other account is permanently bound to exactly one brand via a custom claim (see the auth
+// listener near the bottom of this file), with no in-app way to change that. This is purely a
+// client-side "view as" switch: it reconnects to a different brand's Firestore database and
+// reloads everything from there, but it does NOT touch the signed-in account's actual custom
+// claim. That means it only works end-to-end if this account's Firestore security rules already
+// grant it read/write access to every brand's database, not just the one its claim points to --
+// if they don't, loadData() below will fail with permission-denied errors from Firestore. That
+// rules change lives outside this file; it needs whoever manages the Firebase project to confirm
+// SUPER_ADMIN_EMAIL is allowed past the brand check in firestore.rules for all four databases.
+async function switchBrand(brand){
+  if(!isSuperAdmin()) return; // the only UI that calls this already gates on isSuperAdmin(), too
+  if(brand === state.currentBrand) return;
+  if(!BRAND_DATABASE_MAP.hasOwnProperty(brand)) return;
+  if(state.panelOpen){
+    closePanel(); // prompts for confirmation itself if there are unsaved changes
+    if(state.panelOpen) return; // still open means the user cancelled that prompt
+  }
+  const authChecked = state.authChecked;
+  const currentUser = state.currentUser;
+  // Reset every brand-scoped field back to its pristine default before loading the new brand.
+  // Without this, a field loadData() only sets when the new brand actually has a saved value
+  // for it (most of Settings works this way) would otherwise keep showing whatever the
+  // previously-viewed brand had configured.
+  const fresh = JSON.parse(FRESH_STATE_JSON);
+  Object.keys(state).forEach(k => delete state[k]);
+  Object.assign(state, fresh);
+  state.authChecked = authChecked;
+  state.currentUser = currentUser;
+  state.userName = (currentUser && currentUser.email) || 'Someone';
+  state.currentBrand = brand;
+  setCurrentBrand(brand);
+  render(); // state.loaded is back to false here, so this paints the normal "Loading ledger…" screen
+  try{
+    await loadData();
+  }catch(e){
+    console.error('Failed to load data after switching brands', e);
+    alert('Could not load data for that brand. This switch only changes which database the app reads from on your side -- it doesn\'t change your account\'s actual Firestore permissions, so this usually means your account isn\'t allowed to read that brand\'s database yet (see the comment above switchBrand() in the code). Check the browser console for the specific error.');
+  }
+  render();
+}
 let _fbDb = null;
 function fbDb(){
   if(_fbDb) return _fbDb;
@@ -1437,14 +1478,21 @@ const STALENESS_LABEL = {
 const CUTOFF_WARNING_DAYS = 7; // flag Researching events whose submission cutoff is this close, before it's actually too late
 // Only these signed-in accounts can see or open the Settings panel (Teams webhook config,
 // approver access control). Everyone else's Settings button is hidden entirely.
-// Paula manages the overall system across all four brands, so she can always reach Settings
-// on any brand's database -- otherwise a brand with an empty admin list (e.g. right after being
-// set up) would have no way for anyone to ever get in and add its first real admin.
+// Paula manages the overall system across all four brands, so she can always reach Settings on
+// whichever brand's database her account is currently connected to -- otherwise a brand with an
+// empty admin list (e.g. right after being set up) would have no way for anyone to ever get in
+// and add its first real admin. Note this by itself does NOT give her account access to the
+// OTHER three brands' databases -- each account (hers included) is bound to exactly one brand
+// via a custom claim (see the auth listener near the bottom of this file). Cross-brand viewing
+// for her specifically is a separate mechanism: see switchBrand(), near setCurrentBrand().
 const SUPER_ADMIN_EMAIL = 'paula.shoemaker@greatdayimprovements.com';
+function isSuperAdmin(){
+  return !!(state.currentUser && state.currentUser.email && state.currentUser.email.toLowerCase() === SUPER_ADMIN_EMAIL);
+}
 function isSettingsAdmin(){
   if(!(state.currentUser && state.currentUser.email)) return false;
+  if(isSuperAdmin()) return true;
   const email = state.currentUser.email.toLowerCase();
-  if(email === SUPER_ADMIN_EMAIL) return true;
   return (state.settingsAdminEmails||[]).some(a => a.trim().toLowerCase() === email);
 }
 const SUPERVISOR_EMAILS = [
@@ -1670,6 +1718,12 @@ let state = {
   signInError:'',
   signInLoading:false
 };
+// A pristine snapshot of state's shape, captured once here before anything has a chance to
+// mutate it -- switchBrand() (near setCurrentBrand, below) uses this to reset every brand-scoped
+// field back to its out-of-the-box default when switching, without hand-maintaining a field
+// list that would silently drift out of date every time a new state field gets added elsewhere
+// in this file.
+const FRESH_STATE_JSON = JSON.stringify(state);
 function uid(){ return 'evt_' + Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
 function emptyDraft(regionIdx){
   return {
@@ -4879,6 +4933,13 @@ function render(){
         </div>
         <div class="header-stats">
           ${pendingApprovalCount>0 ? `<button class="pending-approval-badge" id="pendingApprovalBadge">⚠ ${pendingApprovalCount} Pending Approval</button>` : ''}
+          ${isSuperAdmin() ? `
+          <div class="stat" style="text-align:right;">
+            <div class="stat-label">Viewing brand (Super Admin)</div>
+            <select id="brandSwitcherSelect" style="font-family:var(--font-mono);font-size:11px;padding:3px 6px;border-radius:4px;">
+              ${Object.keys(BRAND_DISPLAY_NAMES).map(b=>`<option value="${b}" ${state.currentBrand===b?'selected':''}>${escapeHtml(BRAND_DISPLAY_NAMES[b])}</option>`).join('')}
+            </select>
+          </div>` : ''}
           ${state.currentUser && state.currentUser.email !== 'unconfigured' ? `
           <div class="stat" style="text-align:right;">
             <div class="stat-label">Signed in as</div>
@@ -6917,6 +6978,12 @@ function attachHandlers(){
     signOutLink.addEventListener('click', (e)=>{
       e.preventDefault();
       if(confirm('Sign out of the dashboard?')) signOutUser();
+    });
+  }
+  const brandSwitcherSelect = document.getElementById('brandSwitcherSelect');
+  if(brandSwitcherSelect){
+    brandSwitcherSelect.addEventListener('change', ()=>{
+      switchBrand(brandSwitcherSelect.value); // async -- re-renders itself once loadData() settles
     });
   }
   const settingsBtn = document.getElementById('settingsBtn');

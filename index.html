@@ -7794,6 +7794,25 @@ function attachHandlers(){
     panelBodyEl.addEventListener('input', onFormChange);
     panelBodyEl.addEventListener('change', onFormChange);
   }
+  // Most events are single-day, so jump End Date to match whenever Start Date is picked --
+  // saves having to set the same date twice for the common case. Only jumps when End Date is
+  // still empty or still equal to the OLD Start Date (i.e. it was still "following" Start Date)
+  // -- that way a deliberately different End Date already set for a multi-day event survives a
+  // later Start Date correction instead of silently getting overwritten. This listener is on
+  // f_startDate itself, so it runs before the delegated panelBodyEl handler above sees the same
+  // bubbling event -- by the time that handler reads the form, the jumped End Date is already in
+  // the DOM and gets picked up into state.draft normally, no extra sync needed here.
+  const startDateInputEl = document.getElementById('f_startDate');
+  if(startDateInputEl){
+    startDateInputEl.addEventListener('change', ()=>{
+      const endDateInputEl = document.getElementById('f_endDate');
+      if(!endDateInputEl) return;
+      const oldStart = state.draft ? state.draft.startDate : '';
+      if(!endDateInputEl.value || endDateInputEl.value === oldStart){
+        endDateInputEl.value = startDateInputEl.value;
+      }
+    });
+  }
   const paymentPhoneInput = document.getElementById('f_paymentPhoneNumber');
   if(paymentPhoneInput){
     paymentPhoneInput.addEventListener('input', ()=>{

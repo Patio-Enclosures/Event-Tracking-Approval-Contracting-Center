@@ -133,6 +133,17 @@
     padding-top:14px;
     overflow-x:auto;
     scrollbar-width:thin;
+    /* Keeps the region tabs on screen while scrolling through a long event list -- the page
+       itself scrolls (there's no separate inner scroll container for .main), so pinning this to
+       the top of that same scroll is enough; header-top scrolls away above it as normal, and
+       once it's gone this snaps to the very top of the viewport and stays there. An explicit
+       background is required (it doesn't just inherit .header's) since content now scrolls
+       underneath this once it's stuck. */
+    position:sticky;
+    top:0;
+    z-index:40;
+    background:var(--ink);
+    box-shadow:0 4px 10px rgba(0,0,0,0.18);
   }
   .tab-strip::-webkit-scrollbar{height:5px;}
   .tab-strip::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:4px;}
@@ -1495,6 +1506,19 @@ function isSettingsAdmin(){
   const email = state.currentUser.email.toLowerCase();
   return (state.settingsAdminEmails||[]).some(a => a.trim().toLowerCase() === email);
 }
+// Submitted events are normally locked from editing, to protect contract integrity once
+// something's gone to contracting. Two exceptions:
+// - Universal Windows/Bath Authority runs approval and contracting as one combined step, so
+//   there's no later stage where an approver would otherwise get a chance to fix something --
+//   their own approvers keep edit access even after Submitted for Contract.
+// - The super admin can always correct a locked event, for one-off data-quality fixes (a
+//   corrupted Start Date, a typo'd venue) that would otherwise be stuck with no way to fix them
+//   short of going around the app entirely.
+// Every other brand/user stays locked at Submitted, same as before.
+function canEditSubmittedEvent(){
+  if(isSuperAdmin()) return true;
+  return state.currentBrand === 'universal-windows-bath-authority' && isAuthorizedApprover();
+}
 const SUPERVISOR_EMAILS = [
   'angelique.critz@greatdayimprovements.com',
   'chris.winston@greatdayimprovements.com',
@@ -2826,12 +2850,7 @@ function openAddPanel(){
   render();
 }
 function openEditPanel(ev){
-  // Universal Windows/Bath Authority runs approval and contracting as one combined step -- since
-  // there's no later stage where an approver would normally get a chance to fix something, their
-  // approvers keep edit access even after Submitted for Contract. Every other brand stays locked
-  // at this stage, same as before.
-  const canEditAfterSubmission = state.currentBrand === 'universal-windows-bath-authority' && isAuthorizedApprover();
-  if(ev.status===STATUS.SUBMITTED && !canEditAfterSubmission){
+  if(ev.status===STATUS.SUBMITTED && !canEditSubmittedEvent()){
     alert('This event has already been submitted for contract processing and can no longer be edited.');
     return;
   }
@@ -5658,10 +5677,11 @@ function renderEventDetail(ev){
         <button class="btn btn-outline btn-sm" data-redownload="${ev.id}">Download Summary Again</button>
         <button class="btn btn-outline btn-sm" data-email-contracting="${ev.id}">📧 Email for Contracting Again</button>
         <button class="btn btn-outline btn-sm" data-sync-exhibitday="${ev.id}">📊 ${ev.exhibitDaySyncedAt ? 'Re-sync' : 'Sync'} to Exhibit Day</button>
-        ${(state.currentBrand === 'universal-windows-bath-authority' && isAuthorizedApprover()) ? `<button class="btn btn-outline btn-sm" data-edit="${ev.id}">Edit</button>` : ''}
+        ${canEditSubmittedEvent() ? `<button class="btn btn-outline btn-sm" data-edit="${ev.id}">Edit</button>` : ''}
         ${isAuthorizedApprover() ? `<button class="btn btn-red btn-sm" data-notpursuing="${ev.id}">Mark as Not Pursuing</button>` : ''}
       </div>
       ${(state.currentBrand === 'universal-windows-bath-authority' && isAuthorizedApprover()) ? `<div class="hint" style="margin-top:6px;">Since approval and contracting are combined for this brand, approvers can still correct details here if something was wrong at submission -- re-sync to Exhibit Day afterward if the correction affects synced data.</div>` : ''}
+      ${(isSuperAdmin() && state.currentBrand !== 'universal-windows-bath-authority') ? `<div class="hint" style="margin-top:6px;">As the super admin, you can still correct details here for data-quality fixes -- re-sync to Exhibit Day afterward if the correction affects synced data.</div>` : ''}
       ${isAuthorizedApprover() ? `<div class="hint" style="margin-top:6px;">If something falls through after submission (venue backs out, event's cancelled, etc.), use Mark as Not Pursuing rather than leaving this stuck here.</div>` : ''}`;
   }
   return `
@@ -5744,7 +5764,7 @@ function renderEventDetail(ev){
       </div>
     ` : ''}
     <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap;">
-      ${ev.status===STATUS.SUBMITTED
+      ${ev.status===STATUS.SUBMITTED && !canEditSubmittedEvent()
         ? `<span class="decision-note" style="margin:0;">Locked — submitted events can't be edited or deleted.</span>`
         : `<button class="btn btn-outline btn-sm" data-edit="${ev.id}">Edit Event</button>`}
       <button class="btn btn-outline btn-sm" data-download-event="${ev.id}">📄 Download / Print PDF</button>

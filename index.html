@@ -45,6 +45,13 @@
     background:var(--ink);
     color:#F2F4F1;
     padding:22px 28px 0 28px;
+    /* Keeps the whole top bar -- logo, stats, and the region tabs below it -- on screen while
+       scrolling through a long event list. The page itself scrolls (there's no separate inner
+       scroll container for .main), so pinning this to the top of that same scroll is enough. */
+    position:sticky;
+    top:0;
+    z-index:40;
+    box-shadow:0 4px 10px rgba(0,0,0,0.18);
   }
   .header-top{
     display:flex;
@@ -133,17 +140,8 @@
     padding-top:14px;
     overflow-x:auto;
     scrollbar-width:thin;
-    /* Keeps the region tabs on screen while scrolling through a long event list -- the page
-       itself scrolls (there's no separate inner scroll container for .main), so pinning this to
-       the top of that same scroll is enough; header-top scrolls away above it as normal, and
-       once it's gone this snaps to the very top of the viewport and stays there. An explicit
-       background is required (it doesn't just inherit .header's) since content now scrolls
-       underneath this once it's stuck. */
-    position:sticky;
-    top:0;
-    z-index:40;
-    background:var(--ink);
-    box-shadow:0 4px 10px rgba(0,0,0,0.18);
+    /* No sticky positioning of its own anymore -- .header (its parent) is now sticky as a
+       whole, which keeps this pinned along with the logo/stats above it. See .header. */
   }
   .tab-strip::-webkit-scrollbar{height:5px;}
   .tab-strip::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:4px;}

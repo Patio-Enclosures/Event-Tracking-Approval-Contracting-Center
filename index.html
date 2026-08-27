@@ -1639,6 +1639,7 @@ let state = {
   activeRegion: 'overview',
   expandedEventId: null,
   expandedOverviewRegion: null,
+  expandedYearTrend: null,
   panelOpen:false,
   editingEventId:null,
   draft:null,
@@ -5200,27 +5201,52 @@ function renderOverview(allEvents){
     if(!ev.startDate) return;
     const year = ev.startDate.slice(0,4);
     if(!/^\d{4}$/.test(year)) return;
-    if(!yearGroups[year]) yearGroups[year] = { year, count:0, submittedCount:0, submittedValue:0, pipelineValue:0 };
+    if(!yearGroups[year]) yearGroups[year] = { year, count:0, submittedCount:0, submittedValue:0, pipelineValue:0, events:[] };
     const g = yearGroups[year];
     g.count++;
+    g.events.push(ev);
     if(ev.status===STATUS.SUBMITTED){ g.submittedCount++; g.submittedValue += totalCost(ev); }
     if(ev.status!==STATUS.DECLINED && ev.status!==STATUS.NOT_PURSUING) g.pipelineValue += totalCost(ev);
   });
   const yearRollups = Object.values(yearGroups).sort((a,b)=> b.year.localeCompare(a.year));
   const maxSubmittedValue = Math.max(1, ...yearRollups.map(g=>g.submittedValue));
+  // A "year" here is just whatever the first 4 characters of Start Date happen to be -- there's
+  // no sanity range check, so a mis-typed or corrupted date (e.g. "4628-..." instead of a real
+  // year) shows up as its own bucket rather than being caught. Flagging any year outside a
+  // plausible range, and making every row expandable to the actual events behind it, means that
+  // kind of bad data is visible and fixable right here instead of requiring a database lookup.
+  const PLAUSIBLE_YEAR_MIN = 2015, PLAUSIBLE_YEAR_MAX = new Date().getFullYear() + 5;
   const yearTrendsHtml = yearRollups.length===0
     ? `<div class="empty" style="padding:24px;"><div class="empty-title" style="font-size:15px;">Not enough dated events yet</div><div>Once events have start dates spanning more than one year, a year-over-year comparison will show up here.</div></div>`
-    : `<div class="region-table-wrap" style="padding:16px 18px;">` + yearRollups.map(g=>`
+    : `<div class="region-table-wrap" style="padding:16px 18px;">` + yearRollups.map(g=>{
+        const yearNum = parseInt(g.year, 10);
+        const implausible = isNaN(yearNum) || yearNum < PLAUSIBLE_YEAR_MIN || yearNum > PLAUSIBLE_YEAR_MAX;
+        const isOpen = state.expandedYearTrend === g.year;
+        return `
         <div style="margin-bottom:14px;">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;font-family:var(--font-mono);font-size:12px;">
-            <span style="font-weight:700;color:var(--ink);">${escapeHtml(g.year)}</span>
+          <div data-toggle-year-trend="${escapeHtml(g.year)}" style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;font-family:var(--font-mono);font-size:12px;cursor:pointer;">
+            <span style="font-weight:700;color:${implausible?'var(--red)':'var(--ink)'};">
+              <span class="chevron ${isOpen?'open':''}" style="display:inline-block;margin-right:4px;">▶</span>
+              ${escapeHtml(g.year)}${implausible ? ' ⚠ Not a real year — likely bad data' : ''}
+            </span>
             <span style="color:var(--ink-faint);">${g.count} event${g.count===1?'':'s'} · ${g.submittedCount} submitted · ${money(g.submittedValue)} contracted</span>
           </div>
           <div style="height:10px;background:var(--bg);border-radius:5px;overflow:hidden;">
             <div style="height:100%;width:${(g.submittedValue/maxSubmittedValue*100).toFixed(1)}%;background:var(--green);border-radius:5px;"></div>
           </div>
+          ${isOpen ? `<div class="needs-decision-list" style="margin-top:8px;">` + g.events
+            .slice().sort((a,b)=>(a.startDate||'').localeCompare(b.startDate||''))
+            .map(ev=>`
+            <div class="needs-decision-row" data-goto-event="${ev.id}" data-goto-event-region="${ev.region}">
+              <div class="needs-decision-main">
+                <div class="needs-decision-name">${escapeHtml(ev.eventName)}</div>
+                <div class="needs-decision-meta">${escapeHtml(state.regionNames[ev.region]||'Unknown')} · Start Date field: "${escapeHtml(ev.startDate)}" · Est. ${money(totalCost(ev))}</div>
+              </div>
+              <span class="badge ${ev.status}">${STATUS_LABEL[ev.status]}</span>
+            </div>
+          `).join('') + `</div>` : ''}
         </div>
-      `).join('') + `</div>`;
+      `;}).join('') + `</div>`;
   // Post-event evaluations still needed: event date has passed, no evaluation saved yet, and
   // only for events on or after the cutoff date -- older events are exempt on purpose, so this
   // doesn't surface a backlog of ancient events nobody intends to go back and evaluate.
@@ -6693,6 +6719,13 @@ function attachHandlers(){
     row.addEventListener('click', ()=>{
       const idx = parseInt(row.getAttribute('data-toggle-region'),10);
       state.expandedOverviewRegion = state.expandedOverviewRegion === idx ? null : idx;
+      render();
+    });
+  });
+  document.querySelectorAll('[data-toggle-year-trend]').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      const year = row.getAttribute('data-toggle-year-trend');
+      state.expandedYearTrend = state.expandedYearTrend === year ? null : year;
       render();
     });
   });

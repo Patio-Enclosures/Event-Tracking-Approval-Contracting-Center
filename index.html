@@ -4150,14 +4150,23 @@ function buildExhibitDaySyncPayload(ev){
     budget_booth_reservation: num(ev.contractCost),
     budget_travel: mileageDollars(ev) + hotelDollars(ev) + perDiemDollars(ev),
     budget_misc_expenses: num(ev.miscCosts),
-    // Actual costs, entered on the Post-Event Evaluation (not the pre-event Financials budget
-    // estimates above) -- Per Diem, Phone, Mileage, and Additional Misc. Expenses all land
-    // together under Exhibit Day's Misc. Expenses and Credits, confirmed 8/4/2026.
-    cost_misc_expenses: num(ev.actualPerDiem) + num(ev.actualPhoneCost) + num(ev.actualMileageCost) + num(ev.actualMiscExpenses),
     budget_attendee_registrations: laborDollars(ev),
-    // Confirmed 8/4/2026: Exhibit Day's "Staff" tab is internally named attendee_registrations
-    // -- cost_ is the actual-spend counterpart to the budget_ estimate directly above.
-    cost_attendee_registrations: num(ev.actualLaborCost),
+    // Removed 9/1/2026: cost_misc_expenses and cost_attendee_registrations (actual Per Diem,
+    // Phone, Mileage, Misc. Expenses, and Labor Cost from the Post-Event Evaluation) used to be
+    // sent here as the "actual spend" counterpart to the budget_ estimates above. Checked against
+    // Exhibit Day's own published API docs (api.exhibitday.com/Help/V1) on 9/1/2026: neither
+    // cost_misc_expenses nor cost_attendee_registrations is a real, documented parameter on
+    // PATCH /v1/events -- there is NO field anywhere in Exhibit Day's API for writing actual/
+    // spent amounts, only budget_ (estimate) fields. The 8/4/2026 "confirmed" comment that used
+    // to be here was apparently based on seeing these names in a raw GET response, not on them
+    // actually being accepted as PATCH input -- the exact same false-confirmation failure mode
+    // already caught once before with the old `tags` field (see event_tags below). Sending two
+    // unrecognized fields on every sync risks Exhibit Day rejecting the whole request depending
+    // on how strictly it validates unknown parameters, which would explain the real budget_
+    // fields above silently not showing up either -- this is the most likely fix for that.
+    // Actual/spent amounts from the Post-Event Evaluation currently have nowhere to sync to in
+    // Exhibit Day at all; they still show correctly inside this dashboard's own detail view, PDF,
+    // and CSV export, just not in Exhibit Day, until Exhibit Day's API adds a way to write them.
     booth_size: boothSizeStandard,
     // Confirmed 8/13/2026 via a raw Events API response: booth_number is a standard, built-in
     // field (same category as booth_size, roi_notes, roi_num_leads below) -- not a custom field,

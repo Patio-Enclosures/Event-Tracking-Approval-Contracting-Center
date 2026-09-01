@@ -3440,6 +3440,21 @@ async function finishSubmitContract(ev, before, isCombinedFlow){
     return;
   }
   logActivity(ev.id, ev.eventName, 'Submitted for Contract Processing');
+  // Patio Enclosures' team kept forgetting the separate manual "Sync to Exhibit Day" step right
+  // after this one, so per request 9/1/2026 it's now folded into this same action for that brand
+  // only -- every other brand still syncs manually via the button on the Submitted card. This is
+  // best-effort: the event is already correctly Submitted either way by this point, so a sync
+  // failure here doesn't undo that -- it just means Exhibit Day itself needs a manual retry via
+  // that same button, same as if this automatic step didn't exist at all.
+  if(state.currentBrand === 'patio-enclosures'){
+    try{
+      const result = await syncEventToExhibitDay(ev);
+      logActivity(ev.id, ev.eventName, 'Synced to Exhibit Day', result._syncAction === 'created' ? 'Created new event' : 'Updated existing event');
+    }catch(err){
+      console.error('Automatic Exhibit Day sync after contract submission failed', err);
+      alert(`"${ev.eventName}" was submitted for contract processing successfully, but the automatic sync to Exhibit Day failed: ${err.message || err}\n\nUse the "Sync to Exhibit Day" button on this event to try again.`);
+    }
+  }
   render();
   if(!isCombinedFlow){
     downloadContractSummary(ev);

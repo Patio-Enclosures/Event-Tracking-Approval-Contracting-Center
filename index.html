@@ -883,6 +883,7 @@
   .badge.stale-cutoff_soon{background:var(--blue-soft);color:var(--blue);}
   .badge.legacy-import{background:#EDE7F6;color:#6A4C93;}
   .badge.on-master-list{background:var(--green-soft);color:var(--green);}
+  .badge.waiting-on-info{background:var(--amber-soft);color:var(--amber);}
   .badge.submitted{background:var(--green-soft);color:var(--green);}
   .chevron{color:var(--ink-faint);transition:transform 0.15s;font-size:13px;}
   .chevron.open{transform:rotate(90deg);}
@@ -1752,6 +1753,12 @@ function emptyDraft(regionIdx){
   return {
     id:null,
     needsReconfirmation:false,
+    // Lightweight marker for a Researching event that's stalled waiting on something external
+    // (a contract copy, a registration link, a payment amount) rather than still being actively
+    // worked -- a badge/reminder only, not a separate status, so it doesn't touch approval or
+    // submission logic at all. Toggled via toggleWaitingOnInfo(), not through this form.
+    waitingOnInfo:false,
+    waitingOnInfoNote:'',
     region: regionIdx,
     branch:'',
     eventName:'',
@@ -3231,6 +3238,8 @@ async function duplicateEventNextYear(id){
   copy.w9FileName = '';
   copy.w9FileType = '';
   copy.w9FileUrl = '';
+  copy.waitingOnInfo = false;
+  copy.waitingOnInfoNote = '';
   copy.history = [];
   // A duplicated event is, by definition, a renewal of a show that already ran -- mark it as
   // such so the pre-approval checklist requires a Historical Show Code before it can move
@@ -3289,6 +3298,34 @@ async function denyBySupervisor(id){
     return;
   }
   logActivity(ev.id, ev.eventName, 'Denied by Approver', ev.deniedReason || undefined);
+  render();
+}
+// Marks (or clears) a Researching event as stalled waiting on something external -- a contract
+// copy, a registration link, a payment amount -- rather than still being actively researched.
+// Deliberately just a badge/reminder on the existing status, not a separate pipeline stage: the
+// event's real status never changes here, so this has no effect on approval, submission, Bulk
+// Cleanup, or any other status-driven logic anywhere else in the file.
+async function toggleWaitingOnInfo(id){
+  const ev = state.events.find(e=>e.id===id);
+  if(!ev) return;
+  const before = Object.assign({}, ev);
+  if(ev.waitingOnInfo){
+    ev.waitingOnInfo = false;
+    ev.waitingOnInfoNote = '';
+  } else {
+    const note = prompt(`Mark "${ev.eventName}" as waiting on contract/payment info?\n\nWhat's it waiting on (optional -- shown on the event as a reminder)?`);
+    if(note === null) return; // cancelled
+    ev.waitingOnInfo = true;
+    ev.waitingOnInfoNote = note.trim();
+  }
+  const ok = await persistEventChangeAtomic(ev, false);
+  if(!ok){
+    Object.assign(ev, before);
+    alert('This could not be saved -- likely a connection issue. Please try again.');
+    render();
+    return;
+  }
+  logActivity(ev.id, ev.eventName, ev.waitingOnInfo ? 'Marked as waiting on contract/payment info' : 'Cleared waiting on info', ev.waitingOnInfoNote || undefined);
   render();
 }
 async function markNotPursuing(id, reason){
@@ -4821,7 +4858,7 @@ function render(){
     const q = state.searchQuery.trim().toLowerCase();
     if(q){
       out = out.filter(ev=>{
-        const haystack = [ev.eventName, ev.venueName, ev.organizer, ev.branch, ev.notes, ev.finalNotes, ev.contactName, ev.contactEmail, ev.contactPhone]
+        const haystack = [ev.eventName, ev.venueName, ev.organizer, ev.branch, ev.notes, ev.finalNotes, ev.contactName, ev.contactEmail, ev.contactPhone, ev.waitingOnInfoNote]
           .filter(Boolean).join(' ').toLowerCase();
         return haystack.includes(q);
       });
@@ -5576,6 +5613,7 @@ function renderEventCard(ev, showRegion){
           ${(()=>{ const flag = getStalenessFlag(ev); return flag ? `<span class="badge stale-${flag}">⚠ ${STALENESS_LABEL[flag]}</span>` : ''; })()}
           ${isLegacyImportEvent(ev) ? `<span class="badge legacy-import" title="From the original bulk import — data quality not guaranteed">🗂️ Original Import</span>` : ''}
           ${ev.onMasterList ? `<span class="badge on-master-list" title="Matched by Event Name in the most recently uploaded master list">📑 On Master List</span>` : ''}
+          ${ev.waitingOnInfo ? `<span class="badge waiting-on-info" title="${escapeHtml(ev.waitingOnInfoNote || 'Waiting on contract/payment info')}">⏳ Waiting on Info</span>` : ''}
           <span class="chevron ${isOpen?'open':''}">▶</span>
         </div>
       </div>
@@ -5749,6 +5787,7 @@ function renderEventDetail(ev){
   <div class="event-detail">
     ${isLegacyImportEvent(ev) ? `<div class="hint" style="background:#EDE7F6;color:#6A4C93;padding:8px 12px;border-radius:6px;margin-bottom:14px;font-weight:600;">🗂️ This event came from the original bulk import and hasn't necessarily been reviewed for accuracy — double-check the details, including status, before relying on them.</div>` : ''}
     ${ev.onMasterList ? `<div class="hint" style="background:var(--green-soft);color:var(--green);padding:8px 12px;border-radius:6px;margin-bottom:14px;font-weight:600;">📑 This event matched an entry (by name) in the most recently uploaded master list${ev.masterListCheckedAt ? ' — checked '+new Date(ev.masterListCheckedAt).toLocaleDateString() : ''}.</div>` : ''}
+    ${ev.waitingOnInfo ? `<div class="hint" style="background:var(--amber-soft);color:var(--amber);padding:8px 12px;border-radius:6px;margin-bottom:14px;font-weight:600;">⏳ Waiting on contract/payment info${ev.waitingOnInfoNote ? ': '+escapeHtml(ev.waitingOnInfoNote) : ''}</div>` : ''}
     ${ev.createdAt ? `<div class="hint" style="margin:-4px 0 14px 2px;">Added ${new Date(ev.createdAt).toLocaleDateString()}${ev.createdBy ? ' by '+escapeHtml(ev.createdBy) : ''}</div>` : ''}
     <div class="detail-grid">
       <div class="detail-section-label">Event Details</div>
@@ -5830,6 +5869,11 @@ function renderEventDetail(ev){
         : `<button class="btn btn-outline btn-sm" data-edit="${ev.id}">Edit Event</button>`}
       <button class="btn btn-outline btn-sm" data-download-event="${ev.id}">📄 Download / Print PDF</button>
       <button class="btn btn-outline btn-sm" data-duplicate-event="${ev.id}">📅 Duplicate for Next Year</button>
+      ${ev.status===STATUS.RESEARCHING
+        ? (ev.waitingOnInfo
+            ? `<button class="btn btn-outline btn-sm" data-toggle-waiting="${ev.id}">✓ No Longer Waiting</button>`
+            : `<button class="btn btn-outline btn-sm" data-toggle-waiting="${ev.id}">⏳ Waiting on Contract/Payment Info</button>`)
+        : ''}
       ${hasEventDatePassed(ev)
         ? (ev.exhibitDayEventId
             ? `<button class="btn btn-blue btn-sm" data-post-event-eval="${ev.id}">📋 Post-Event Evaluation</button>`
@@ -7500,6 +7544,12 @@ function attachHandlers(){
     b.addEventListener('click', (e)=>{
       e.stopPropagation();
       duplicateEventNextYear(b.getAttribute('data-duplicate-event'));
+    });
+  });
+  document.querySelectorAll('[data-toggle-waiting]').forEach(b=>{
+    b.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      toggleWaitingOnInfo(b.getAttribute('data-toggle-waiting'));
     });
   });
   document.querySelectorAll('[data-decline]').forEach(b=>{

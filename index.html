@@ -1676,6 +1676,7 @@ let state = {
   filterActivityDateTo:'',
   filterRegions:[],
   filterDataSource:'',
+  filterWaitingOnInfo:false,
   masterListStatus:'',
   exhibitDayFieldsStatus:'',
   settingsOpen:false,
@@ -4889,6 +4890,9 @@ function render(){
     } else if(state.filterDataSource === 'added'){
       out = out.filter(ev => !isLegacyImportEvent(ev));
     }
+    if(state.filterWaitingOnInfo){
+      out = out.filter(ev => ev.waitingOnInfo);
+    }
     out = out.slice().sort((a,b)=>{
       switch(state.sortBy){
         case 'startDateDesc': return (b.startDate||'').localeCompare(a.startDate||'');
@@ -4937,7 +4941,7 @@ function render(){
       : allEvents;
     const distinctBranchesMaster = Array.from(new Set(branchSourceEvents.map(e=>e.branch).filter(b=>b && b.trim())))
       .sort((a,b)=>a.localeCompare(b));
-    const hasActiveFiltersMaster = state.filterBranches.length>0 || state.filterStatuses.length>0 || state.filterDateFrom || state.filterDateTo || state.filterActivityDateFrom || state.filterActivityDateTo || state.filterRegions.length>0 || state.filterDataSource;
+    const hasActiveFiltersMaster = state.filterBranches.length>0 || state.filterStatuses.length>0 || state.filterDateFrom || state.filterDateTo || state.filterActivityDateFrom || state.filterActivityDateTo || state.filterRegions.length>0 || state.filterDataSource || state.filterWaitingOnInfo;
     const searchSortBarHtmlMaster = regionEventsAll.length===0 ? '' : `
       <div class="search-sort-bar">
         <div class="search-box">
@@ -4962,6 +4966,7 @@ function render(){
         <label class="filter-date-label">To <input type="date" id="regionFilterDateTo" value="${escapeHtml(state.filterDateTo)}"/></label>
         <label class="filter-date-label">Last Activity From <input type="date" id="filterActivityDateFrom" value="${escapeHtml(state.filterActivityDateFrom)}"/></label>
         <label class="filter-date-label">To <input type="date" id="filterActivityDateTo" value="${escapeHtml(state.filterActivityDateTo)}"/></label>
+        <label class="filter-date-label" style="cursor:pointer;"><input type="checkbox" id="filterWaitingOnInfoCheckbox" ${state.filterWaitingOnInfo?'checked':''}/> ⏳ Waiting on Info Only</label>
         ${hasActiveFiltersMaster ? `<button class="btn btn-outline btn-sm" id="clearFiltersBtn">Clear Filters</button>` : ''}
       </div>
     `;
@@ -4996,7 +5001,7 @@ function render(){
     }
     const distinctBranches = Array.from(new Set(regionEventsAll.map(e=>e.branch).filter(b=>b && b.trim())))
       .sort((a,b)=>a.localeCompare(b));
-    const hasActiveFilters = state.filterBranches.length>0 || state.filterStatuses.length>0 || state.filterDateFrom || state.filterDateTo || state.filterActivityDateFrom || state.filterActivityDateTo || state.filterDataSource;
+    const hasActiveFilters = state.filterBranches.length>0 || state.filterStatuses.length>0 || state.filterDateFrom || state.filterDateTo || state.filterActivityDateFrom || state.filterActivityDateTo || state.filterDataSource || state.filterWaitingOnInfo;
     const searchSortBarHtml = regionEventsAll.length===0 ? '' : `
       <div class="search-sort-bar">
         <div class="search-box">
@@ -5020,6 +5025,7 @@ function render(){
         <label class="filter-date-label">To <input type="date" id="regionFilterDateTo" value="${escapeHtml(state.filterDateTo)}"/></label>
         <label class="filter-date-label">Last Activity From <input type="date" id="filterActivityDateFrom" value="${escapeHtml(state.filterActivityDateFrom)}"/></label>
         <label class="filter-date-label">To <input type="date" id="filterActivityDateTo" value="${escapeHtml(state.filterActivityDateTo)}"/></label>
+        <label class="filter-date-label" style="cursor:pointer;"><input type="checkbox" id="filterWaitingOnInfoCheckbox" ${state.filterWaitingOnInfo?'checked':''}/> ⏳ Waiting on Info Only</label>
         ${hasActiveFilters ? `<button class="btn btn-outline btn-sm" id="clearFiltersBtn">Clear Filters</button>` : ''}
       </div>
     `;
@@ -6873,6 +6879,7 @@ function attachHandlers(){
       state.filterDateTo = '';
       state.filterActivityDateFrom = '';
       state.filterActivityDateTo = '';
+      state.filterWaitingOnInfo = false;
       state.sortBy = 'startDateAsc';
       render();
       setTimeout(()=>{
@@ -6940,6 +6947,13 @@ function attachHandlers(){
   if(filterActivityDateToInput){
     filterActivityDateToInput.addEventListener('change', ()=>{
       state.filterActivityDateTo = filterActivityDateToInput.value;
+      render();
+    });
+  }
+  const filterWaitingOnInfoCheckbox = document.getElementById('filterWaitingOnInfoCheckbox');
+  if(filterWaitingOnInfoCheckbox){
+    filterWaitingOnInfoCheckbox.addEventListener('change', ()=>{
+      state.filterWaitingOnInfo = filterWaitingOnInfoCheckbox.checked;
       render();
     });
   }
@@ -7054,6 +7068,7 @@ function attachHandlers(){
       state.filterActivityDateTo = '';
       state.filterRegions = [];
       state.filterDataSource = '';
+      state.filterWaitingOnInfo = false;
       render();
     });
   }

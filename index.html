@@ -2396,39 +2396,73 @@ async function persistEventsBulkAtomic(transformFn){
     return false;
   }
 }
+// A cell counts as a zip code if it's 1-5 digits (padded back out to 5, since Excel silently
+// drops leading zeros off zips it thinks are numbers -- e.g. Vermont's 05001 becomes 5001) or a
+// ZIP+4 like "29003-1234" (only the 5-digit prefix is kept, matching the format used everywhere
+// else in the app). Returns null for anything that isn't zip-shaped.
+function normalizeZipCandidate(cell){
+  if(cell === null || cell === undefined || cell === '') return null;
+  let s = typeof cell === 'number'
+    ? (Number.isFinite(cell) ? String(Math.trunc(cell)) : '')
+    : String(cell).trim().replace(/\.0$/, '');
+  const plus4 = s.match(/^(\d{1,5})-\d{4}$/);
+  if(plus4) return plus4[1].padStart(5, '0');
+  if(/^\d{1,5}$/.test(s)) return s.padStart(5, '0');
+  return null;
+}
+// A cell counts as a branch code if it starts with 2-4 letters followed by a space, a dash, or
+// the end of the cell -- covering both a bare code ("AGA") and a fuller label ("AGA - Augusta,
+// GA"), same as extractBranchCode() uses for the Branch field elsewhere. Returns the matched
+// code (uppercased) and its length, so callers can prefer a longer match (a real 3-4 letter
+// branch code) over a shorter one (e.g. a 2-letter state abbreviation sitting in another column)
+// when a row has more than one candidate.
+function normalizeBranchCandidate(cell){
+  if(cell === null || cell === undefined) return null;
+  const match = String(cell).trim().match(/^([A-Za-z]{2,4})(?=[\s-]|$)/);
+  return match ? { code: match[1].toUpperCase(), len: match[1].length } : null;
+}
 // Parses an uploaded spreadsheet of Branch/Zip pairs into this brand's own serviceable-area
-// map, replacing whatever was there before. Expects two columns -- header names don't matter,
-// only their order: first column is the branch code, second is a zip code, one zip per row
-// (the same branch code repeats across many rows). Patio Enclosures doesn't use this at all --
-// it has its own built-in list, kept as-is so nothing changes for that brand.
+// map, replacing whatever was there before. Column order, extra columns, a header row or no
+// header row at all, and which sheet the data lives on all don't matter -- each row is scanned
+// cell-by-cell for whichever cell looks like a zip code and whichever looks like a branch code,
+// so brands whose spreadsheets are laid out differently from each other can each upload their
+// own file as-is. Patio Enclosures doesn't use this at all -- it has its own built-in list, kept
+// as-is so nothing changes for that brand.
 async function uploadServiceableZips(file){
   const buf = await file.arrayBuffer();
   const workbook = XLSX.read(buf, { type: 'array' });
-  const firstSheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[firstSheetName];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-  if(rows.length < 2){
-    alert('That file doesn\'t seem to have any data rows below the header.');
-    return;
-  }
   const map = {};
   let zipCount = 0;
-  for(let i=1; i<rows.length; i++){
-    const branch = String(rows[i][0]||'').trim().toUpperCase();
-    const zip = String(rows[i][1]||'').trim();
-    if(!branch || !zip) continue;
-    if(!map[branch]) map[branch] = [];
-    map[branch].push(zip);
-    zipCount++;
+  for(const sheetName of workbook.SheetNames){
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '' });
+    for(const row of rows){
+      if(!Array.isArray(row) || row.length === 0) continue;
+      let zip = null;
+      let branch = null; // {code, len} of the best (longest) match seen so far on this row
+      for(const cell of row){
+        if(zip === null){
+          const z = normalizeZipCandidate(cell);
+          if(z !== null) zip = z;
+        }
+        const b = normalizeBranchCandidate(cell);
+        if(b && (!branch || b.len > branch.len)) branch = b;
+      }
+      if(!branch || zip === null) continue; // header row, blank row, or nothing recognizable on it
+      if(!map[branch.code]) map[branch.code] = [];
+      map[branch.code].push(zip);
+      zipCount++;
+    }
   }
   if(zipCount === 0){
-    alert('No valid branch/zip rows found -- expecting the branch code in the first column and a zip code in the second, one zip per row.');
+    alert('No valid branch/zip rows could be found in that file -- expecting a branch code (2-4 letters, e.g. "AGA") and a 5-digit zip code somewhere on the same row. Column order and header rows don\'t matter, but make sure both values actually appear together on one row.');
     return;
   }
+  // De-dupe each branch's list in case the same pair got matched more than once.
+  Object.keys(map).forEach(b => { map[b] = Array.from(new Set(map[b])); });
   try{
     await window.storage.set('custom-serviceable-zips', JSON.stringify(map), true);
     state.customServiceableZips = map;
-    state.serviceableZipsStatus = `Saved -- ${zipCount} zip codes across ${Object.keys(map).length} branches, from "${file.name}".`;
+    state.serviceableZipsStatus = `Saved -- ${zipCount} zip codes across ${Object.keys(map).length} branches, from "${file.name}" (columns auto-detected).`;
   }catch(e){
     state.serviceableZipsStatus = 'Could not save -- please try again.';
   }
@@ -6098,7 +6132,7 @@ function renderSettingsPanel(){
     ${state.currentBrand !== 'patio-enclosures' ? `
     <div class="field-group">
       <div class="field-group-title">Serviceable Zip Codes</div>
-      <div class="hint" style="margin-bottom:10px;">Upload this brand's own list of zip codes by branch (.xlsx) to power the automatic serviceable-area check on the New Event form. Two columns, no header row needed: branch code first, then a zip code, one zip per row (the same branch code repeats down the list). Re-uploading replaces the previous list entirely.</div>
+      <div class="hint" style="margin-bottom:10px;">Upload this brand's own list of zip codes by branch (.xlsx) to power the automatic serviceable-area check on the New Event form. Needs a branch code (e.g. "AGA") and a zip code somewhere on each row, one zip per row (the same branch code repeats down the list) -- column order, extra columns, and whether there's a header row don't matter, it's auto-detected. Re-uploading replaces the previous list entirely.</div>
       <input type="file" id="serviceableZipsFile" accept=".xlsx"/>
       ${state.serviceableZipsStatus ? `<div class="hint" style="margin-top:10px;color:var(--accent-dark);font-weight:600;">${escapeHtml(state.serviceableZipsStatus)}</div>` : ''}
       ${Object.keys(state.customServiceableZips).length > 0 ? `<div class="hint" style="margin-top:6px;">Currently loaded: ${Object.keys(state.customServiceableZips).length} branch${Object.keys(state.customServiceableZips).length===1?'':'es'}, ${Object.values(state.customServiceableZips).reduce((a,l)=>a+l.length,0)} zip codes total.</div>` : ''}

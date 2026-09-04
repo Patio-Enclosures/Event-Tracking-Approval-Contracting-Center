@@ -2054,14 +2054,41 @@ function extractBranchCode(branchValue){
   const match = String(branchValue).trim().match(/^([A-Z]{2,4})/);
   return match ? match[1] : '';
 }
+// Every valid branch/location name configured for the current brand -- the exact same set the
+// Branch dropdown on the New Event form offers (Settings -> Branch/location options, falling
+// back to each tab's own name when a tab hasn't been given its own list). Only meaningful for
+// brands other than Patio Enclosures, which uses short letter codes like "AGA" instead of full
+// names -- see extractBranchCode().
+function knownBranchNamesForCurrentBrand(){
+  const names = new Set();
+  state.regionNames.forEach(regionName => {
+    const opts = (state.customBranchOptions[regionName] && state.customBranchOptions[regionName].length > 0)
+      ? state.customBranchOptions[regionName]
+      : [regionName];
+    opts.forEach(o => { if(o) names.add(String(o).trim().toUpperCase()); });
+  });
+  return names;
+}
 function checkZipServiceable(branchLabelValue, zip){
   if(!branchLabelValue || !zip) return 'unknown';
-  const code = extractBranchCode(branchLabelValue);
-  // Patio Enclosures keeps its original built-in list; every other brand uses whatever it has
-  // uploaded in Settings (Section: Serviceable Zip Codes), since each brand's own set of
-  // branches and territories is different.
-  const source = state.currentBrand === 'patio-enclosures' ? SERVICEABLE_ZIPS_BY_BRANCH : state.customServiceableZips;
-  const list = source[code];
+  if(state.currentBrand === 'patio-enclosures'){
+    // Patio Enclosures keeps its original built-in list, keyed by its short branch codes
+    // ("AGA", "ALB", etc).
+    const code = extractBranchCode(branchLabelValue);
+    const list = SERVICEABLE_ZIPS_BY_BRANCH[code];
+    if(!list) return 'unknown';
+    return list.includes(String(zip).trim()) ? 'yes' : 'no';
+  }
+  // Every other brand's own Branch field is just that branch/location's full name (e.g.
+  // "Atlanta"), not a short code -- so match on the full name directly, uploaded in Settings
+  // (Section: Serviceable Zip Codes). Falls back to the old short-code extraction too, in case
+  // an older upload for this brand was saved using that convention instead.
+  const key = String(branchLabelValue).trim().toUpperCase();
+  let list = state.customServiceableZips[key];
+  if(!list){
+    const code = extractBranchCode(branchLabelValue);
+    list = code ? state.customServiceableZips[code] : undefined;
+  }
   if(!list) return 'unknown';
   return list.includes(String(zip).trim()) ? 'yes' : 'no';
 }
@@ -2073,16 +2100,21 @@ function checkZipServiceable(branchLabelValue, zip){
 // there's an actual mismatch, so it doesn't clutter the form when things are fine; the goal is
 // catching a ZIP typo right where it was typed, before the person keeps filling out the rest
 // of the form around a mistake.
+// For display only -- Patio's short code when there is one, otherwise just the full branch
+// name as-is (most other brands don't use a code at all, see checkZipServiceable()).
+function branchDisplayLabel(branchLabelValue){
+  return extractBranchCode(branchLabelValue) || String(branchLabelValue || '').trim();
+}
 function renderZipTypoWarning(branchLabelValue, zip){
   if(!branchLabelValue || !zip) return '';
   const result = checkZipServiceable(branchLabelValue, zip);
   if(result !== 'no') return '';
-  const branchCode = extractBranchCode(branchLabelValue);
+  const branchCode = branchDisplayLabel(branchLabelValue);
   return `<div class="zip-typo-warning">⚠ This ZIP doesn't match ${escapeHtml(branchCode)}'s territory — double-check it for a typo before continuing.</div>`;
 }
 function renderZipCheckIndicator(branchLabelValue, zip){
   const result = checkZipServiceable(branchLabelValue, zip);
-  const branchCode = extractBranchCode(branchLabelValue);
+  const branchCode = branchDisplayLabel(branchLabelValue);
   if(result==='yes'){
     return `<div class="field-note-ok">✓ Auto-check: ZIP ${escapeHtml(zip)} is within ${escapeHtml(branchCode)}'s serviceable territory.</div>`;
   }
@@ -2396,10 +2428,13 @@ async function persistEventsBulkAtomic(transformFn){
     return false;
   }
 }
-// A cell counts as a zip code if it's 1-5 digits (padded back out to 5, since Excel silently
+// A token counts as a zip code if it's 1-5 digits (padded back out to 5, since Excel silently
 // drops leading zeros off zips it thinks are numbers -- e.g. Vermont's 05001 becomes 5001) or a
 // ZIP+4 like "29003-1234" (only the 5-digit prefix is kept, matching the format used everywhere
-// else in the app). Returns null for anything that isn't zip-shaped.
+// else in the app). Returns null for anything that isn't zip-shaped. Note this does NOT expand a
+// "44120-44199" style range -- that doesn't parse as ZIP+4 (a 5-digit suffix, not 4) and is left
+// alone deliberately, since guessing which numbers in between are real, serviceable zip codes
+// would just be wrong; a range needs to be spelled out as individual zips instead.
 function normalizeZipCandidate(cell){
   if(cell === null || cell === undefined || cell === '') return null;
   let s = typeof cell === 'number'
@@ -2410,51 +2445,124 @@ function normalizeZipCandidate(cell){
   if(/^\d{1,5}$/.test(s)) return s.padStart(5, '0');
   return null;
 }
-// A cell counts as a branch code if it starts with 2-4 letters followed by a space, a dash, or
-// the end of the cell -- covering both a bare code ("AGA") and a fuller label ("AGA - Augusta,
-// GA"), same as extractBranchCode() uses for the Branch field elsewhere. Returns the matched
-// code (uppercased) and its length, so callers can prefer a longer match (a real 3-4 letter
-// branch code) over a shorter one (e.g. a 2-letter state abbreviation sitting in another column)
-// when a row has more than one candidate.
-function normalizeBranchCandidate(cell){
-  if(cell === null || cell === undefined) return null;
-  const match = String(cell).trim().match(/^([A-Za-z]{2,4})(?=[\s-]|$)/);
-  return match ? { code: match[1].toUpperCase(), len: match[1].length } : null;
+// A single cell sometimes lists more than one zip together (e.g. "44120, 44121, 44122") rather
+// than one per row -- splits on commas/semicolons/slashes/whitespace and normalizes each piece,
+// so that format works too. A plain single-zip cell (including a bare number) still just returns
+// its one zip via the same path.
+function extractZipsFromCell(cell){
+  if(cell === null || cell === undefined || cell === '') return [];
+  if(typeof cell === 'number'){
+    const z = normalizeZipCandidate(cell);
+    return z !== null ? [z] : [];
+  }
+  const raw = String(cell).trim();
+  if(raw === '') return [];
+  const zips = [];
+  raw.split(/[,;/\s]+/).filter(Boolean).forEach(token => {
+    const z = normalizeZipCandidate(token);
+    if(z !== null) zips.push(z);
+  });
+  return zips;
 }
-// Parses an uploaded spreadsheet of Branch/Zip pairs into this brand's own serviceable-area
-// map, replacing whatever was there before. Column order, extra columns, a header row or no
-// header row at all, and which sheet the data lives on all don't matter -- each row is scanned
-// cell-by-cell for whichever cell looks like a zip code and whichever looks like a branch code,
-// so brands whose spreadsheets are laid out differently from each other can each upload their
-// own file as-is. Patio Enclosures doesn't use this at all -- it has its own built-in list, kept
-// as-is so nothing changes for that brand.
+// Strict version of normalizeZipCandidate used only for figuring out WHICH column is the zip
+// column (see detectServiceableZipColumns below) -- real-world exports often carry other small
+// numeric columns alongside the zip (site IDs, zone numbers, company IDs, etc, commonly 1-3
+// digits), which the lenient 1-5-digit rule used for actually reading the zips would happily
+// mistake for zip codes too if it were also used for column-picking. Requiring 4-5 digits (or a
+// ZIP+4) here is enough to still catch the "Excel dropped one leading zero" case while reliably
+// ignoring short ID/code columns when deciding which column the real zips live in. Also counts a
+// cell listing several zips together (e.g. "44120, 44121, 44122") as long as at least one piece
+// is genuinely zip-shaped, same as extractZipsFromCell's tokenizing.
+function looksLikeZipColumnValue(cell){
+  if(cell === null || cell === undefined || cell === '') return false;
+  const s = typeof cell === 'number' ? String(Math.trunc(cell)) : String(cell).trim();
+  if(/^\d{4,5}$/.test(s) || /^\d{4,5}-\d{4}$/.test(s)) return true;
+  return s.split(/[,;/\s]+/).some(tok => /^\d{4,5}$/.test(tok) || /^\d{4,5}-\d{4}$/.test(tok));
+}
+// A cell counts as a branch code if it starts with 2-4 letters followed by a space, a dash, or
+// the end of the cell (e.g. "AGA" or "AGA - Augusta, GA") -- used only as a fallback, for
+// figuring out which column holds the branch when no column matches this brand's own configured
+// branch/location names exactly (see detectServiceableZipColumns below).
+function looksLikeBranchCodeColumnValue(cell){
+  if(cell === null || cell === undefined) return false;
+  return /^[A-Za-z]{2,4}(?=[\s-]|$)/.test(String(cell).trim());
+}
+// Real-world exports are often wide (extra columns for city, state, site ID, zone number, and
+// so on alongside the zip and branch), so rather than scanning every cell on every row and
+// hoping only the right ones look zip-/branch-shaped, this figures out ONCE which column index
+// most consistently holds each -- whichever column has the most rows matching wins, so a lightly
+// populated or coincidentally-matching column elsewhere doesn't get mistaken for the real one
+// (e.g. a "City" column that happens to equal a branch name on some rows, or a 3-digit company
+// ID column that happens to look zip-shaped). Branch detection prefers an exact match against
+// this brand's own configured branch/location names; only if no column matches those at all
+// does it fall back to the short-code heuristic. Returns null for whichever it can't confidently
+// find a column for.
+function detectServiceableZipColumns(rows, knownNames){
+  let maxCols = 0;
+  rows.forEach(row => { if(Array.isArray(row)) maxCols = Math.max(maxCols, row.length); });
+  const zipCounts = new Array(maxCols).fill(0);
+  const exactBranchCounts = new Array(maxCols).fill(0);
+  const codeBranchCounts = new Array(maxCols).fill(0);
+  rows.forEach(row => {
+    if(!Array.isArray(row)) return;
+    row.forEach((cell, c) => {
+      if(looksLikeZipColumnValue(cell)) zipCounts[c]++;
+      const raw = (cell === null || cell === undefined) ? '' : String(cell).trim();
+      if(raw && knownNames.has(raw.toUpperCase())) exactBranchCounts[c]++;
+      if(looksLikeBranchCodeColumnValue(cell)) codeBranchCounts[c]++;
+    });
+  });
+  const bestCol = (counts) => {
+    let best = -1, bestCount = 0;
+    counts.forEach((n, i) => { if(n > bestCount){ bestCount = n; best = i; } });
+    return best; // -1 if every column scored 0
+  };
+  const zipCol = bestCol(zipCounts);
+  let branchCol = bestCol(exactBranchCounts);
+  const branchIsExact = branchCol !== -1;
+  if(!branchIsExact) branchCol = bestCol(codeBranchCounts);
+  return { zipCol, branchCol, branchIsExact };
+}
+// Parses an uploaded spreadsheet of Branch/Zip data into this brand's own serviceable-area map,
+// replacing whatever was there before. First figures out which column holds the zip and which
+// holds the branch (see detectServiceableZipColumns) -- column order, extra columns (city,
+// state, site ID, zone number, etc), a header row or not, and which sheet the data lives on all
+// don't matter, and it works whether branches are short codes ("AGA") or full names ("Atlanta"),
+// as long as those names match what's configured in Settings -> Branch/location options.
+// Patio Enclosures doesn't use this at all -- it has its own built-in list, kept as-is so
+// nothing changes there.
 async function uploadServiceableZips(file){
   const buf = await file.arrayBuffer();
   const workbook = XLSX.read(buf, { type: 'array' });
+  const knownNames = knownBranchNamesForCurrentBrand();
   const map = {};
   let zipCount = 0;
   for(const sheetName of workbook.SheetNames){
     const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '' });
+    const { zipCol, branchCol, branchIsExact } = detectServiceableZipColumns(rows, knownNames);
+    if(zipCol === -1 || branchCol === -1) continue; // this sheet doesn't look like it has usable data
     for(const row of rows){
       if(!Array.isArray(row) || row.length === 0) continue;
-      let zip = null;
-      let branch = null; // {code, len} of the best (longest) match seen so far on this row
-      for(const cell of row){
-        if(zip === null){
-          const z = normalizeZipCandidate(cell);
-          if(z !== null) zip = z;
-        }
-        const b = normalizeBranchCandidate(cell);
-        if(b && (!branch || b.len > branch.len)) branch = b;
+      const zips = extractZipsFromCell(row[zipCol]);
+      if(zips.length === 0) continue;
+      const rawBranch = String(row[branchCol] === undefined ? '' : row[branchCol]).trim();
+      if(!rawBranch) continue;
+      let branchKey;
+      if(branchIsExact){
+        if(!knownNames.has(rawBranch.toUpperCase())) continue; // this row's branch column didn't actually match -- skip rather than guess
+        branchKey = rawBranch.toUpperCase();
+      } else {
+        const codeMatch = rawBranch.match(/^([A-Za-z]{2,4})(?=[\s-]|$)/);
+        if(!codeMatch) continue;
+        branchKey = codeMatch[1].toUpperCase();
       }
-      if(!branch || zip === null) continue; // header row, blank row, or nothing recognizable on it
-      if(!map[branch.code]) map[branch.code] = [];
-      map[branch.code].push(zip);
-      zipCount++;
+      if(!map[branchKey]) map[branchKey] = [];
+      zips.forEach(z => map[branchKey].push(z));
+      zipCount += zips.length;
     }
   }
   if(zipCount === 0){
-    alert('No valid branch/zip rows could be found in that file -- expecting a branch code (2-4 letters, e.g. "AGA") and a 5-digit zip code somewhere on the same row. Column order and header rows don\'t matter, but make sure both values actually appear together on one row.');
+    alert('No valid branch/zip rows could be found in that file -- expecting a column of 5-digit zip codes and a column matching one of this brand\'s configured branch names (Settings -> Branch/location options), or a short branch code if this brand uses those instead. Make sure the branch names in the file match what\'s configured exactly.');
     return;
   }
   // De-dupe each branch's list in case the same pair got matched more than once.

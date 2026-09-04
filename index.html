@@ -2557,7 +2557,12 @@ async function loadData(){
     state.events = snap.docs.map(d => d.data());
   }catch(e){
     console.error('Could not load events', e);
-    state.events = state.events || [];
+    // Always reset to empty on failure -- never leave whatever a *previously viewed* brand's
+    // events happened to still be sitting in memory (this runs again every time switchBrand()
+    // points fbDb() at a different brand), otherwise a permission error here would silently
+    // look like a successful load of the WRONG brand's data instead of an empty/broken one.
+    state.events = [];
+    alert('Could not load this brand\'s events -- ' + (e && e.message ? e.message : 'unknown error') + (state.currentBrand !== 'patio-enclosures' ? '\n\nThis usually means your account\'s Firestore permissions don\'t allow reading this brand\'s database yet -- check with whoever manages the Firebase project\'s security rules.' : ''));
   }
   try{
     const webhookRes = await window.storage.get('teams-webhook-url', true);
@@ -2641,6 +2646,16 @@ async function loadData(){
   }catch(e){
     state.activityLog = [];
   }
+  // This whole historical-import block (V1-V7) is Patio Enclosures' own real historical event
+  // data, hardcoded here from back when this app only ever talked to one database. It must
+  // never run for any other brand: each brand now has its own separate Firestore database, so
+  // an import-flag document that's genuinely missing (or -- critically -- one this account just
+  // can't read, e.g. while "viewing as" another brand as Super Admin, if that database's
+  // security rules don't grant this account access) looks IDENTICAL to "never imported yet" and
+  // would otherwise dump Patio's historical events into memory on top of whatever that other
+  // brand's own real events are. Fixed 9/4/2026 after this exact symptom was reported: switching
+  // to another brand showed that brand's logo but Patio's own event data underneath it.
+  if(state.currentBrand === 'patio-enclosures'){
   // One-time merge of the imported SA / SA-2 event research data. Guarded by a flag
   // so this only ever runs once, even if the dashboard is reloaded many times.
   let alreadyImported = false;
@@ -2761,6 +2776,7 @@ async function loadData(){
     }
     await persist();
   }
+  } // end patio-enclosures-only historical import block
   applyDeepLinkFromHash();
   state.loaded = true;
   render();

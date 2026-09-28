@@ -1746,8 +1746,6 @@ let state = {
   regionLabelStatus:'',
   postEventEvalEventId:null,
   postEventEvalDraft:null,
-  vettingChecklistEventId:null,
-  vettingChecklistDraft:null,
   attachmentConfirmPending:null,
   additionalOccurrences:[],
   customServiceableZips:{},
@@ -1822,6 +1820,10 @@ function emptyDraft(regionIdx){
     leadCalcCloseRate:'',
     leadCalcAvgSaleGross:'',
     leadCalcAvgSaleNet:'',
+    // Event Vetting Checklist answers -- { itemKey: 'go'|'check'|'nogo' }. Embedded in the draft
+    // the same way as the Lead Calculator fields above, for the same reason: it saves/reloads
+    // with the event and survives the panel being scrolled past and back to mid-edit.
+    vettingChecklist:{},
     organizer:'',
     contactName:'',
     contactPhone:'',
@@ -3305,6 +3307,11 @@ function openEditPanel(ev){
     clearDraftRecovery();
   }
   state.draft = Object.assign({}, ev);
+  // vettingChecklist is a nested object -- Object.assign above only shallow-copies it, so without
+  // this line state.draft.vettingChecklist would be the *same object* as the saved event's, and
+  // every pill click while editing would mutate the saved event in state.events immediately,
+  // before Save is ever clicked (and would still be sitting there if the edit is Cancelled).
+  state.draft.vettingChecklist = Object.assign({}, ev.vettingChecklist || {});
   // Older events only ever had a single flat mileage total (no day breakdown). If this one
   // hasn't been split into Travel Days / Miles Per Day yet, seed a reasonable starting point
   // (treat it as a single day) so opening it to edit doesn't lose the existing mileage data.
@@ -3376,44 +3383,25 @@ function closePostEventEvalPanel(){
   state.postEventEvalDraft = null;
   render();
 }
-// Event Vetting Checklist -- opened from an event's own card, same panel-with-draft pattern as
-// Post-Event Evaluation above. Draft is a plain {itemKey: boolean} map, copied from whatever's
-// already saved on the event (so reopening picks up right where you left off), edited locally
-// as checkboxes are clicked, and only written back to Firestore when Save is pressed.
-function openVettingChecklistPanel(id){
+// Event Vetting Checklist -- embedded directly in the New/Edit Event form now (see
+// renderVettingSectionInner / #vettingSectionContainer in renderPanel), not its own panel with
+// its own Save. This just opens that form and scrolls straight to the checklist section, for the
+// "jump to vetting" shortcuts on the event card and the Overview dashboard.
+function openEditPanelScrolledToVetting(id){
   const ev = state.events.find(e=>e.id===id);
   if(!ev) return;
-  // Defense-in-depth: the button that calls this is already hidden for every brand except
+  // Defense-in-depth: the buttons that call this are already hidden for every brand except
   // Patio Enclosures (the checklist is written for that product specifically), but guard here
   // too in case this is ever reached another way.
   if(state.currentBrand!=='patio-enclosures'){
     alert('The Event Vetting Checklist is only available for Patio Enclosures.');
     return;
   }
-  state.vettingChecklistDraft = Object.assign({}, ev.vettingChecklist || {});
-  state.vettingChecklistEventId = id;
-  render();
-}
-function closeVettingChecklistPanel(){
-  state.vettingChecklistEventId = null;
-  state.vettingChecklistDraft = null;
-  render();
-}
-async function saveVettingChecklist(){
-  const id = state.vettingChecklistEventId;
-  const ev = state.events.find(e=>e.id===id);
-  if(!ev || !state.vettingChecklistDraft) return;
-  const saveBtn = document.getElementById('saveVettingChecklistBtn');
-  if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
-  const updated = Object.assign({}, ev, { vettingChecklist: Object.assign({}, state.vettingChecklistDraft) });
-  const ok = await persistEventChangeAtomic(updated, false);
-  if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
-  if(!ok){
-    alert('This could not be saved -- likely a connection issue. Please try again.');
-    return;
-  }
-  logActivity(ev.id, ev.eventName, 'Updated Event Vetting Checklist', `${vettingCheckedCount(updated.vettingChecklist, VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys))} of ${VETTING_TOTAL_ITEMS} answered, ${vettingScorePct(updated.vettingChecklist, VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys))}% Go`);
-  closeVettingChecklistPanel();
+  openEditPanel(ev);
+  setTimeout(()=>{
+    const section = document.getElementById('vettingSectionContainer');
+    if(section) section.scrollIntoView({behavior:'smooth', block:'start'});
+  }, 50);
 }
 // Requires an active checkbox confirmation before proceeding, rather than a plain alert() that's
 // easy to click through on autopilot. `onConfirm` runs synchronously from the Continue button's
@@ -5547,11 +5535,6 @@ function render(){
         ${state.postEventEvalEventId ? renderPostEventEvalPanel() : ''}
       </div>
     </div>
-    <div class="overlay ${state.vettingChecklistEventId ? 'open' : ''}" id="vettingChecklistOverlay">
-      <div class="panel" id="vettingChecklistPanelStop" style="max-width:820px;">
-        ${state.vettingChecklistEventId ? renderVettingChecklistPanel() : ''}
-      </div>
-    </div>
     <div class="overlay ${state.attachmentConfirmPending ? 'open' : ''}" id="attachmentConfirmOverlay">
       <div class="panel" id="attachmentConfirmPanelStop" style="max-width:480px;">
         ${state.attachmentConfirmPending ? renderAttachmentConfirmModal() : ''}
@@ -6454,20 +6437,25 @@ function renderAttachmentConfirmModal(){
     <button class="btn btn-primary" id="continueAttachmentConfirmBtn" disabled>Continue to Email</button>
   </div>`;
 }
-function renderVettingChecklistPanel(){
-  const ev = state.events.find(e=>e.id===state.vettingChecklistEventId);
-  const draft = state.vettingChecklistDraft;
-  if(!ev || !draft) return '';
+// Embedded directly into the New/Edit Event form (see renderPanel's "Event Vetting Checklist"
+// field-group) rather than opened as a separate panel -- same reasoning as the Lead Target
+// Calculator: a manager should see this as part of filling out the event, not an optional
+// afterthought reachable only from a side button. Reads/writes checklist (state.draft.vettingChecklist)
+// directly. The outer field-group-title and wrapping <div id="vettingSectionContainer"> live in
+// renderPanel; this only builds what goes inside that container, so a pill click can refresh just
+// this content (via refreshVettingSection in attachHandlers) without re-rendering the whole form
+// and losing scroll position or focus elsewhere on the page.
+function renderVettingSectionInner(checklist){
   const allKeys = VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys);
-  const totalChecked = vettingCheckedCount(draft, allKeys);
+  const totalChecked = vettingCheckedCount(checklist, allKeys);
   const badgeClass = totalChecked===0 ? 'state-red' : totalChecked===VETTING_TOTAL_ITEMS ? 'state-green' : 'state-amber';
-  const scorePct = vettingScorePct(draft, allKeys);
+  const scorePct = vettingScorePct(checklist, allKeys);
   const scoreTier = vettingScoreTier(scorePct);
-  const goCount = vettingGoCount(draft, allKeys);
-  const checkCount = allKeys.filter(k=>draft[k]==='check').length;
-  const nogoCount = allKeys.filter(k=>draft[k]==='nogo').length;
+  const goCount = vettingGoCount(checklist, allKeys);
+  const checkCount = allKeys.filter(k=>checklist[k]==='check').length;
+  const nogoCount = allKeys.filter(k=>checklist[k]==='nogo').length;
   const itemRow = (item) => {
-    const current = draft[item.key]; // 'go' | 'check' | 'nogo' | undefined -- required, no default
+    const current = checklist[item.key]; // 'go' | 'check' | 'nogo' | undefined -- required, no default
     const pill = (value, label, bandText) => {
       const selected = current === value;
       const colorVar = value==='go' ? 'green' : value==='check' ? 'amber' : 'red';
@@ -6493,7 +6481,7 @@ function renderVettingChecklistPanel(){
   };
   const categoryBlock = (cat) => {
     const keys = vettingCategoryKeys(cat);
-    const catChecked = vettingCheckedCount(draft, keys);
+    const catChecked = vettingCheckedCount(checklist, keys);
     return `
     <div class="field-group">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;gap:10px;">
@@ -6505,19 +6493,13 @@ function renderVettingChecklistPanel(){
     </div>`;
   };
   return `
-  <div class="panel-header">
-    <h2>Event Vetting Checklist</h2>
-    <div class="hint" style="margin-top:2px;color:rgba(255,255,255,0.7);">${escapeHtml(ev.eventName)}</div>
-    <button class="panel-close" id="closeVettingChecklistBtn">✕</button>
-  </div>
-  <div class="panel-body">
     <div class="hint" style="margin-bottom:16px;">${escapeHtml(VETTING_INTRO)}</div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <div id="vettingChecklistProgress" class="checklist-progress ${badgeClass}">${totalChecked} of ${VETTING_TOTAL_ITEMS} answered</div>
         ${totalChecked>0 ? `<span class="badge vetting-${scoreTier}" title="${goCount} Go · ${checkCount} Caution · ${nogoCount} No-Go · passing bar is ${VETTING_PASS_THRESHOLD_PCT}%">${vettingScoreLabel(scorePct, totalChecked===VETTING_TOTAL_ITEMS)}</span>` : ''}
       </div>
-      <button type="button" class="btn btn-outline btn-sm" id="clearVettingChecklistBtn">Clear Answers</button>
+      <button type="button" class="btn btn-outline btn-sm" id="clearVettingSectionBtn">Clear Answers</button>
     </div>
     <div class="field-group">
       <div class="field-group-title">Must Pass Before Committing</div>
@@ -6528,11 +6510,6 @@ function renderVettingChecklistPanel(){
       <div class="hint">${escapeHtml(VETTING_CALIBRATION_NOTE)}</div>
     </div>
     ${VETTING_CHECKLIST_CATEGORIES.map(categoryBlock).join('')}
-  </div>
-  <div class="panel-footer">
-    <button class="btn btn-outline" id="cancelVettingChecklistBtn">Cancel</button>
-    <button class="btn btn-primary" id="saveVettingChecklistBtn">Save</button>
-  </div>
   `;
 }
 function renderPostEventEvalPanel(){
@@ -7087,6 +7064,11 @@ function renderPanel(){
       </div>
       <div class="field"><label>Email${reconfirmMark(d)}</label><input id="f_contactEmail" type="email" value="${escapeHtml(d.contactEmail)}"/></div>
     </div>
+    ${state.currentBrand === 'patio-enclosures' ? `
+    <div class="field-group">
+      <div class="field-group-title">Event Vetting Checklist</div>
+      <div id="vettingSectionContainer">${renderVettingSectionInner(d.vettingChecklist || {})}</div>
+    </div>` : ''}
     <div class="field-group">
       <div class="field-group-title">Financials</div>
       <div class="field-row">
@@ -7469,7 +7451,10 @@ function refreshLiveFormValidation(){
     thirdPartyPayment: val('f_thirdPartyPayment'),
     thirdPartyName: val('f_thirdPartyName'),
     thirdPartyPhone: val('f_thirdPartyPhone'),
-    thirdPartyPaymentInfo: val('f_thirdPartyPaymentInfo')
+    thirdPartyPaymentInfo: val('f_thirdPartyPaymentInfo'),
+    // Not a DOM input -- pulled straight from the draft, since the Vetting Checklist's pills live
+    // outside the input/change-event delegation this function normally reads through.
+    vettingChecklist: state.draft ? state.draft.vettingChecklist : {}
   };
   // 1. Checklist progress counter
   const missing = getMissingApprovalFields(live);
@@ -7529,6 +7514,20 @@ function refreshLiveFormValidation(){
  }catch(e){
   console.error('Live form validation hit an error (form data is unaffected, only the live checklist/warnings):', e);
  }
+}
+// Re-renders just the embedded Vetting Checklist section after a pill click or Clear Answers,
+// without a full render() (see the comment in attachHandlers' vettingSectionContainerEl listener
+// for why). Also persists the change to the recovery draft and refreshes the Pre-Approval
+// Checklist's "N items remaining" badge, same as any other field edit does.
+function refreshVettingSection(){
+  const container = document.getElementById('vettingSectionContainer');
+  if(container && state.draft) container.innerHTML = renderVettingSectionInner(state.draft.vettingChecklist || {});
+  try{
+    saveDraftToLocalStorage();
+  }catch(e){
+    console.error('Could not sync vetting checklist changes to the recovery draft (your answers on screen are unaffected):', e);
+  }
+  refreshLiveFormValidation();
 }
 function attachHandlers(){
   document.querySelectorAll('[data-region]').forEach(btn=>{
@@ -8786,48 +8785,47 @@ function attachHandlers(){
       openPostEventEvalPanel(btn.getAttribute('data-post-event-eval'));
     });
   });
-  // Event Vetting Checklist -- separate per-event panel, see openVettingChecklistPanel.
+  // "Jump to vetting" shortcuts (event card button, Overview dashboard row) -- open the Edit
+  // Event form and scroll straight to the embedded checklist section.
   document.querySelectorAll('[data-vetting-checklist]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
-      openVettingChecklistPanel(btn.getAttribute('data-vetting-checklist'));
+      openEditPanelScrolledToVetting(btn.getAttribute('data-vetting-checklist'));
     });
   });
-  document.querySelectorAll('#closeVettingChecklistBtn, #cancelVettingChecklistBtn').forEach(btn=>{
-    btn.addEventListener('click', closeVettingChecklistPanel);
-  });
-  const vettingChecklistOverlayEl = document.getElementById('vettingChecklistOverlay');
-  if(vettingChecklistOverlayEl){
-    vettingChecklistOverlayEl.addEventListener('click', (e)=>{
-      if(e.target.id==='vettingChecklistOverlay') closeVettingChecklistPanel();
-    });
-  }
-  document.querySelectorAll('[data-vet-key][data-vet-value]').forEach(pill=>{
-    pill.addEventListener('click', ()=>{
-      if(!state.vettingChecklistDraft) return;
-      const key = pill.getAttribute('data-vet-key');
-      const value = pill.getAttribute('data-vet-value');
-      // Clicking the already-selected pill again clears that item's answer. Delete the key rather
-      // than setting it to undefined -- Firestore rejects undefined values even nested inside a map.
-      if(state.vettingChecklistDraft[key] === value){
-        delete state.vettingChecklistDraft[key];
-      } else {
-        state.vettingChecklistDraft[key] = value;
+  // Event Vetting Checklist -- embedded in the New/Edit Event form itself (see
+  // renderVettingSectionInner / #vettingSectionContainer in renderPanel), not a separate panel.
+  // Bound once on the stable outer container via delegation, since refreshVettingSection() below
+  // replaces only that container's innerHTML on every pill click -- a full render() would work
+  // too (pills are buttons, not text inputs, so there's no cursor position to lose) but would
+  // reset the whole form's scroll position on every single click, which is worth avoiding here
+  // given how long this form already is.
+  const vettingSectionContainerEl = document.getElementById('vettingSectionContainer');
+  if(vettingSectionContainerEl){
+    vettingSectionContainerEl.addEventListener('click', (e)=>{
+      const pill = e.target.closest('[data-vet-key][data-vet-value]');
+      if(pill){
+        if(!state.draft) return;
+        if(!state.draft.vettingChecklist) state.draft.vettingChecklist = {};
+        const key = pill.getAttribute('data-vet-key');
+        const value = pill.getAttribute('data-vet-value');
+        // Clicking the already-selected pill again clears that item's answer. Delete the key
+        // rather than setting it to undefined -- Firestore rejects undefined values even nested
+        // inside a map.
+        if(state.draft.vettingChecklist[key] === value){
+          delete state.draft.vettingChecklist[key];
+        } else {
+          state.draft.vettingChecklist[key] = value;
+        }
+        refreshVettingSection();
+        return;
       }
-      render(); // cheap -- only updates the open panel's counters/pill states, panel stays open
+      if(e.target.closest('#clearVettingSectionBtn')){
+        if(!state.draft) return;
+        if(!confirm('Clear all answers on this checklist?')) return;
+        state.draft.vettingChecklist = {};
+        refreshVettingSection();
+      }
     });
-  });
-  const clearVettingChecklistBtn = document.getElementById('clearVettingChecklistBtn');
-  if(clearVettingChecklistBtn){
-    clearVettingChecklistBtn.addEventListener('click', ()=>{
-      if(!state.vettingChecklistDraft) return;
-      if(!confirm('Clear all answers on this checklist? This only takes effect once you Save.')) return;
-      state.vettingChecklistDraft = {};
-      render();
-    });
-  }
-  const saveVettingChecklistBtn = document.getElementById('saveVettingChecklistBtn');
-  if(saveVettingChecklistBtn){
-    saveVettingChecklistBtn.addEventListener('click', saveVettingChecklist);
   }
   document.querySelectorAll('#cancelAttachmentConfirmBtn, #cancelAttachmentConfirmBtn2').forEach(btn=>{
     btn.addEventListener('click', cancelAttachmentConfirmation);

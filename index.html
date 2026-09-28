@@ -1713,7 +1713,6 @@ let state = {
   regionLabelStatus:'',
   postEventEvalEventId:null,
   postEventEvalDraft:null,
-  leadCalcOpen:false,
   vettingChecklistEventId:null,
   vettingChecklistDraft:null,
   attachmentConfirmPending:null,
@@ -2228,9 +2227,10 @@ function costPerOppDisplayFlagged(ev){
 // Works backward from a fixed maximum Marketing-cost-to-Net-Bookings ratio ("$/Mar.") to the
 // minimum lead volume an event must produce, given the event's all-in cost (from the Financials
 // section above) and a set of benchmark funnel conversion rates the manager types in. Mirrors
-// the "Funnel the event must produce" worksheet used in the field. This is a planning aid only --
-// it does NOT set Target Opps by itself. The manager still types their own number into a
-// separate box (see renderLeadCalcPanel), which is what actually gets saved as forecastedOpps.
+// the "Funnel the event must produce" worksheet used in the field. This is a planning aid, not
+// an auto-fill: it does NOT set Target Opps by itself. Target Opps stays its own required,
+// manager-owned field (see renderLeadCalcSection and renderTargetOppsSuggestionHint) -- this
+// only computes the benchmark floor shown alongside it.
 const TARGET_MAR_MAX_PCT = 20; // Fixed company-wide target -- intentionally not editable per event.
 function leadCalcCompute(inputs){
   const adSpend = num(inputs.adSpend);
@@ -2273,7 +2273,9 @@ function leadCalcCompute(inputs){
   const yieldPerMeet = totalMeets > 0 ? bookingsNet / totalMeets : null;
   return {
     adSpend, totalLeads, unsetLeads, grossOpps, cancelledOpps, netOpps, totalMeets, totalJobs,
-    bookingsNet, bookingsGross, cpl, cpo, cpm, marAtMin, roaAtMin, yieldPerMeet,
+    bookingsNet, bookingsGross, avgSaleGross, avgSaleNet, cpl, cpo, cpm, marAtMin, roaAtMin, yieldPerMeet,
+    // The rates as entered, echoed back for display next to the funnel stages they drive.
+    setRatePct: setRate * 100, cancelRatePct: cancelRate * 100, closeRatePct: closeRate * 100,
     // Gross Opps (appointments set, before cancellation) is what this app's own CPO math is
     // denominated in -- see costPerOpp() -- so that's what's suggested for Target Opps too.
     suggestedTargetOpps: Math.ceil(grossOpps)
@@ -2376,6 +2378,24 @@ function vettingCheckedCount(checklist, keys){
 function vettingCategoryKeys(cat){
   return cat.items.map(it=>it.key);
 }
+// Every outside source referenced anywhere in the checklist above, in one place -- so a manager
+// doesn't have to go hunting through 25 items to find the right link.
+const VETTING_RESOURCES_INTRO = "Every outside source used in the checklist. For the event itself, the best sources are the organizer's exhibitor packet and attendee survey, a call to a past non-competing exhibitor, and your own CRM results by lead source and zip code.";
+const VETTING_RESOURCES = [
+  { name:'Census Reporter', url:'https://censusreporter.org/', cost:'Free', desc:'Plain-English Census profiles by zip, city, or county. Start here for income, owners vs. renters, housing types, home values, age, and time in home.' },
+  { name:'data.census.gov', url:'https://data.census.gov/', cost:'Free', desc:'Official American Community Survey tables. Search the table number shown on each item (e.g. B25003) plus the zip or county.' },
+  { name:'Census Business Builder', url:'https://cbb.census.gov/', cost:'Free', desc:'Map a radius around the venue and pull combined demographics for the whole trade area.' },
+  { name:'Esri ZIP Lookup (Tapestry)', url:'https://www.esri.com/en-us/arcgis/products/tapestry-segmentation/zip-lookup', cost:'Free', desc:'Lifestyle segments by zip code, showing whether an area is mostly affluent established owners or young renters.' },
+  { name:'Esri Business Analyst', url:'https://www.esri.com/en-us/arcgis/products/arcgis-business-analyst/overview', cost:'Paid', desc:'Drive-time trade areas, consumer and home-improvement spending indexes, and wealth estimates.' },
+  { name:'Claritas PRIZM (MyBestSegments)', url:'https://claritas360.claritas.com/mybestsegments/', cost:'Free lookup / paid data', desc:'Lifestyle segments by zip; full spending and wealth data is paid.' },
+  { name:'Zillow Research', url:'https://www.zillow.com/research/data/', cost:'Free', desc:'Home value index and price trends by zip, city, and metro.' },
+  { name:'Redfin Data Center', url:'https://www.redfin.com/news/data-center/', cost:'Free', desc:'Sale prices, inventory, and market trends.' },
+  { name:'Realtor.com Research', url:'https://www.realtor.com/research/data/', cost:'Free', desc:'Listing prices and market activity by zip and metro.' },
+  { name:'Google Maps satellite view', url:'https://www.google.com/maps', cost:'Free', desc:'Quick visual check of backyard size and neighborhood type near the venue.' },
+  { name:'NOAA U.S. Climate Normals', url:'https://www.ncei.noaa.gov/products/land-based-station/us-climate-normals', cost:'Free', desc:'Temperature and rainfall averages to judge outdoor season length.' },
+  { name:'10times', url:'https://10times.com/', cost:'Free', desc:'Trade show directory with dates, estimated attendance, and exhibitor info.' },
+  { name:'TSNN', url:'https://www.tsnn.com/', cost:'Free', desc:'Trade show news and event listings.' }
+];
 const REQUIRED_FIELDS = [
   ['eventName','Event Name'],
   ['branch','Branch'],
@@ -2387,6 +2407,12 @@ const REQUIRED_FIELDS = [
   ['hotelNights','# of Hotel Nights'],
   ['miscCosts','Misc. Costs'],
   ['forecastedOpps','Target Opps'],
+  ['leadCalcSetRate','Lead Calculator: Set Rate'],
+  ['leadCalcCancelRate','Lead Calculator: Cancel Rate'],
+  ['leadCalcMeetRate','Lead Calculator: Meet Rate'],
+  ['leadCalcCloseRate','Lead Calculator: Close Rate'],
+  ['leadCalcAvgSaleGross','Lead Calculator: Avg. Sale (Gross)'],
+  ['leadCalcAvgSaleNet','Lead Calculator: Avg. Sale (Net)'],
   ['organizer','Event Organizer'],
   ['contactName','Name of Contact'],
   ['contactPhone','Phone'],
@@ -2447,6 +2473,18 @@ function getMissingApprovalFields(ev){
   // there would create a field nobody can ever fill in.
   if(state.currentBrand !== 'patio-enclosures' && blank(ev.vehicleRentalDays)) missing.push('Vehicle Rental Days');
   if(blank(ev.forecastedOpps)) missing.push('Target Opps');
+  if(blank(ev.leadCalcSetRate)) missing.push('Lead Calculator: Set Rate');
+  if(blank(ev.leadCalcCancelRate)) missing.push('Lead Calculator: Cancel Rate');
+  if(blank(ev.leadCalcMeetRate)) missing.push('Lead Calculator: Meet Rate');
+  if(blank(ev.leadCalcCloseRate)) missing.push('Lead Calculator: Close Rate');
+  if(blank(ev.leadCalcAvgSaleGross)) missing.push('Lead Calculator: Avg. Sale (Gross)');
+  if(blank(ev.leadCalcAvgSaleNet)) missing.push('Lead Calculator: Avg. Sale (Net)');
+  // Event Vetting Checklist is Patio Enclosures-only (see the button gating on the event card),
+  // so only require it there -- other brands have no way to even open the panel.
+  if(state.currentBrand==='patio-enclosures'){
+    const vettedCount = vettingCheckedCount(ev.vettingChecklist, VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys));
+    if(vettedCount < VETTING_TOTAL_ITEMS) missing.push(`Event Vetting Checklist (${vettedCount} of ${VETTING_TOTAL_ITEMS} reviewed)`);
+  }
   if(blank(ev.notes)) missing.push('Research Notes');
   if(blank(ev.paymentDueDate)) missing.push('Payment Due Date');
   if(blank(ev.paymentMethod)) missing.push('Payment Method');
@@ -5451,11 +5489,6 @@ function render(){
         ${state.panelOpen ? renderPanel() : ''}
       </div>
     </div>
-    <div class="overlay ${state.leadCalcOpen?'open':''}" id="leadCalcOverlay">
-      <div class="panel" id="leadCalcPanelStop" style="max-width:640px;">
-        ${state.leadCalcOpen ? renderLeadCalcPanel() : ''}
-      </div>
-    </div>
     <div class="overlay ${state.settingsOpen && isSettingsAdmin() ?'open':''}" id="settingsOverlay">
       <div class="panel" id="settingsPanelStop" style="max-width:480px;">
         ${state.settingsOpen && isSettingsAdmin() ? renderSettingsPanel() : ''}
@@ -6389,6 +6422,21 @@ function renderVettingChecklistPanel(){
       <div class="hint">${escapeHtml(VETTING_CALIBRATION_NOTE)}</div>
     </div>
     ${VETTING_CHECKLIST_CATEGORIES.map(categoryBlock).join('')}
+    <div class="field-group">
+      <div class="field-group-title">Resource Directory</div>
+      <div class="hint" style="margin-bottom:2px;">Links open in a new tab</div>
+      <div class="hint" style="margin-bottom:10px;">${escapeHtml(VETTING_RESOURCES_INTRO)}</div>
+      ${VETTING_RESOURCES.map(r=>`
+      <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);align-items:flex-start;">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+            <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer" style="font-weight:600;font-size:13.5px;color:var(--accent-dark);text-decoration:underline;">${escapeHtml(r.name)}</a>
+            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--ink-soft);">${escapeHtml(r.cost)}</span>
+          </div>
+          <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${escapeHtml(r.desc)}</div>
+        </div>
+      </div>`).join('')}
+    </div>
   </div>
   <div class="panel-footer">
     <button class="btn btn-outline" id="cancelVettingChecklistBtn">Cancel</button>
@@ -6734,12 +6782,12 @@ function renderSettingsPanel(){
 }
 function renderLeadCalcResults(r){
   if(!r){
-    return `<div class="hint" style="padding:14px;border:1px dashed var(--border);border-radius:8px;text-align:center;">Enter this event's all-in cost above (in Financials) and all four funnel rates plus Avg. Sale, Net below to calculate.</div>`;
+    return `<div class="hint" style="padding:14px;border:1px dashed var(--border);border-radius:8px;text-align:center;">Enter this event's all-in cost above (in Financials) and all four funnel rates plus Avg. Sale, Net to the left to calculate.</div>`;
   }
   const row = (label, value, highlight) => `<div class="computed-row${highlight?' total-row':''}"><span class="label">${label}</span><span class="value">${value}</span></div>`;
   return `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0 10px 0;">
-      <div style="grid-column:1/-1;background:var(--ink);color:#fff;border-radius:8px;padding:14px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+      <div style="background:var(--ink);color:#fff;border-radius:8px;padding:14px;">
         <div style="font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;opacity:0.7;">Minimum Leads Needed</div>
         <div style="font-family:var(--font-display);font-size:32px;font-weight:700;">${r.totalLeads}</div>
         <div style="font-size:12px;opacity:0.75;margin-top:2px;">Max CPL ${money(r.cpl)} to stay at ${TARGET_MAR_MAX_PCT.toFixed(1)}% $/Mar.</div>
@@ -6749,38 +6797,65 @@ function renderLeadCalcResults(r){
         <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--ink);">${r.marAtMin===null?'—':(r.marAtMin*100).toFixed(1)+'%'}</div>
         <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">Ad spend ÷ net bookings</div>
       </div>
-      <div style="background:var(--accent-soft);border-radius:8px;padding:14px;">
+      <div style="grid-column:1/-1;background:var(--accent-soft);border-radius:8px;padding:14px;">
         <div style="font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-soft);">RoA at Minimum</div>
-        <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--ink);">${r.roaAtMin===null?'—':money(r.roaAtMin)}</div>
+        <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--ink);">${r.roaAtMin===null?'—':'$'+r.roaAtMin.toFixed(2)}</div>
         <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">Net bookings per $1 of ad spend</div>
       </div>
     </div>
+    <div class="field-group-title" style="margin:2px 0 4px 0;">Funnel The Event Must Produce</div>
     <div class="computed-box" style="flex-direction:column;align-items:stretch;gap:4px;">
-      <div class="field-group-title" style="margin:2px 0 4px 0;">Funnel The Event Must Produce</div>
       ${row('Unset Leads', r.unsetLeads.toFixed(1))}
       ${row('Gross Opps', r.grossOpps.toFixed(1))}
       ${row('Total Leads', r.totalLeads, true)}
+      ${row('Set Rate', r.setRatePct.toFixed(1)+'%')}
       ${row('Cancelled Opps', r.cancelledOpps.toFixed(1))}
+      ${row('Cancel Rate', r.cancelRatePct.toFixed(1)+'%')}
       ${row('Net Opps', r.netOpps.toFixed(1))}
       ${row('Total Meets', r.totalMeets.toFixed(1))}
       ${row('Total Jobs', r.totalJobs.toFixed(1))}
-      <div class="field-group-title" style="margin:10px 0 4px 0;">Revenue</div>
+      ${row('Close Rate', r.closeRatePct.toFixed(1)+'%')}
+    </div>
+    <div class="field-group-title" style="margin:10px 0 4px 0;">Revenue</div>
+    <div class="computed-box" style="flex-direction:column;align-items:stretch;gap:4px;">
       ${row('Bookings Net', money(r.bookingsNet))}
-      ${row('Bookings Gross', money(r.bookingsGross))}
-      <div class="field-group-title" style="margin:10px 0 4px 0;">Cost and Return</div>
+      ${row('Avg. Sale - Gross', money(r.avgSaleGross))}
+      ${row('Avg. Sale - Net', money(r.avgSaleNet))}
+    </div>
+    <div class="field-group-title" style="margin:10px 0 4px 0;">Cost and Return</div>
+    <div class="computed-box" style="flex-direction:column;align-items:stretch;gap:4px;">
       ${row('Total Ad Spend', money(r.adSpend))}
-      ${row('CPL (cost per lead)', r.cpl===null?'—':money(r.cpl))}
-      ${row('CPO (cost per opp)', r.cpo===null?'—':money(r.cpo))}
-      ${row('CPM (cost per meet)', r.cpm===null?'—':money(r.cpm))}
+      ${row('CPL', r.cpl===null?'—':money(r.cpl))}
+      ${row('CPO', r.cpo===null?'—':money(r.cpo))}
+      ${row('CPM', r.cpm===null?'—':money(r.cpm))}
       ${row('$/Mar.', r.marAtMin===null?'—':(r.marAtMin*100).toFixed(1)+'%', true)}
-      ${row('RoA', r.roaAtMin===null?'—':money(r.roaAtMin), true)}
-      ${row('Yield (net bookings per meet)', r.yieldPerMeet===null?'—':money(r.yieldPerMeet))}
+      ${row('RoA', r.roaAtMin===null?'—':'$'+r.roaAtMin.toFixed(2), true)}
+      ${row('Yield', r.yieldPerMeet===null?'—':money(r.yieldPerMeet))}
     </div>
   `;
 }
-function renderLeadCalcPanel(){
-  const d = state.draft;
-  if(!d) return '';
+// Suggested Target Opps hint, shown live under the actual Target Opps field (which sits above
+// this section on the form) so the manager sees it without having to scroll down and back up.
+// Purely informational -- Target Opps itself stays a free, required, manager-owned number; see
+// the note on TARGET_MAR_MAX_PCT and leadCalcCompute for why this is a floor, not a lock.
+function renderTargetOppsSuggestionHint(d){
+  const result = leadCalcCompute({
+    adSpend: totalCost(d),
+    setRate: d.leadCalcSetRate, cancelRate: d.leadCalcCancelRate,
+    meetRate: d.leadCalcMeetRate, closeRate: d.leadCalcCloseRate,
+    avgSaleGross: d.leadCalcAvgSaleGross, avgSaleNet: d.leadCalcAvgSaleNet
+  });
+  if(!result){
+    return `<div class="hint">Fill out the Lead Target Calculator below to see a suggested minimum.</div>`;
+  }
+  const typed = num(d.forecastedOpps);
+  const below = d.forecastedOpps !== '' && d.forecastedOpps !== undefined && d.forecastedOpps !== null && typed < result.suggestedTargetOpps;
+  return `<div class="hint" style="${below ? 'color:var(--amber);font-weight:600;' : ''}">${below ? '⚠ ' : ''}Calculator's benchmark minimum: ${result.suggestedTargetOpps} opps (Gross Opps at the minimum lead volume). ${below ? 'Your target is below this floor.' : 'See the Lead Target Calculator below.'}</div>`;
+}
+// Lead Target Calculator -- built directly into the New Event / Edit Event form (Financials
+// section), not a separate button/modal, so the manager sees cost, benchmarks, and the
+// resulting funnel side by side with everything else while they're filling the event out.
+function renderLeadCalcSection(d){
   const adSpend = totalCost(d);
   const result = leadCalcCompute({
     adSpend,
@@ -6792,60 +6867,35 @@ function renderLeadCalcPanel(){
     avgSaleNet: d.leadCalcAvgSaleNet
   });
   return `
-  <div class="panel-header">
-    <h2>Lead Target Calculator</h2>
-    <div class="hint" style="margin-top:2px;color:rgba(255,255,255,0.7);">${escapeHtml(d.eventName || 'This event')}</div>
-    <button class="panel-close" id="closeLeadCalcBtn">✕</button>
-  </div>
-  <div class="panel-body">
-    <div class="hint" style="margin-bottom:18px;">Using your benchmark funnel rates, this works out the minimum number of leads the event must produce to keep $/Mar. at or under the fixed ${TARGET_MAR_MAX_PCT.toFixed(1)}% target. That minimum is a benchmark floor, not your target — enter what you're actually planning to hit in the Target Opps box at the bottom.</div>
     <div class="field-group">
-      <div class="field-group-title">The Event</div>
-      <div class="field">
-        <label>Total Ad Spend (all-in event cost, $)</label>
-        <div class="computed-inline">${money(adSpend)}</div>
-        <div class="hint" style="margin-top:4px;">Pulled automatically from Total Costs in the Financials section above — contract, labor, mileage, hotel, per diem, vehicle rental, and misc combined.</div>
-      </div>
-      <div class="field">
-        <label>Target $/Mar., Maximum (%)</label>
-        <div class="computed-inline">${TARGET_MAR_MAX_PCT.toFixed(1)}%</div>
-        <div class="hint" style="margin-top:4px;">Fixed company-wide target — not adjustable per event.</div>
-      </div>
-    </div>
-    <div class="field-group">
-      <div class="field-group-title">Funnel Rates (Benchmark)</div>
-      <div class="hint" style="margin-bottom:10px;">Pull these from the Tableau funnel report, using the trailing 2 months of data for this branch/region — not older or one-off numbers.</div>
-      <div class="field-row">
-        <div class="field"><label>Set Rate (%)</label><input id="lc_setRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcSetRate)}" placeholder="e.g. 85.34"/></div>
-        <div class="field"><label>Cancel Rate (%)</label><input id="lc_cancelRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcCancelRate)}" placeholder="e.g. 21.57"/></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Meet Rate, meets ÷ net opps (%)</label><input id="lc_meetRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcMeetRate)}" placeholder="e.g. 69.47"/></div>
-        <div class="field"><label>Close Rate, jobs ÷ meets (%)</label><input id="lc_closeRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcCloseRate)}" placeholder="e.g. 11.96"/></div>
-      </div>
-    </div>
-    <div class="field-group">
-      <div class="field-group-title">Sale Size (Benchmark)</div>
-      <div class="hint" style="margin-bottom:10px;">Same source — Tableau, trailing 2 months, this branch/region.</div>
-      <div class="field-row">
-        <div class="field"><label>Avg. Sale, Gross ($)</label><input id="lc_avgSaleGross" type="number" step="1" value="${escapeHtml(d.leadCalcAvgSaleGross)}" placeholder="e.g. 28420"/></div>
-        <div class="field"><label>Avg. Sale, Net ($)</label><input id="lc_avgSaleNet" type="number" step="1" value="${escapeHtml(d.leadCalcAvgSaleNet)}" placeholder="e.g. 24690"/></div>
+      <div class="field-group-title">Lead Target Calculator</div>
+      <div class="hint" style="margin-bottom:16px;">Enter the event's all-in cost is pulled automatically from Financials above. Using your benchmark funnel rates, the calculator works out the minimum number of leads the event must produce to keep $/Mar. at or under the target. Adjust any rate if you expect this show to perform differently.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start;">
+        <div>
+          <div class="field-group-title" style="font-size:10.5px;">The Event</div>
+          <div class="field">
+            <label>Total ad spend (all-in event cost, $)</label>
+            <div class="computed-inline">${money(adSpend)}</div>
+          </div>
+          <div class="field">
+            <label>Target $/Mar., maximum (%)</label>
+            <div class="computed-inline">${TARGET_MAR_MAX_PCT.toFixed(1)}</div>
+            <div class="hint" style="margin-top:4px;">Fixed company-wide target — not adjustable per event.</div>
+          </div>
+          <div class="field-group-title" style="font-size:10.5px;margin-top:16px;">Funnel Rates (Benchmark)${reconfirmMark(d)}</div>
+          <div class="hint" style="margin-bottom:8px;">Pull these from the Tableau funnel report, using the trailing 2 months of data for this branch/region.</div>
+          <div class="field"><label>Set rate (%)</label><input id="lc_setRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcSetRate)}" placeholder="e.g. 85.34"/></div>
+          <div class="field"><label>Cancel rate (%)</label><input id="lc_cancelRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcCancelRate)}" placeholder="e.g. 21.57"/></div>
+          <div class="field"><label>Meet rate, meets ÷ net opps (%)</label><input id="lc_meetRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcMeetRate)}" placeholder="e.g. 69.47"/></div>
+          <div class="field"><label>Close rate, jobs ÷ meets (%)</label><input id="lc_closeRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcCloseRate)}" placeholder="e.g. 11.96"/></div>
+          <div class="field-group-title" style="font-size:10.5px;margin-top:16px;">Sale Size (Benchmark)</div>
+          <div class="hint" style="margin-bottom:8px;">Same source — Tableau, trailing 2 months, this branch/region.</div>
+          <div class="field"><label>Avg. sale, gross ($)</label><input id="lc_avgSaleGross" type="number" step="1" value="${escapeHtml(d.leadCalcAvgSaleGross)}" placeholder="e.g. 28420"/></div>
+          <div class="field"><label>Avg. sale, net ($)</label><input id="lc_avgSaleNet" type="number" step="1" value="${escapeHtml(d.leadCalcAvgSaleNet)}" placeholder="e.g. 24690"/></div>
+        </div>
+        <div id="leadCalcResults">${renderLeadCalcResults(result)}</div>
       </div>
     </div>
-    <div id="leadCalcResults">${renderLeadCalcResults(result)}</div>
-    <div class="field-group" style="margin-top:22px;">
-      <div class="field-group-title">Your Target</div>
-      <div class="hint" style="margin-bottom:8px;">Minimum Leads Needed above is the benchmark floor, not a target. Enter what you're actually planning to hit for this event's Target Opps — this is the number that gets saved to the event when you apply below.</div>
-      <div class="field">
-        <label>Target Opps</label>
-        <input id="lc_targetOpps" type="number" value="${escapeHtml(d.forecastedOpps)}" placeholder="${result ? 'Suggested: ' + result.suggestedTargetOpps : 'e.g. 206'}"/>
-      </div>
-    </div>
-  </div>
-  <div class="panel-footer">
-    <button class="btn btn-outline" id="cancelLeadCalcBtn">Cancel</button>
-    <button class="btn btn-primary" id="applyLeadCalcBtn">Apply to Target Opps</button>
-  </div>
   `;
 }
 function renderPanel(){
@@ -6982,11 +7032,8 @@ function renderPanel(){
       </div>` : ''}
       <div class="field">
         <label>Target Opps${reconfirmMark(d)}</label>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <input id="f_forecastedOpps" type="number" value="${escapeHtml(d.forecastedOpps)}" style="flex:1;"/>
-          <button type="button" class="btn btn-outline btn-sm" id="openLeadCalcBtn" style="white-space:nowrap;">🧮 Calculate</button>
-        </div>
-        <div class="hint" style="margin-top:4px;">Not sure what to target? Use the calculator to work backward from this event's cost and your funnel benchmarks.</div>
+        <input id="f_forecastedOpps" type="number" value="${escapeHtml(d.forecastedOpps)}"/>
+        <div id="targetOppsSuggestionHint" style="margin-top:4px;">${renderTargetOppsSuggestionHint(d)}</div>
       </div>
       <div class="hint">Labor, mileage, hotel, and per diem dollars are calculated automatically from the rates below.</div>
       <div class="computed-box" style="flex-direction:column;align-items:stretch;gap:6px;">
@@ -7000,6 +7047,7 @@ function renderPanel(){
         <div class="computed-row"><span class="label">Cost Per Opp</span><span class="value" id="calc_cpo">${costPerOppDisplayFlagged(d)}</span></div>
       </div>
     </div>
+    ${renderLeadCalcSection(d)}
     <div class="field-group">
       <div class="field-group-title">Pre-Approval Checklist</div>
       <div class="hint" style="margin-bottom:10px;">Complete these before this event can be submitted for approval.</div>
@@ -8795,65 +8843,45 @@ function attachHandlers(){
       });
     }
   });
-  // Lead Target Calculator
-  const openLeadCalcBtn = document.getElementById('openLeadCalcBtn');
-  if(openLeadCalcBtn){
-    openLeadCalcBtn.addEventListener('click', ()=>{
-      readDraftFromForm(); // capture whatever's already typed in Financials before computing Total Ad Spend
-      state.leadCalcOpen = true;
-      render();
+  // Lead Target Calculator -- built directly into the form now (see renderLeadCalcSection), so
+  // these six inputs are always present while the New/Edit Event panel is open. No open/close
+  // state needed; every keystroke just recomputes the results column and the suggestion hint
+  // under the real Target Opps field above.
+  const refreshLeadCalc = () => {
+    const g = x => document.getElementById(x)?.value ?? '';
+    state.draft.leadCalcSetRate = g('lc_setRate');
+    state.draft.leadCalcCancelRate = g('lc_cancelRate');
+    state.draft.leadCalcMeetRate = g('lc_meetRate');
+    state.draft.leadCalcCloseRate = g('lc_closeRate');
+    state.draft.leadCalcAvgSaleGross = g('lc_avgSaleGross');
+    state.draft.leadCalcAvgSaleNet = g('lc_avgSaleNet');
+    const result = leadCalcCompute({
+      adSpend: totalCost(state.draft),
+      setRate: state.draft.leadCalcSetRate,
+      cancelRate: state.draft.leadCalcCancelRate,
+      meetRate: state.draft.leadCalcMeetRate,
+      closeRate: state.draft.leadCalcCloseRate,
+      avgSaleGross: state.draft.leadCalcAvgSaleGross,
+      avgSaleNet: state.draft.leadCalcAvgSaleNet
     });
-  }
-  const closeLeadCalcBtn = document.getElementById('closeLeadCalcBtn');
-  if(closeLeadCalcBtn){
-    closeLeadCalcBtn.addEventListener('click', ()=>{ state.leadCalcOpen = false; render(); });
-  }
-  const cancelLeadCalcBtn = document.getElementById('cancelLeadCalcBtn');
-  if(cancelLeadCalcBtn){
-    cancelLeadCalcBtn.addEventListener('click', ()=>{ state.leadCalcOpen = false; render(); });
-  }
-  const leadCalcOverlayEl = document.getElementById('leadCalcOverlay');
-  if(leadCalcOverlayEl){
-    leadCalcOverlayEl.addEventListener('click', (e)=>{
-      if(e.target.id==='leadCalcOverlay'){ state.leadCalcOpen = false; render(); }
-    });
-  }
+    const resultsOut = document.getElementById('leadCalcResults');
+    if(resultsOut) resultsOut.innerHTML = renderLeadCalcResults(result);
+    const suggestionHint = document.getElementById('targetOppsSuggestionHint');
+    if(suggestionHint) suggestionHint.innerHTML = renderTargetOppsSuggestionHint(state.draft);
+  };
   ['lc_setRate','lc_cancelRate','lc_meetRate','lc_closeRate','lc_avgSaleGross','lc_avgSaleNet'].forEach(id=>{
     const el = document.getElementById(id);
-    if(el){
-      el.addEventListener('input', ()=>{
-        const g = x => document.getElementById(x)?.value ?? '';
-        state.draft.leadCalcSetRate = g('lc_setRate');
-        state.draft.leadCalcCancelRate = g('lc_cancelRate');
-        state.draft.leadCalcMeetRate = g('lc_meetRate');
-        state.draft.leadCalcCloseRate = g('lc_closeRate');
-        state.draft.leadCalcAvgSaleGross = g('lc_avgSaleGross');
-        state.draft.leadCalcAvgSaleNet = g('lc_avgSaleNet');
-        const result = leadCalcCompute({
-          adSpend: totalCost(state.draft),
-          setRate: state.draft.leadCalcSetRate,
-          cancelRate: state.draft.leadCalcCancelRate,
-          meetRate: state.draft.leadCalcMeetRate,
-          closeRate: state.draft.leadCalcCloseRate,
-          avgSaleGross: state.draft.leadCalcAvgSaleGross,
-          avgSaleNet: state.draft.leadCalcAvgSaleNet
-        });
-        const resultsOut = document.getElementById('leadCalcResults');
-        if(resultsOut) resultsOut.innerHTML = renderLeadCalcResults(result);
-        // Keep the suggested-target placeholder in sync too, without clobbering anything the
-        // manager already typed into their own Target Opps box.
-        const targetOppsInput = document.getElementById('lc_targetOpps');
-        if(targetOppsInput) targetOppsInput.placeholder = result ? ('Suggested: ' + result.suggestedTargetOpps) : 'e.g. 206';
-      });
-    }
+    if(el) el.addEventListener('input', refreshLeadCalc);
   });
-  const applyLeadCalcBtn = document.getElementById('applyLeadCalcBtn');
-  if(applyLeadCalcBtn){
-    applyLeadCalcBtn.addEventListener('click', ()=>{
-      const targetOppsInput = document.getElementById('lc_targetOpps');
-      state.draft.forecastedOpps = targetOppsInput ? targetOppsInput.value : state.draft.forecastedOpps;
-      state.leadCalcOpen = false;
-      render();
+  // Target Opps itself also needs to refresh the suggestion hint as the manager types their own
+  // number (to show/hide the "below the calculator's floor" flag), without touching the
+  // calculator's own inputs or results.
+  const forecastedOppsForHintEl = document.getElementById('f_forecastedOpps');
+  if(forecastedOppsForHintEl){
+    forecastedOppsForHintEl.addEventListener('input', ()=>{
+      state.draft.forecastedOpps = forecastedOppsForHintEl.value;
+      const suggestionHint = document.getElementById('targetOppsSuggestionHint');
+      if(suggestionHint) suggestionHint.innerHTML = renderTargetOppsSuggestionHint(state.draft);
     });
   }
 }

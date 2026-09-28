@@ -1713,6 +1713,9 @@ let state = {
   regionLabelStatus:'',
   postEventEvalEventId:null,
   postEventEvalDraft:null,
+  leadCalcOpen:false,
+  vettingChecklistEventId:null,
+  vettingChecklistDraft:null,
   attachmentConfirmPending:null,
   additionalOccurrences:[],
   customServiceableZips:{},
@@ -1776,6 +1779,17 @@ function emptyDraft(regionIdx){
     vehicleRentalDays:'',
     miscCosts:'',
     forecastedOpps:'',
+    // Lead Target Calculator's benchmark inputs -- kept on the draft (not a separate object) so
+    // they save/reload with the event like everything else, and aren't lost if the calculator
+    // panel is closed and reopened mid-edit. Deliberately blank by default: no baked-in company
+    // defaults, per direction -- pull these fresh from Tableau's funnel report (trailing 2
+    // months of data for this branch/region) each time, rather than reusing stale numbers.
+    leadCalcSetRate:'',
+    leadCalcCancelRate:'',
+    leadCalcMeetRate:'',
+    leadCalcCloseRate:'',
+    leadCalcAvgSaleGross:'',
+    leadCalcAvgSaleNet:'',
     organizer:'',
     contactName:'',
     contactPhone:'',
@@ -2209,6 +2223,158 @@ function costPerOppDisplayFlagged(ev){
   return cpo > CPO_TARGET
     ? `<span style="color:var(--red);font-weight:700;">${money(cpo)}</span>`
     : money(cpo);
+}
+// ---------- Lead Target Calculator ----------
+// Works backward from a fixed maximum Marketing-cost-to-Net-Bookings ratio ("$/Mar.") to the
+// minimum lead volume an event must produce, given the event's all-in cost (from the Financials
+// section above) and a set of benchmark funnel conversion rates the manager types in. Mirrors
+// the "Funnel the event must produce" worksheet used in the field. This is a planning aid only --
+// it does NOT set Target Opps by itself. The manager still types their own number into a
+// separate box (see renderLeadCalcPanel), which is what actually gets saved as forecastedOpps.
+const TARGET_MAR_MAX_PCT = 20; // Fixed company-wide target -- intentionally not editable per event.
+function leadCalcCompute(inputs){
+  const adSpend = num(inputs.adSpend);
+  const setRate = num(inputs.setRate) / 100;
+  const cancelRate = num(inputs.cancelRate) / 100;
+  const meetRate = num(inputs.meetRate) / 100;
+  const closeRate = num(inputs.closeRate) / 100;
+  const avgSaleGross = num(inputs.avgSaleGross);
+  const avgSaleNet = num(inputs.avgSaleNet);
+  const targetMarPct = TARGET_MAR_MAX_PCT / 100;
+  // Every rate and the net sale size has to be a usable positive number, or the backward solve
+  // divides by zero (or a negative/nonsense lead count) -- bail out to "not enough info yet"
+  // rather than showing garbage.
+  const valid = adSpend > 0 && setRate > 0 && cancelRate >= 0 && cancelRate < 1 && meetRate > 0
+    && closeRate > 0 && avgSaleNet > 0;
+  if(!valid) return null;
+  const bookingsNeeded = adSpend / targetMarPct;
+  const jobsNeeded = bookingsNeeded / avgSaleNet;
+  const meetsNeeded = jobsNeeded / closeRate;
+  const netOppsNeeded = meetsNeeded / meetRate;
+  const grossOppsNeeded = netOppsNeeded / (1 - cancelRate);
+  const leadsNeeded = grossOppsNeeded / setRate;
+  // Round the lead count up to a whole number, then recompute every downstream number FORWARD
+  // from that whole number -- so what's displayed is what actually happens at that lead volume,
+  // not the fractional solve used to find the minimum.
+  const totalLeads = Math.ceil(leadsNeeded);
+  const grossOpps = totalLeads * setRate;
+  const unsetLeads = totalLeads - grossOpps;
+  const cancelledOpps = grossOpps * cancelRate;
+  const netOpps = grossOpps - cancelledOpps;
+  const totalMeets = netOpps * meetRate;
+  const totalJobs = totalMeets * closeRate;
+  const bookingsNet = totalJobs * avgSaleNet;
+  const bookingsGross = totalJobs * avgSaleGross;
+  const cpl = totalLeads > 0 ? adSpend / totalLeads : null;
+  const cpo = grossOpps > 0 ? adSpend / grossOpps : null;
+  const cpm = totalMeets > 0 ? adSpend / totalMeets : null;
+  const marAtMin = bookingsNet > 0 ? adSpend / bookingsNet : null;
+  const roaAtMin = adSpend > 0 ? bookingsNet / adSpend : null;
+  const yieldPerMeet = totalMeets > 0 ? bookingsNet / totalMeets : null;
+  return {
+    adSpend, totalLeads, unsetLeads, grossOpps, cancelledOpps, netOpps, totalMeets, totalJobs,
+    bookingsNet, bookingsGross, cpl, cpo, cpm, marAtMin, roaAtMin, yieldPerMeet,
+    // Gross Opps (appointments set, before cancellation) is what this app's own CPO math is
+    // denominated in -- see costPerOpp() -- so that's what's suggested for Target Opps too.
+    suggestedTargetOpps: Math.ceil(grossOpps)
+  };
+}
+// ---------- Event Vetting Checklist ----------
+// What to confirm about the market, the audience, and the show before signing an exhibitor
+// contract -- built for a high-ticket, owner-occupied product: every item asks whether the
+// people walking the aisles own a home with a backyard and can fund a major remodel.
+// Tracked PER EVENT (opened from that event's card, same pattern as Post-Event Evaluation),
+// since two shows in the same region can have very different venues and trade areas. State is
+// saved on the event itself as ev.vettingChecklist = { itemKey: true/false, ... }.
+const VETTING_INTRO = 'What to confirm about the market, the audience, and the show before signing an exhibitor contract. Built for a high-ticket, owner-occupied product: every item asks whether the people walking the aisles own a home with a backyard and can fund a major remodel.';
+const VETTING_CALIBRATION_NOTE = 'Thresholds are starting points. Calibrate them against the zip codes of your last two years of closed contracts.';
+// The five go/no-go gates are a static summary, not individually checked -- they don't count
+// toward the 34-item total below.
+const VETTING_GATES = [
+  'Affluence: median household income in the 30-minute drive-time trade area is at least 1.3× the national median, and 25%+ of households earn $150K or more.',
+  'Ownership: 70%+ of occupied housing units are owner-occupied.',
+  'Housing type: 65%+ of units are single-family detached homes with usable yards.',
+  'Follow-up coverage: a sales consultant and install crew serve the area, and leads can be contacted within 48 hours.',
+  'Lead volume works: a realistic lead count for the event meets or beats the minimum from the lead target calculator below, which keeps $/Mar. at 20% or less (RoA of $5.00 or more).'
+];
+const VETTING_CHECKLIST_CATEGORIES = [
+  {
+    key: 'affluence',
+    title: 'Affluence and buying power',
+    hint: 'Measure a 20–30 minute drive-time area around the venue, not the whole metro. Metro averages hide the neighborhoods that actually buy.',
+    items: [
+      { key:'medianIncome', label:'Median household income', note:'The single fastest screen for a luxury product.', go:'≥ $125K, or 1.5× national median', check:'$95K–$125K', nogo:'< $95K', sources:['Census Reporter','data.census.gov S1901','Census Business Builder','Esri ZIP Lookup (Tapestry)'] },
+      { key:'share150k', label:'Share of households earning $150K+', note:'Medians can mislead. You need a deep pool of top-bracket households.', go:'≥ 30%', check:'20–30%', nogo:'< 20%', sources:['Census Reporter','data.census.gov S1901','Census Business Builder'] },
+      { key:'medianHomeValue', label:'Median owner-occupied home value', note:'Higher home values signal both wealth and willingness to reinvest in the house.', go:'≥ 1.3× state median', check:'1.0–1.3×', nogo:'Below state median', sources:['Census Reporter','data.census.gov B25077','Zillow Research','Redfin Data Center'] },
+      { key:'equityFinancing', label:'Home equity and financing capacity', note:'Many buyers fund enclosures with HELOCs or cash. High equity shortens the sale.', go:'Long-tenured owners, rising values', check:'Mostly recent buyers', nogo:'Flat or falling values', sources:['data.census.gov B25081','Zillow Research','Realtor.com Research','Local MLS via your reps'] },
+      { key:'discretionarySpending', label:'Discretionary and home-improvement spending', note:'Shows whether residents actually spend on remodeling, not just earn.', go:'Index ≥ 120', check:'100–120', nogo:'< 100', sources:['Esri Business Analyst (paid)','Claritas PRIZM (MyBestSegments)','Chamber of commerce / economic development office (may run reports free)'] }
+    ]
+  },
+  {
+    key: 'housing',
+    title: 'Housing stock',
+    hint: 'A patio enclosure needs a detached home, a yard, and an owner who controls the exterior.',
+    items: [
+      { key:'ownerOccupied', label:'Homeowners vs. renters', note:'Renters cannot buy. This is the hardest filter on the list.', go:'≥ 75% owner-occupied', check:'65–75%', nogo:'< 65%', sources:['Census Reporter','data.census.gov B25003','Census Business Builder'] },
+      { key:'singleFamily', label:'Single-family detached vs. apartments and condos', note:'Condos and townhomes rarely allow additions, and HOAs or boards often block them.', go:'≥ 70% single-family detached', check:'55–70%', nogo:'< 55%', sources:['Census Reporter','data.census.gov B25024'] },
+      { key:'housingAge', label:'Age of the housing stock', note:'Homes 15–40 years old hit the remodeling cycle. Brand-new subdivisions often carry strict HOA rules.', go:'Built 1985–2010 dominant', check:'Mostly post-2015 new builds', nogo:'Mostly pre-1950 urban lots', sources:['Census Reporter','data.census.gov B25034','County assessor site'] }
+    ]
+  },
+  {
+    key: 'homeowner',
+    title: 'Homeowner profile',
+    hint: 'The core buyer is an established homeowner planning to stay put.',
+    items: [
+      { key:'householderAge', label:'Householder age', note:'Empty nesters and pre-retirees have equity and time to enjoy the space.', go:'Median 45–70', check:'35–45', nogo:'Under 35 dominant', sources:['Census Reporter','data.census.gov B25007','Esri ZIP Lookup (Tapestry)'] },
+      { key:'lengthOfResidence', label:'Length of residence', note:'Owners who have stayed 7+ years tend to invest in the home rather than move.', go:'Median ≥ 8 yrs', check:'4–8 yrs', nogo:'< 4 yrs (high turnover)', sources:['Census Reporter','data.census.gov B25038','Realtor.com Research'] },
+      { key:'seasonalPopulation', label:'Seasonal and retiree population', note:'Retirement communities and second-home markets can be strong if the homes qualify.', go:'Year-round owners', check:'Heavy seasonal share', nogo:'Mostly short-term rentals', sources:['data.census.gov B25004','Esri ZIP Lookup (Tapestry)','Claritas PRIZM (MyBestSegments)'] }
+    ]
+  },
+  {
+    key: 'marketFit',
+    title: 'Market fit and local operations',
+    hint: "A great audience is wasted if we can't sell and install there.",
+    items: [
+      { key:'climateUseCase', label:'Climate and use case', note:'Bugs, pollen, heat, rain, or short seasons all drive demand for three- and four-season rooms.', go:'Clear seasonal pain point', check:'Mild, year-round outdoor living', nogo:'No outdoor living culture', sources:['NOAA U.S. Climate Normals','Regional sales history (CRM)'] },
+      { key:'speedToMeet', label:'Speed to meet', note:'Days from lead to first meeting. Slow follow-up raises cancels and no-shows, which drives $/Mar. up. Confirm the local team can run event leads quickly during the post-show surge -- this also covers whether sales and install coverage in the area can keep up.', go:'Met within 3 days', check:'4–7 days', nogo:'More than 7 days', sources:['CRM days from lead to meet, by market',"Local sales manager's calendar for the 2 weeks after the show"] }
+    ]
+  },
+  {
+    key: 'event',
+    title: 'The event itself',
+    hint: 'Ask the organizer for data in writing. Good shows have attendee surveys and will share them.',
+    items: [
+      { key:'eventTypeAudience', label:'Event type and audience intent', note:'A home and garden or remodeling show attracts buyers. A county fair or festival mostly attracts browsers.', go:'Home, garden, or remodeling show', check:'Parade of homes, lifestyle expo', nogo:'General fair, festival, sports event', sources:['Organizer prospectus','10times','TSNN'] },
+      { key:'attendeeDemographics', label:'Attendee demographics', note:'Request homeowner %, income, age, and zip-code distribution from past attendee surveys.', go:'≥ 80% homeowners, surveyed', check:'Estimates only', nogo:'No data available', sources:['Organizer attendee survey (request in writing)'] },
+      { key:'attendanceTrend', label:'Attendance and trend', note:'Look at the last three years. A shrinking show will not recover in your year.', go:'Stable or growing', check:'Flat', nogo:'Declining 10%+ per year', sources:['Organizer, last 3 years','10times','TSNN','Local press'] },
+      { key:'admissionPrice', label:'Admission price', note:'Paid admission filters out casual walkers. Free shows bring volume but fewer qualified leads.', go:'Paid ticket ($10+)', check:'Low or partly comped', nogo:'Free, walk-in', sources:['Event website'] },
+      { key:'exhibitorMix', label:'Exhibitor mix', note:'Luxury neighbors (pools, kitchens, custom builders) set the tone. A floor full of gadgets and mattresses does not.', go:'Premium home brands', check:'Mixed', nogo:'Mostly impulse or low-ticket vendors', sources:['Past exhibitor list and floor plan','Call a past non-competing exhibitor'] },
+      { key:'competitorsExclusivity', label:'Competitors and category exclusivity', note:'Know how many sunroom, pergola, and screen-room companies will be there and where.', go:'Exclusive or 1 competitor', check:'2–3 competitors', nogo:'Competitor next to us or 4+', sources:['Organizer exhibitor list; ask for exclusivity in writing'] },
+      { key:'datesHoursConflicts', label:'Dates, hours, and conflicts', note:'Check holidays, school breaks, big local sports weekends, and competing shows.', go:'Prime weekend, no conflicts', check:'Minor overlap', nogo:'Holiday or major competing event', sources:['10times','Local tourism and venue calendars'] }
+    ]
+  },
+  {
+    key: 'booth',
+    title: 'Booth, logistics, and contract terms',
+    hint: 'A display room is heavy and tall. Confirm the space can take it before paying for it.',
+    items: [
+      { key:'boothLocationFlow', label:'Booth location and traffic flow', note:'Near the entrance or main aisle, away from dead corners and food courts.', go:'Main aisle, corner or island', check:'Secondary aisle', nogo:'Back wall or dead zone', sources:['Floor plan; site walk if possible'] },
+      { key:'moveInFreightLabor', label:'Move-in, freight, and labor rules', note:'Union labor, drayage fees, dock access, and install windows can double the cost.', go:'Self-install allowed, dock access', check:'Union labor required', nogo:'Short or overnight-only install window', sources:['Exhibitor manual; show general contractor'] },
+      { key:'utilitiesSetting', label:'Utilities and indoor or outdoor setting', note:'Power for lighting and screens; outdoor shows need wind and rain plans.', go:'Indoor, power included', check:'Outdoor, covered', nogo:'Outdoor, exposed', sources:['Exhibitor manual'] },
+      { key:'organizerMarketing', label:'Organizer marketing', note:'Ask what the organizer spends on ads, mailers, and digital, and in which zip codes.', go:'Targeted to affluent zips', check:'Broad metro advertising', nogo:'Little or none', sources:['Organizer media plan, target zips'] },
+      { key:'cancellationTerms', label:'Cancellation, refund, and rebooking terms', note:'Check deposit deadlines, refund policy, weather clauses, and early rebooking discounts.', go:'Refundable or transferable', check:'Partial refund', nogo:'Non-refundable, no weather clause', sources:['Exhibitor contract'] }
+    ]
+  }
+];
+// Total checkable items -- computed from the data above, not hardcoded, so it can never drift
+// out of sync if a category is edited later.
+const VETTING_TOTAL_ITEMS = VETTING_CHECKLIST_CATEGORIES.reduce((n,cat)=>n+cat.items.length, 0);
+function vettingCheckedCount(checklist, keys){
+  if(!checklist) return 0;
+  return keys.filter(k=>checklist[k]).length;
+}
+function vettingCategoryKeys(cat){
+  return cat.items.map(it=>it.key);
 }
 const REQUIRED_FIELDS = [
   ['eventName','Event Name'],
@@ -3130,6 +3296,45 @@ function closePostEventEvalPanel(){
   state.postEventEvalEventId = null;
   state.postEventEvalDraft = null;
   render();
+}
+// Event Vetting Checklist -- opened from an event's own card, same panel-with-draft pattern as
+// Post-Event Evaluation above. Draft is a plain {itemKey: boolean} map, copied from whatever's
+// already saved on the event (so reopening picks up right where you left off), edited locally
+// as checkboxes are clicked, and only written back to Firestore when Save is pressed.
+function openVettingChecklistPanel(id){
+  const ev = state.events.find(e=>e.id===id);
+  if(!ev) return;
+  // Defense-in-depth: the button that calls this is already hidden for every brand except
+  // Patio Enclosures (the checklist is written for that product specifically), but guard here
+  // too in case this is ever reached another way.
+  if(state.currentBrand!=='patio-enclosures'){
+    alert('The Event Vetting Checklist is only available for Patio Enclosures.');
+    return;
+  }
+  state.vettingChecklistDraft = Object.assign({}, ev.vettingChecklist || {});
+  state.vettingChecklistEventId = id;
+  render();
+}
+function closeVettingChecklistPanel(){
+  state.vettingChecklistEventId = null;
+  state.vettingChecklistDraft = null;
+  render();
+}
+async function saveVettingChecklist(){
+  const id = state.vettingChecklistEventId;
+  const ev = state.events.find(e=>e.id===id);
+  if(!ev || !state.vettingChecklistDraft) return;
+  const saveBtn = document.getElementById('saveVettingChecklistBtn');
+  if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+  const updated = Object.assign({}, ev, { vettingChecklist: Object.assign({}, state.vettingChecklistDraft) });
+  const ok = await persistEventChangeAtomic(updated, false);
+  if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+  if(!ok){
+    alert('This could not be saved -- likely a connection issue. Please try again.');
+    return;
+  }
+  logActivity(ev.id, ev.eventName, 'Updated Event Vetting Checklist', `${vettingCheckedCount(updated.vettingChecklist, VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys))} of ${VETTING_TOTAL_ITEMS} reviewed`);
+  closeVettingChecklistPanel();
 }
 // Requires an active checkbox confirmation before proceeding, rather than a plain alert() that's
 // easy to click through on autopilot. `onConfirm` runs synchronously from the Continue button's
@@ -5246,6 +5451,11 @@ function render(){
         ${state.panelOpen ? renderPanel() : ''}
       </div>
     </div>
+    <div class="overlay ${state.leadCalcOpen?'open':''}" id="leadCalcOverlay">
+      <div class="panel" id="leadCalcPanelStop" style="max-width:640px;">
+        ${state.leadCalcOpen ? renderLeadCalcPanel() : ''}
+      </div>
+    </div>
     <div class="overlay ${state.settingsOpen && isSettingsAdmin() ?'open':''}" id="settingsOverlay">
       <div class="panel" id="settingsPanelStop" style="max-width:480px;">
         ${state.settingsOpen && isSettingsAdmin() ? renderSettingsPanel() : ''}
@@ -5254,6 +5464,11 @@ function render(){
     <div class="overlay ${state.postEventEvalEventId ? 'open' : ''}" id="postEventEvalOverlay">
       <div class="panel" id="postEventEvalPanelStop" style="max-width:600px;">
         ${state.postEventEvalEventId ? renderPostEventEvalPanel() : ''}
+      </div>
+    </div>
+    <div class="overlay ${state.vettingChecklistEventId ? 'open' : ''}" id="vettingChecklistOverlay">
+      <div class="panel" id="vettingChecklistPanelStop" style="max-width:820px;">
+        ${state.vettingChecklistEventId ? renderVettingChecklistPanel() : ''}
       </div>
     </div>
     <div class="overlay ${state.attachmentConfirmPending ? 'open' : ''}" id="attachmentConfirmOverlay">
@@ -6033,6 +6248,7 @@ function renderEventDetail(ev){
         : `<button class="btn btn-outline btn-sm" data-edit="${ev.id}">Edit Event</button>`}
       <button class="btn btn-outline btn-sm" data-download-event="${ev.id}">📄 Download / Print PDF</button>
       <button class="btn btn-outline btn-sm" data-duplicate-event="${ev.id}">📅 Duplicate for Next Year</button>
+      ${state.currentBrand==='patio-enclosures' ? `<button class="btn btn-outline btn-sm" data-vetting-checklist="${ev.id}">📋 Vetting Checklist${(()=>{const n=vettingCheckedCount(ev.vettingChecklist, VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys)); return n>0 ? ` (${n}/${VETTING_TOTAL_ITEMS})` : '';})()}</button>` : ''}
       ${ev.status===STATUS.RESEARCHING
         ? (ev.waitingOnInfo
             ? `<button class="btn btn-outline btn-sm" data-toggle-waiting="${ev.id}">✓ No Longer Waiting</button>`
@@ -6114,6 +6330,71 @@ function renderAttachmentConfirmModal(){
     <button class="btn btn-outline" id="cancelAttachmentConfirmBtn2">Cancel</button>
     <button class="btn btn-primary" id="continueAttachmentConfirmBtn" disabled>Continue to Email</button>
   </div>`;
+}
+function renderVettingChecklistPanel(){
+  const ev = state.events.find(e=>e.id===state.vettingChecklistEventId);
+  const draft = state.vettingChecklistDraft;
+  if(!ev || !draft) return '';
+  const allKeys = VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys);
+  const totalChecked = vettingCheckedCount(draft, allKeys);
+  const badgeClass = totalChecked===0 ? 'state-red' : totalChecked===VETTING_TOTAL_ITEMS ? 'state-green' : 'state-amber';
+  const itemRow = (item) => {
+    const checked = !!draft[item.key];
+    return `
+    <div style="display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--border);align-items:flex-start;">
+      <input type="checkbox" data-vet-key="${item.key}" ${checked?'checked':''} style="margin-top:3px;width:16px;height:16px;flex-shrink:0;cursor:pointer;"/>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;font-size:13.5px;color:var(--ink);">${escapeHtml(item.label)}</div>
+        <div style="font-size:12px;color:var(--ink-soft);margin:2px 0 8px 0;">${escapeHtml(item.note)}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+          <span style="background:var(--green-soft);color:var(--green);font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap;">GO — ${escapeHtml(item.go)}</span>
+          <span style="background:var(--amber-soft);color:var(--amber);font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap;">CHECK — ${escapeHtml(item.check)}</span>
+          <span style="background:var(--red-soft);color:var(--red);font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap;">NO-GO — ${escapeHtml(item.nogo)}</span>
+        </div>
+        <div style="font-size:11px;color:var(--ink-soft);">Where to find it: ${item.sources.map(escapeHtml).join(' · ')}</div>
+      </div>
+    </div>`;
+  };
+  const categoryBlock = (cat) => {
+    const keys = vettingCategoryKeys(cat);
+    const catChecked = vettingCheckedCount(draft, keys);
+    return `
+    <div class="field-group">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;gap:10px;">
+        <div class="field-group-title" style="margin:0;">${escapeHtml(cat.title)}</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--ink-soft);white-space:nowrap;">${catChecked} / ${keys.length} reviewed</div>
+      </div>
+      <div class="hint" style="margin-bottom:6px;">${escapeHtml(cat.hint)}</div>
+      ${cat.items.map(itemRow).join('')}
+    </div>`;
+  };
+  return `
+  <div class="panel-header">
+    <h2>Event Vetting Checklist</h2>
+    <div class="hint" style="margin-top:2px;color:rgba(255,255,255,0.7);">${escapeHtml(ev.eventName)}</div>
+    <button class="panel-close" id="closeVettingChecklistBtn">✕</button>
+  </div>
+  <div class="panel-body">
+    <div class="hint" style="margin-bottom:16px;">${escapeHtml(VETTING_INTRO)}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+      <div id="vettingChecklistProgress" class="checklist-progress ${badgeClass}">${totalChecked} of ${VETTING_TOTAL_ITEMS} reviewed</div>
+      <button type="button" class="btn btn-outline btn-sm" id="clearVettingChecklistBtn">Clear Checks</button>
+    </div>
+    <div class="field-group">
+      <div class="field-group-title">Must Pass Before Committing</div>
+      <div class="hint" style="margin-bottom:8px;">Five go / no-go gates</div>
+      <ul style="margin:0 0 8px 0;padding-left:20px;">
+        ${VETTING_GATES.map(g=>`<li style="font-size:13px;color:var(--ink);margin-bottom:8px;line-height:1.45;">${escapeHtml(g)}</li>`).join('')}
+      </ul>
+      <div class="hint">${escapeHtml(VETTING_CALIBRATION_NOTE)}</div>
+    </div>
+    ${VETTING_CHECKLIST_CATEGORIES.map(categoryBlock).join('')}
+  </div>
+  <div class="panel-footer">
+    <button class="btn btn-outline" id="cancelVettingChecklistBtn">Cancel</button>
+    <button class="btn btn-primary" id="saveVettingChecklistBtn">Save</button>
+  </div>
+  `;
 }
 function renderPostEventEvalPanel(){
   const ev = state.events.find(e=>e.id===state.postEventEvalEventId);
@@ -6451,6 +6732,122 @@ function renderSettingsPanel(){
   </div>
   `;
 }
+function renderLeadCalcResults(r){
+  if(!r){
+    return `<div class="hint" style="padding:14px;border:1px dashed var(--border);border-radius:8px;text-align:center;">Enter this event's all-in cost above (in Financials) and all four funnel rates plus Avg. Sale, Net below to calculate.</div>`;
+  }
+  const row = (label, value, highlight) => `<div class="computed-row${highlight?' total-row':''}"><span class="label">${label}</span><span class="value">${value}</span></div>`;
+  return `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0 10px 0;">
+      <div style="grid-column:1/-1;background:var(--ink);color:#fff;border-radius:8px;padding:14px;">
+        <div style="font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;opacity:0.7;">Minimum Leads Needed</div>
+        <div style="font-family:var(--font-display);font-size:32px;font-weight:700;">${r.totalLeads}</div>
+        <div style="font-size:12px;opacity:0.75;margin-top:2px;">Max CPL ${money(r.cpl)} to stay at ${TARGET_MAR_MAX_PCT.toFixed(1)}% $/Mar.</div>
+      </div>
+      <div style="background:var(--accent-soft);border-radius:8px;padding:14px;">
+        <div style="font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-soft);">$/Mar. at Minimum</div>
+        <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--ink);">${r.marAtMin===null?'—':(r.marAtMin*100).toFixed(1)+'%'}</div>
+        <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">Ad spend ÷ net bookings</div>
+      </div>
+      <div style="background:var(--accent-soft);border-radius:8px;padding:14px;">
+        <div style="font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-soft);">RoA at Minimum</div>
+        <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--ink);">${r.roaAtMin===null?'—':money(r.roaAtMin)}</div>
+        <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">Net bookings per $1 of ad spend</div>
+      </div>
+    </div>
+    <div class="computed-box" style="flex-direction:column;align-items:stretch;gap:4px;">
+      <div class="field-group-title" style="margin:2px 0 4px 0;">Funnel The Event Must Produce</div>
+      ${row('Unset Leads', r.unsetLeads.toFixed(1))}
+      ${row('Gross Opps', r.grossOpps.toFixed(1))}
+      ${row('Total Leads', r.totalLeads, true)}
+      ${row('Cancelled Opps', r.cancelledOpps.toFixed(1))}
+      ${row('Net Opps', r.netOpps.toFixed(1))}
+      ${row('Total Meets', r.totalMeets.toFixed(1))}
+      ${row('Total Jobs', r.totalJobs.toFixed(1))}
+      <div class="field-group-title" style="margin:10px 0 4px 0;">Revenue</div>
+      ${row('Bookings Net', money(r.bookingsNet))}
+      ${row('Bookings Gross', money(r.bookingsGross))}
+      <div class="field-group-title" style="margin:10px 0 4px 0;">Cost and Return</div>
+      ${row('Total Ad Spend', money(r.adSpend))}
+      ${row('CPL (cost per lead)', r.cpl===null?'—':money(r.cpl))}
+      ${row('CPO (cost per opp)', r.cpo===null?'—':money(r.cpo))}
+      ${row('CPM (cost per meet)', r.cpm===null?'—':money(r.cpm))}
+      ${row('$/Mar.', r.marAtMin===null?'—':(r.marAtMin*100).toFixed(1)+'%', true)}
+      ${row('RoA', r.roaAtMin===null?'—':money(r.roaAtMin), true)}
+      ${row('Yield (net bookings per meet)', r.yieldPerMeet===null?'—':money(r.yieldPerMeet))}
+    </div>
+  `;
+}
+function renderLeadCalcPanel(){
+  const d = state.draft;
+  if(!d) return '';
+  const adSpend = totalCost(d);
+  const result = leadCalcCompute({
+    adSpend,
+    setRate: d.leadCalcSetRate,
+    cancelRate: d.leadCalcCancelRate,
+    meetRate: d.leadCalcMeetRate,
+    closeRate: d.leadCalcCloseRate,
+    avgSaleGross: d.leadCalcAvgSaleGross,
+    avgSaleNet: d.leadCalcAvgSaleNet
+  });
+  return `
+  <div class="panel-header">
+    <h2>Lead Target Calculator</h2>
+    <div class="hint" style="margin-top:2px;color:rgba(255,255,255,0.7);">${escapeHtml(d.eventName || 'This event')}</div>
+    <button class="panel-close" id="closeLeadCalcBtn">✕</button>
+  </div>
+  <div class="panel-body">
+    <div class="hint" style="margin-bottom:18px;">Using your benchmark funnel rates, this works out the minimum number of leads the event must produce to keep $/Mar. at or under the fixed ${TARGET_MAR_MAX_PCT.toFixed(1)}% target. That minimum is a benchmark floor, not your target — enter what you're actually planning to hit in the Target Opps box at the bottom.</div>
+    <div class="field-group">
+      <div class="field-group-title">The Event</div>
+      <div class="field">
+        <label>Total Ad Spend (all-in event cost, $)</label>
+        <div class="computed-inline">${money(adSpend)}</div>
+        <div class="hint" style="margin-top:4px;">Pulled automatically from Total Costs in the Financials section above — contract, labor, mileage, hotel, per diem, vehicle rental, and misc combined.</div>
+      </div>
+      <div class="field">
+        <label>Target $/Mar., Maximum (%)</label>
+        <div class="computed-inline">${TARGET_MAR_MAX_PCT.toFixed(1)}%</div>
+        <div class="hint" style="margin-top:4px;">Fixed company-wide target — not adjustable per event.</div>
+      </div>
+    </div>
+    <div class="field-group">
+      <div class="field-group-title">Funnel Rates (Benchmark)</div>
+      <div class="hint" style="margin-bottom:10px;">Pull these from the Tableau funnel report, using the trailing 2 months of data for this branch/region — not older or one-off numbers.</div>
+      <div class="field-row">
+        <div class="field"><label>Set Rate (%)</label><input id="lc_setRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcSetRate)}" placeholder="e.g. 85.34"/></div>
+        <div class="field"><label>Cancel Rate (%)</label><input id="lc_cancelRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcCancelRate)}" placeholder="e.g. 21.57"/></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Meet Rate, meets ÷ net opps (%)</label><input id="lc_meetRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcMeetRate)}" placeholder="e.g. 69.47"/></div>
+        <div class="field"><label>Close Rate, jobs ÷ meets (%)</label><input id="lc_closeRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcCloseRate)}" placeholder="e.g. 11.96"/></div>
+      </div>
+    </div>
+    <div class="field-group">
+      <div class="field-group-title">Sale Size (Benchmark)</div>
+      <div class="hint" style="margin-bottom:10px;">Same source — Tableau, trailing 2 months, this branch/region.</div>
+      <div class="field-row">
+        <div class="field"><label>Avg. Sale, Gross ($)</label><input id="lc_avgSaleGross" type="number" step="1" value="${escapeHtml(d.leadCalcAvgSaleGross)}" placeholder="e.g. 28420"/></div>
+        <div class="field"><label>Avg. Sale, Net ($)</label><input id="lc_avgSaleNet" type="number" step="1" value="${escapeHtml(d.leadCalcAvgSaleNet)}" placeholder="e.g. 24690"/></div>
+      </div>
+    </div>
+    <div id="leadCalcResults">${renderLeadCalcResults(result)}</div>
+    <div class="field-group" style="margin-top:22px;">
+      <div class="field-group-title">Your Target</div>
+      <div class="hint" style="margin-bottom:8px;">Minimum Leads Needed above is the benchmark floor, not a target. Enter what you're actually planning to hit for this event's Target Opps — this is the number that gets saved to the event when you apply below.</div>
+      <div class="field">
+        <label>Target Opps</label>
+        <input id="lc_targetOpps" type="number" value="${escapeHtml(d.forecastedOpps)}" placeholder="${result ? 'Suggested: ' + result.suggestedTargetOpps : 'e.g. 206'}"/>
+      </div>
+    </div>
+  </div>
+  <div class="panel-footer">
+    <button class="btn btn-outline" id="cancelLeadCalcBtn">Cancel</button>
+    <button class="btn btn-primary" id="applyLeadCalcBtn">Apply to Target Opps</button>
+  </div>
+  `;
+}
 function renderPanel(){
   const d = state.draft;
   const isEdit = !!state.editingEventId;
@@ -6585,7 +6982,11 @@ function renderPanel(){
       </div>` : ''}
       <div class="field">
         <label>Target Opps${reconfirmMark(d)}</label>
-        <input id="f_forecastedOpps" type="number" value="${escapeHtml(d.forecastedOpps)}"/>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="f_forecastedOpps" type="number" value="${escapeHtml(d.forecastedOpps)}" style="flex:1;"/>
+          <button type="button" class="btn btn-outline btn-sm" id="openLeadCalcBtn" style="white-space:nowrap;">🧮 Calculate</button>
+        </div>
+        <div class="hint" style="margin-top:4px;">Not sure what to target? Use the calculator to work backward from this event's cost and your funnel benchmarks.</div>
       </div>
       <div class="hint">Labor, mileage, hotel, and per diem dollars are calculated automatically from the rates below.</div>
       <div class="computed-box" style="flex-direction:column;align-items:stretch;gap:6px;">
@@ -6832,6 +7233,12 @@ function readDraftFromForm(){
   d.venueState = val('f_venueState', d.venueState);
   d.zip = val('f_zip', d.zip);
   d.forecastedOpps = val('f_forecastedOpps', d.forecastedOpps);
+  d.leadCalcSetRate = val('lc_setRate', d.leadCalcSetRate);
+  d.leadCalcCancelRate = val('lc_cancelRate', d.leadCalcCancelRate);
+  d.leadCalcMeetRate = val('lc_meetRate', d.leadCalcMeetRate);
+  d.leadCalcCloseRate = val('lc_closeRate', d.leadCalcCloseRate);
+  d.leadCalcAvgSaleGross = val('lc_avgSaleGross', d.leadCalcAvgSaleGross);
+  d.leadCalcAvgSaleNet = val('lc_avgSaleNet', d.leadCalcAvgSaleNet);
   d.organizer = val('f_organizer', d.organizer);
   d.website = val('f_website', d.website);
   d.startDate = val('f_startDate', d.startDate);
@@ -8222,6 +8629,42 @@ function attachHandlers(){
       openPostEventEvalPanel(btn.getAttribute('data-post-event-eval'));
     });
   });
+  // Event Vetting Checklist -- separate per-event panel, see openVettingChecklistPanel.
+  document.querySelectorAll('[data-vetting-checklist]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      openVettingChecklistPanel(btn.getAttribute('data-vetting-checklist'));
+    });
+  });
+  document.querySelectorAll('#closeVettingChecklistBtn, #cancelVettingChecklistBtn').forEach(btn=>{
+    btn.addEventListener('click', closeVettingChecklistPanel);
+  });
+  const vettingChecklistOverlayEl = document.getElementById('vettingChecklistOverlay');
+  if(vettingChecklistOverlayEl){
+    vettingChecklistOverlayEl.addEventListener('click', (e)=>{
+      if(e.target.id==='vettingChecklistOverlay') closeVettingChecklistPanel();
+    });
+  }
+  document.querySelectorAll('[data-vet-key]').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      if(!state.vettingChecklistDraft) return;
+      const key = cb.getAttribute('data-vet-key');
+      state.vettingChecklistDraft[key] = cb.checked;
+      render(); // cheap -- only updates the open panel's counters/checkbox states, panel stays open
+    });
+  });
+  const clearVettingChecklistBtn = document.getElementById('clearVettingChecklistBtn');
+  if(clearVettingChecklistBtn){
+    clearVettingChecklistBtn.addEventListener('click', ()=>{
+      if(!state.vettingChecklistDraft) return;
+      if(!confirm('Clear all checks on this checklist? This only takes effect once you Save.')) return;
+      state.vettingChecklistDraft = {};
+      render();
+    });
+  }
+  const saveVettingChecklistBtn = document.getElementById('saveVettingChecklistBtn');
+  if(saveVettingChecklistBtn){
+    saveVettingChecklistBtn.addEventListener('click', saveVettingChecklist);
+  }
   document.querySelectorAll('#cancelAttachmentConfirmBtn, #cancelAttachmentConfirmBtn2').forEach(btn=>{
     btn.addEventListener('click', cancelAttachmentConfirmation);
   });
@@ -8352,6 +8795,67 @@ function attachHandlers(){
       });
     }
   });
+  // Lead Target Calculator
+  const openLeadCalcBtn = document.getElementById('openLeadCalcBtn');
+  if(openLeadCalcBtn){
+    openLeadCalcBtn.addEventListener('click', ()=>{
+      readDraftFromForm(); // capture whatever's already typed in Financials before computing Total Ad Spend
+      state.leadCalcOpen = true;
+      render();
+    });
+  }
+  const closeLeadCalcBtn = document.getElementById('closeLeadCalcBtn');
+  if(closeLeadCalcBtn){
+    closeLeadCalcBtn.addEventListener('click', ()=>{ state.leadCalcOpen = false; render(); });
+  }
+  const cancelLeadCalcBtn = document.getElementById('cancelLeadCalcBtn');
+  if(cancelLeadCalcBtn){
+    cancelLeadCalcBtn.addEventListener('click', ()=>{ state.leadCalcOpen = false; render(); });
+  }
+  const leadCalcOverlayEl = document.getElementById('leadCalcOverlay');
+  if(leadCalcOverlayEl){
+    leadCalcOverlayEl.addEventListener('click', (e)=>{
+      if(e.target.id==='leadCalcOverlay'){ state.leadCalcOpen = false; render(); }
+    });
+  }
+  ['lc_setRate','lc_cancelRate','lc_meetRate','lc_closeRate','lc_avgSaleGross','lc_avgSaleNet'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el){
+      el.addEventListener('input', ()=>{
+        const g = x => document.getElementById(x)?.value ?? '';
+        state.draft.leadCalcSetRate = g('lc_setRate');
+        state.draft.leadCalcCancelRate = g('lc_cancelRate');
+        state.draft.leadCalcMeetRate = g('lc_meetRate');
+        state.draft.leadCalcCloseRate = g('lc_closeRate');
+        state.draft.leadCalcAvgSaleGross = g('lc_avgSaleGross');
+        state.draft.leadCalcAvgSaleNet = g('lc_avgSaleNet');
+        const result = leadCalcCompute({
+          adSpend: totalCost(state.draft),
+          setRate: state.draft.leadCalcSetRate,
+          cancelRate: state.draft.leadCalcCancelRate,
+          meetRate: state.draft.leadCalcMeetRate,
+          closeRate: state.draft.leadCalcCloseRate,
+          avgSaleGross: state.draft.leadCalcAvgSaleGross,
+          avgSaleNet: state.draft.leadCalcAvgSaleNet
+        });
+        const resultsOut = document.getElementById('leadCalcResults');
+        if(resultsOut) resultsOut.innerHTML = renderLeadCalcResults(result);
+        // Keep the suggested-target placeholder in sync too, without clobbering anything the
+        // manager already typed into their own Target Opps box.
+        const targetOppsInput = document.getElementById('lc_targetOpps');
+        if(targetOppsInput) targetOppsInput.placeholder = result ? ('Suggested: ' + result.suggestedTargetOpps) : 'e.g. 206';
+      });
+    }
+  });
+  const applyLeadCalcBtn = document.getElementById('applyLeadCalcBtn');
+  if(applyLeadCalcBtn){
+    applyLeadCalcBtn.addEventListener('click', ()=>{
+      const targetOppsInput = document.getElementById('lc_targetOpps');
+      state.draft.forecastedOpps = targetOppsInput ? targetOppsInput.value : state.draft.forecastedOpps;
+      state.leadCalcOpen = false;
+      render();
+    });
+  }
 }
 // Signs a user in with email/password. Accounts are created ahead of time by an admin in the
 // Firebase console (Authentication -> Users -> Add user) -- there's no self-serve sign-up here.

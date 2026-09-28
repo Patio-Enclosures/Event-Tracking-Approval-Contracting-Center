@@ -6836,7 +6836,6 @@ function renderLeadCalcResults(r){
     <div class="lc-funnel-title">Funnel The Event Must Produce</div>
     <div class="lc-table">
       ${section('Funnel')}
-      ${row('Unset Leads', r.unsetLeads.toFixed(1))}
       ${row('Gross Opps', r.grossOpps.toFixed(1))}
       ${row('Total Leads', r.totalLeads, true)}
       ${row('Set Rate', r.setRatePct.toFixed(1)+'%')}
@@ -7055,11 +7054,6 @@ function renderPanel(){
         <label>Vehicle Rental Days${reconfirmMark(d)}</label>
         <input id="f_vehicleRentalDays" type="number" value="${escapeHtml(d.vehicleRentalDays)}" placeholder="e.g. 3"/>
       </div>` : ''}
-      <div class="field">
-        <label>Target Opps${reconfirmMark(d)}</label>
-        <input id="f_forecastedOpps" type="number" value="${escapeHtml(d.forecastedOpps)}"/>
-        <div id="targetOppsSuggestionHint" style="margin-top:4px;">${renderTargetOppsSuggestionHint(d)}</div>
-      </div>
       <div class="hint">Labor, mileage, hotel, and per diem dollars are calculated automatically from the rates below.</div>
       <div class="computed-box" style="flex-direction:column;align-items:stretch;gap:6px;">
         <div class="computed-row"><span class="label">Labor (@ $${LABOR_RATE}/hr)</span><span class="value" id="calc_labor">${money(0)}</span></div>
@@ -7069,10 +7063,21 @@ function renderPanel(){
         ${state.currentBrand !== 'patio-enclosures' ? `<div class="computed-row"><span class="label">Vehicle Rental (@ $${VEHICLE_RENTAL_RATE}/day)</span><span class="value" id="calc_vehicle">${money(0)}</span></div>` : ''}
         <div class="computed-row"><span class="label">Misc. Costs</span><span class="value" id="calc_misc">${money(num(d.miscCosts))}</span></div>
         <div class="computed-row total-row"><span class="label">Total Costs</span><span class="value" id="computedTotal">${money(total)}</span></div>
-        <div class="computed-row"><span class="label">Cost Per Opp</span><span class="value" id="calc_cpo">${costPerOppDisplayFlagged(d)}</span></div>
       </div>
     </div>
     ${renderLeadCalcSection(d)}
+    <div class="field-group">
+      <div class="field-group-title">Target Opps</div>
+      <div class="hint" style="margin-bottom:10px;">Now that you've seen the calculator's benchmark minimum above, enter what you're actually planning to hit for this event.</div>
+      <div class="field">
+        <label>Target Opps${reconfirmMark(d)}</label>
+        <input id="f_forecastedOpps" type="number" value="${escapeHtml(d.forecastedOpps)}"/>
+        <div id="targetOppsSuggestionHint" style="margin-top:4px;">${renderTargetOppsSuggestionHint(d)}</div>
+      </div>
+      <div class="computed-box" style="flex-direction:column;align-items:stretch;gap:6px;margin-top:4px;">
+        <div class="computed-row"><span class="label">Cost Per Opp</span><span class="value" id="calc_cpo">${costPerOppDisplayFlagged(d)}</span></div>
+      </div>
+    </div>
     <div class="field-group">
       <div class="field-group-title">Pre-Approval Checklist</div>
       <div class="hint" style="margin-bottom:10px;">Complete these before this event can be submitted for approval.</div>

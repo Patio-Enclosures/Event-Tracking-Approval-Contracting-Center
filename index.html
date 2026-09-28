@@ -1130,6 +1130,35 @@
   }
   .computed-row.total-row .label{font-size:11.5px;}
   .computed-row.total-row .value{font-size:18px;font-weight:700;}
+  /* ---------- Lead Target Calculator ---------- */
+  .lc-cols{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:start;}
+  .lc-section-label{font-family:var(--font-mono);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent-dark);margin:18px 0 10px 0;}
+  .lc-section-label:first-child{margin-top:0;}
+  .lc-row-field{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:12px;}
+  .lc-row-field label{font-family:var(--font-body);font-size:13px;color:var(--ink);line-height:1.35;flex:1;}
+  .lc-value-box, .lc-row-field input{
+    width:130px;flex-shrink:0;text-align:right;
+    font-family:var(--font-mono);font-size:13.5px;color:var(--ink);
+    padding:9px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);
+  }
+  .lc-row-field input:focus{outline:none;border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px var(--accent-soft);}
+  .lc-tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;}
+  .lc-tile-dark{background:var(--ink);color:#fff;border-radius:10px;padding:16px;}
+  .lc-tile-dark .lc-tile-label{font-family:var(--font-mono);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;opacity:0.78;line-height:1.35;}
+  .lc-tile-dark .lc-tile-value{font-family:var(--font-display);font-size:34px;font-weight:700;margin:4px 0 3px 0;}
+  .lc-tile-dark .lc-tile-sub{font-size:12px;opacity:0.82;line-height:1.35;}
+  .lc-tile-light{background:var(--accent-soft);border-radius:10px;padding:16px;}
+  .lc-tile-light .lc-tile-label{font-family:var(--font-mono);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--accent-dark);}
+  .lc-tile-light .lc-tile-value{font-family:var(--font-display);font-size:26px;font-weight:700;color:var(--ink);margin:4px 0 3px 0;}
+  .lc-tile-light .lc-tile-sub{font-size:11.5px;color:var(--ink-soft);}
+  .lc-funnel-title{font-family:var(--font-mono);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);margin:4px 0 8px 0;}
+  .lc-table{border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+  .lc-table-section{padding:9px 14px 5px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);background:var(--bg);}
+  .lc-row{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-top:1px solid var(--border);font-family:var(--font-mono);font-size:12.5px;}
+  .lc-row .lc-row-label{color:var(--ink-soft);}
+  .lc-row .lc-row-value{font-weight:700;color:var(--ink);}
+  .lc-row.lc-row-highlight{background:var(--accent-soft);}
+  .lc-row.lc-row-highlight .lc-row-label, .lc-row.lc-row-highlight .lc-row-value{color:var(--accent-dark);font-weight:700;}
   .panel-footer{
     display:flex;gap:10px;justify-content:flex-end;
     padding:16px 24px;border-top:1px solid var(--border);
@@ -6784,27 +6813,29 @@ function renderLeadCalcResults(r){
   if(!r){
     return `<div class="hint" style="padding:14px;border:1px dashed var(--border);border-radius:8px;text-align:center;">Enter this event's all-in cost above (in Financials) and all four funnel rates plus Avg. Sale, Net to the left to calculate.</div>`;
   }
-  const row = (label, value, highlight) => `<div class="computed-row${highlight?' total-row':''}"><span class="label">${label}</span><span class="value">${value}</span></div>`;
+  const row = (label, value, highlight) => `<div class="lc-row${highlight?' lc-row-highlight':''}"><span class="lc-row-label">${label}</span><span class="lc-row-value">${value}</span></div>`;
+  const section = (title) => `<div class="lc-table-section">${title}</div>`;
   return `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-      <div style="background:var(--ink);color:#fff;border-radius:8px;padding:14px;">
-        <div style="font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;opacity:0.7;">Minimum Leads Needed</div>
-        <div style="font-family:var(--font-display);font-size:32px;font-weight:700;">${r.totalLeads}</div>
-        <div style="font-size:12px;opacity:0.75;margin-top:2px;">Max CPL ${money(r.cpl)} to stay at ${TARGET_MAR_MAX_PCT.toFixed(1)}% $/Mar.</div>
+    <div class="lc-tiles">
+      <div class="lc-tile-dark">
+        <div class="lc-tile-label">Minimum Leads Needed</div>
+        <div class="lc-tile-value">${r.totalLeads}</div>
+        <div class="lc-tile-sub">Max CPL ${money(r.cpl)} to stay at ${TARGET_MAR_MAX_PCT.toFixed(1)}% $/Mar.</div>
       </div>
-      <div style="background:var(--accent-soft);border-radius:8px;padding:14px;">
-        <div style="font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-soft);">$/Mar. at Minimum</div>
-        <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--ink);">${r.marAtMin===null?'—':(r.marAtMin*100).toFixed(1)+'%'}</div>
-        <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">Ad spend ÷ net bookings</div>
-      </div>
-      <div style="grid-column:1/-1;background:var(--accent-soft);border-radius:8px;padding:14px;">
-        <div style="font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-soft);">RoA at Minimum</div>
-        <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--ink);">${r.roaAtMin===null?'—':'$'+r.roaAtMin.toFixed(2)}</div>
-        <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">Net bookings per $1 of ad spend</div>
+      <div class="lc-tile-light">
+        <div class="lc-tile-label">$/Mar. at Minimum</div>
+        <div class="lc-tile-value">${r.marAtMin===null?'—':(r.marAtMin*100).toFixed(1)+'%'}</div>
+        <div class="lc-tile-sub">Ad spend ÷ net bookings</div>
       </div>
     </div>
-    <div class="field-group-title" style="margin:2px 0 4px 0;">Funnel The Event Must Produce</div>
-    <div class="computed-box" style="flex-direction:column;align-items:stretch;gap:4px;">
+    <div class="lc-tile-light" style="margin-bottom:16px;">
+      <div class="lc-tile-label">RoA at Minimum</div>
+      <div class="lc-tile-value">${r.roaAtMin===null?'—':'$'+r.roaAtMin.toFixed(2)}</div>
+      <div class="lc-tile-sub">Net bookings per $1 of ad spend</div>
+    </div>
+    <div class="lc-funnel-title">Funnel The Event Must Produce</div>
+    <div class="lc-table">
+      ${section('Funnel')}
       ${row('Unset Leads', r.unsetLeads.toFixed(1))}
       ${row('Gross Opps', r.grossOpps.toFixed(1))}
       ${row('Total Leads', r.totalLeads, true)}
@@ -6815,15 +6846,11 @@ function renderLeadCalcResults(r){
       ${row('Total Meets', r.totalMeets.toFixed(1))}
       ${row('Total Jobs', r.totalJobs.toFixed(1))}
       ${row('Close Rate', r.closeRatePct.toFixed(1)+'%')}
-    </div>
-    <div class="field-group-title" style="margin:10px 0 4px 0;">Revenue</div>
-    <div class="computed-box" style="flex-direction:column;align-items:stretch;gap:4px;">
+      ${section('Revenue')}
       ${row('Bookings Net', money(r.bookingsNet))}
       ${row('Avg. Sale - Gross', money(r.avgSaleGross))}
       ${row('Avg. Sale - Net', money(r.avgSaleNet))}
-    </div>
-    <div class="field-group-title" style="margin:10px 0 4px 0;">Cost and Return</div>
-    <div class="computed-box" style="flex-direction:column;align-items:stretch;gap:4px;">
+      ${section('Cost and Return')}
       ${row('Total Ad Spend', money(r.adSpend))}
       ${row('CPL', r.cpl===null?'—':money(r.cpl))}
       ${row('CPO', r.cpo===null?'—':money(r.cpo))}
@@ -6869,29 +6896,27 @@ function renderLeadCalcSection(d){
   return `
     <div class="field-group">
       <div class="field-group-title">Lead Target Calculator</div>
-      <div class="hint" style="margin-bottom:16px;">Enter the event's all-in cost is pulled automatically from Financials above. Using your benchmark funnel rates, the calculator works out the minimum number of leads the event must produce to keep $/Mar. at or under the target. Adjust any rate if you expect this show to perform differently.</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start;">
+      <div class="hint" style="margin-bottom:16px;">Enter the event's all-in cost. Using your benchmark funnel rates, the calculator works out the minimum number of leads the event must produce to keep $/Mar. at or under the target. Adjust any rate if you expect this show to perform differently.</div>
+      <div class="lc-cols">
         <div>
-          <div class="field-group-title" style="font-size:10.5px;">The Event</div>
-          <div class="field">
+          <div class="lc-section-label">The Event</div>
+          <div class="lc-row-field">
             <label>Total ad spend (all-in event cost, $)</label>
-            <div class="computed-inline">${money(adSpend)}</div>
+            <div class="lc-value-box">${money(adSpend)}</div>
           </div>
-          <div class="field">
+          <div class="lc-row-field">
             <label>Target $/Mar., maximum (%)</label>
-            <div class="computed-inline">${TARGET_MAR_MAX_PCT.toFixed(1)}</div>
-            <div class="hint" style="margin-top:4px;">Fixed company-wide target — not adjustable per event.</div>
+            <div class="lc-value-box">${TARGET_MAR_MAX_PCT.toFixed(1)}</div>
           </div>
-          <div class="field-group-title" style="font-size:10.5px;margin-top:16px;">Funnel Rates (Benchmark)${reconfirmMark(d)}</div>
-          <div class="hint" style="margin-bottom:8px;">Pull these from the Tableau funnel report, using the trailing 2 months of data for this branch/region.</div>
-          <div class="field"><label>Set rate (%)</label><input id="lc_setRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcSetRate)}" placeholder="e.g. 85.34"/></div>
-          <div class="field"><label>Cancel rate (%)</label><input id="lc_cancelRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcCancelRate)}" placeholder="e.g. 21.57"/></div>
-          <div class="field"><label>Meet rate, meets ÷ net opps (%)</label><input id="lc_meetRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcMeetRate)}" placeholder="e.g. 69.47"/></div>
-          <div class="field"><label>Close rate, jobs ÷ meets (%)</label><input id="lc_closeRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcCloseRate)}" placeholder="e.g. 11.96"/></div>
-          <div class="field-group-title" style="font-size:10.5px;margin-top:16px;">Sale Size (Benchmark)</div>
-          <div class="hint" style="margin-bottom:8px;">Same source — Tableau, trailing 2 months, this branch/region.</div>
-          <div class="field"><label>Avg. sale, gross ($)</label><input id="lc_avgSaleGross" type="number" step="1" value="${escapeHtml(d.leadCalcAvgSaleGross)}" placeholder="e.g. 28420"/></div>
-          <div class="field"><label>Avg. sale, net ($)</label><input id="lc_avgSaleNet" type="number" step="1" value="${escapeHtml(d.leadCalcAvgSaleNet)}" placeholder="e.g. 24690"/></div>
+          <div class="lc-section-label">Funnel Rates (Benchmark)${reconfirmMark(d)}</div>
+          <div class="lc-row-field"><label>Set rate (%)</label><input id="lc_setRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcSetRate)}" placeholder="e.g. 85.34"/></div>
+          <div class="lc-row-field"><label>Cancel rate (%)</label><input id="lc_cancelRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcCancelRate)}" placeholder="e.g. 21.57"/></div>
+          <div class="lc-row-field"><label>Meet rate, meets ÷ net opps (%)</label><input id="lc_meetRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcMeetRate)}" placeholder="e.g. 69.47"/></div>
+          <div class="lc-row-field"><label>Close rate, jobs ÷ meets (%)</label><input id="lc_closeRate" type="number" step="0.01" value="${escapeHtml(d.leadCalcCloseRate)}" placeholder="e.g. 11.96"/></div>
+          <div class="lc-section-label">Sale Size (Benchmark)</div>
+          <div class="lc-row-field"><label>Avg. sale, gross ($)</label><input id="lc_avgSaleGross" type="number" step="1" value="${escapeHtml(d.leadCalcAvgSaleGross)}" placeholder="e.g. 28420"/></div>
+          <div class="lc-row-field"><label>Avg. sale, net ($)</label><input id="lc_avgSaleNet" type="number" step="1" value="${escapeHtml(d.leadCalcAvgSaleNet)}" placeholder="e.g. 24690"/></div>
+          <div class="hint" style="margin-top:6px;">Pull the funnel and sale-size benchmarks from the Tableau funnel report, using the trailing 2 months of data for this branch/region.</div>
         </div>
         <div id="leadCalcResults">${renderLeadCalcResults(result)}</div>
       </div>

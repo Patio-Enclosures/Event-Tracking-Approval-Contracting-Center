@@ -1723,6 +1723,7 @@ let state = {
   activityFeedOpen:false,
   overviewSectionsOpen:{
     awaitingContract:false,
+    vettingNeeded:false,
     staleResearch:false,
     needsDecision:false,
     yearTrends:false,
@@ -2337,11 +2338,8 @@ const VETTING_CHECKLIST_CATEGORIES = [
     title: 'Affluence and buying power',
     hint: 'Measure a 20–30 minute drive-time area around the venue, not the whole metro. Metro averages hide the neighborhoods that actually buy.',
     items: [
-      { key:'medianIncome', label:'Median household income', note:'The single fastest screen for a luxury product.', go:'≥ $125K, or 1.5× national median', check:'$95K–$125K', nogo:'< $95K', sources:['Census Reporter','data.census.gov S1901','Census Business Builder','Esri ZIP Lookup (Tapestry)'] },
-      { key:'share150k', label:'Share of households earning $150K+', note:'Medians can mislead. You need a deep pool of top-bracket households.', go:'≥ 30%', check:'20–30%', nogo:'< 20%', sources:['Census Reporter','data.census.gov S1901','Census Business Builder'] },
-      { key:'medianHomeValue', label:'Median owner-occupied home value', note:'Higher home values signal both wealth and willingness to reinvest in the house.', go:'≥ 1.3× state median', check:'1.0–1.3×', nogo:'Below state median', sources:['Census Reporter','data.census.gov B25077','Zillow Research','Redfin Data Center'] },
-      { key:'equityFinancing', label:'Home equity and financing capacity', note:'Many buyers fund enclosures with HELOCs or cash. High equity shortens the sale.', go:'Long-tenured owners, rising values', check:'Mostly recent buyers', nogo:'Flat or falling values', sources:['data.census.gov B25081','Zillow Research','Realtor.com Research','Local MLS via your reps'] },
-      { key:'discretionarySpending', label:'Discretionary and home-improvement spending', note:'Shows whether residents actually spend on remodeling, not just earn.', go:'Index ≥ 120', check:'100–120', nogo:'< 100', sources:['Esri Business Analyst (paid)','Claritas PRIZM (MyBestSegments)','Chamber of commerce / economic development office (may run reports free)'] }
+      { key:'medianIncome', label:'Household income (median & top-bracket share)', note:'The two fastest income screens for a luxury product: a typical household’s strength, and how deep the pool of top-bracket buyers runs. Combines what used to be two separate items — the underlying Census tables overlap, and this is the same read in one line instead of two.', go:'Median ≥ $125K (or 1.5× national median), or ≥ 30% of households earning $150K+', check:'Median $95K–$125K, or 20–30% earning $150K+', nogo:'Median < $95K and < 20% earning $150K+', sources:['Census Reporter','data.census.gov S1901','Census Business Builder','Esri ZIP Lookup (Tapestry)'] },
+      { key:'medianHomeValue', label:'Median owner-occupied home value', note:'Higher home values signal both wealth and willingness to reinvest in the house.', go:'≥ 1.3× state median', check:'1.0–1.3×', nogo:'Below state median', sources:['Census Reporter','data.census.gov B25077','Zillow Research','Redfin Data Center'] }
     ]
   },
   {
@@ -2359,44 +2357,8 @@ const VETTING_CHECKLIST_CATEGORIES = [
     title: 'Homeowner profile',
     hint: 'The core buyer is an established homeowner planning to stay put.',
     items: [
-      { key:'householderAge', label:'Householder age', note:'Empty nesters and pre-retirees have equity and time to enjoy the space.', go:'Median 45–70', check:'35–45', nogo:'Under 35 dominant', sources:['Census Reporter','data.census.gov B25007','Esri ZIP Lookup (Tapestry)'] },
-      { key:'lengthOfResidence', label:'Length of residence', note:'Owners who have stayed 7+ years tend to invest in the home rather than move.', go:'Median ≥ 8 yrs', check:'4–8 yrs', nogo:'< 4 yrs (high turnover)', sources:['Census Reporter','data.census.gov B25038','Realtor.com Research'] },
-      { key:'seasonalPopulation', label:'Seasonal and retiree population', note:'Retirement communities and second-home markets can be strong if the homes qualify.', go:'Year-round owners', check:'Heavy seasonal share', nogo:'Mostly short-term rentals', sources:['data.census.gov B25004','Esri ZIP Lookup (Tapestry)','Claritas PRIZM (MyBestSegments)'] }
-    ]
-  },
-  {
-    key: 'marketFit',
-    title: 'Market fit and local operations',
-    hint: "A great audience is wasted if we can't sell and install there.",
-    items: [
-      { key:'climateUseCase', label:'Climate and use case', note:'Bugs, pollen, heat, rain, or short seasons all drive demand for three- and four-season rooms.', go:'Clear seasonal pain point', check:'Mild, year-round outdoor living', nogo:'No outdoor living culture', sources:['NOAA U.S. Climate Normals','Regional sales history (CRM)'] },
-      { key:'speedToMeet', label:'Speed to meet', note:'Days from lead to first meeting. Slow follow-up raises cancels and no-shows, which drives $/Mar. up. Confirm the local team can run event leads quickly during the post-show surge -- this also covers whether sales and install coverage in the area can keep up.', go:'Met within 3 days', check:'4–7 days', nogo:'More than 7 days', sources:['CRM days from lead to meet, by market',"Local sales manager's calendar for the 2 weeks after the show"] }
-    ]
-  },
-  {
-    key: 'event',
-    title: 'The event itself',
-    hint: 'Ask the organizer for data in writing. Good shows have attendee surveys and will share them.',
-    items: [
-      { key:'eventTypeAudience', label:'Event type and audience intent', note:'A home and garden or remodeling show attracts buyers. A county fair or festival mostly attracts browsers.', go:'Home, garden, or remodeling show', check:'Parade of homes, lifestyle expo', nogo:'General fair, festival, sports event', sources:['Organizer prospectus','10times','TSNN'] },
-      { key:'attendeeDemographics', label:'Attendee demographics', note:'Request homeowner %, income, age, and zip-code distribution from past attendee surveys.', go:'≥ 80% homeowners, surveyed', check:'Estimates only', nogo:'No data available', sources:['Organizer attendee survey (request in writing)'] },
-      { key:'attendanceTrend', label:'Attendance and trend', note:'Look at the last three years. A shrinking show will not recover in your year.', go:'Stable or growing', check:'Flat', nogo:'Declining 10%+ per year', sources:['Organizer, last 3 years','10times','TSNN','Local press'] },
-      { key:'admissionPrice', label:'Admission price', note:'Paid admission filters out casual walkers. Free shows bring volume but fewer qualified leads.', go:'Paid ticket ($10+)', check:'Low or partly comped', nogo:'Free, walk-in', sources:['Event website'] },
-      { key:'exhibitorMix', label:'Exhibitor mix', note:'Luxury neighbors (pools, kitchens, custom builders) set the tone. A floor full of gadgets and mattresses does not.', go:'Premium home brands', check:'Mixed', nogo:'Mostly impulse or low-ticket vendors', sources:['Past exhibitor list and floor plan','Call a past non-competing exhibitor'] },
-      { key:'competitorsExclusivity', label:'Competitors and category exclusivity', note:'Know how many sunroom, pergola, and screen-room companies will be there and where.', go:'Exclusive or 1 competitor', check:'2–3 competitors', nogo:'Competitor next to us or 4+', sources:['Organizer exhibitor list; ask for exclusivity in writing'] },
-      { key:'datesHoursConflicts', label:'Dates, hours, and conflicts', note:'Check holidays, school breaks, big local sports weekends, and competing shows.', go:'Prime weekend, no conflicts', check:'Minor overlap', nogo:'Holiday or major competing event', sources:['10times','Local tourism and venue calendars'] }
-    ]
-  },
-  {
-    key: 'booth',
-    title: 'Booth, logistics, and contract terms',
-    hint: 'A display room is heavy and tall. Confirm the space can take it before paying for it.',
-    items: [
-      { key:'boothLocationFlow', label:'Booth location and traffic flow', note:'Near the entrance or main aisle, away from dead corners and food courts.', go:'Main aisle, corner or island', check:'Secondary aisle', nogo:'Back wall or dead zone', sources:['Floor plan; site walk if possible'] },
-      { key:'moveInFreightLabor', label:'Move-in, freight, and labor rules', note:'Union labor, drayage fees, dock access, and install windows can double the cost.', go:'Self-install allowed, dock access', check:'Union labor required', nogo:'Short or overnight-only install window', sources:['Exhibitor manual; show general contractor'] },
-      { key:'utilitiesSetting', label:'Utilities and indoor or outdoor setting', note:'Power for lighting and screens; outdoor shows need wind and rain plans.', go:'Indoor, power included', check:'Outdoor, covered', nogo:'Outdoor, exposed', sources:['Exhibitor manual'] },
-      { key:'organizerMarketing', label:'Organizer marketing', note:'Ask what the organizer spends on ads, mailers, and digital, and in which zip codes.', go:'Targeted to affluent zips', check:'Broad metro advertising', nogo:'Little or none', sources:['Organizer media plan, target zips'] },
-      { key:'cancellationTerms', label:'Cancellation, refund, and rebooking terms', note:'Check deposit deadlines, refund policy, weather clauses, and early rebooking discounts.', go:'Refundable or transferable', check:'Partial refund', nogo:'Non-refundable, no weather clause', sources:['Exhibitor contract'] }
+      { key:'householderAge', label:'Householder age', note:'Empty nesters and pre-retirees have equity and time to enjoy the space.', go:'Median 45–70', check:'Median 35–44', nogo:'Under 35 dominant', sources:['Census Reporter','data.census.gov B25007','Esri ZIP Lookup (Tapestry)'] },
+      { key:'lengthOfResidence', label:'Length of residence', note:'Owners who have stayed 7+ years tend to invest in the home rather than move.', go:'Median ≥ 8 yrs', check:'4–8 yrs', nogo:'< 4 yrs (high turnover)', sources:['Census Reporter','data.census.gov B25038','Realtor.com Research'] }
     ]
   }
 ];
@@ -2431,27 +2393,50 @@ function vettingScoreTier(pct){
   if(pct >= 50) return 'partial';
   return 'fail';
 }
+// Badge label for the score. Deliberately does NOT put the word "Go" front and center next to the
+// percentage -- a red badge reading "48% Go" reads like the event got a go-ahead, which is
+// backwards. The tier word ("Below Bar" / "Borderline" / "Passing") is what should agree with the
+// badge color; "% Go" (the underlying metric name) stays in the tooltip instead.
+function vettingScoreLabel(pct, complete){
+  if(!complete) return `Vetting ${pct}% · In Progress`;
+  const tier = vettingScoreTier(pct);
+  const tierWord = tier==='pass' ? 'Passing' : tier==='partial' ? 'Borderline' : 'Below Bar';
+  return `Vetting ${pct}% · ${tierWord}`;
+}
 function vettingCategoryKeys(cat){
   return cat.items.map(it=>it.key);
 }
 // Every outside source referenced anywhere in the checklist above, in one place -- so a manager
 // doesn't have to go hunting through 25 items to find the right link.
-const VETTING_RESOURCES_INTRO = "Every outside source used in the checklist. For the event itself, the best sources are the organizer's exhibitor packet and attendee survey, a call to a past non-competing exhibitor, and your own CRM results by lead source and zip code.";
+const VETTING_RESOURCES_INTRO = "Every outside source used in the checklist below -- all free public data on income, housing, and homeowner tenure. Each item also links straight to its own sources.";
+// Pruned to just what the 7 remaining items actually cite -- Esri Business Analyst, Claritas
+// PRIZM, Google Maps satellite view, NOAA Climate Normals, 10times, and TSNN were only used by
+// items (spending indexes, backyard size, climate, event/booth logistics) that have since been
+// removed from the checklist, so they'd just be dead links here now.
 const VETTING_RESOURCES = [
   { name:'Census Reporter', url:'https://censusreporter.org/', cost:'Free', desc:'Plain-English Census profiles by zip, city, or county. Start here for income, owners vs. renters, housing types, home values, age, and time in home.' },
   { name:'data.census.gov', url:'https://data.census.gov/', cost:'Free', desc:'Official American Community Survey tables. Search the table number shown on each item (e.g. B25003) plus the zip or county.' },
   { name:'Census Business Builder', url:'https://cbb.census.gov/', cost:'Free', desc:'Map a radius around the venue and pull combined demographics for the whole trade area.' },
   { name:'Esri ZIP Lookup (Tapestry)', url:'https://www.esri.com/en-us/arcgis/products/tapestry-segmentation/zip-lookup', cost:'Free', desc:'Lifestyle segments by zip code, showing whether an area is mostly affluent established owners or young renters.' },
-  { name:'Esri Business Analyst', url:'https://www.esri.com/en-us/arcgis/products/arcgis-business-analyst/overview', cost:'Paid', desc:'Drive-time trade areas, consumer and home-improvement spending indexes, and wealth estimates.' },
-  { name:'Claritas PRIZM (MyBestSegments)', url:'https://claritas360.claritas.com/mybestsegments/', cost:'Free lookup / paid data', desc:'Lifestyle segments by zip; full spending and wealth data is paid.' },
   { name:'Zillow Research', url:'https://www.zillow.com/research/data/', cost:'Free', desc:'Home value index and price trends by zip, city, and metro.' },
   { name:'Redfin Data Center', url:'https://www.redfin.com/news/data-center/', cost:'Free', desc:'Sale prices, inventory, and market trends.' },
-  { name:'Realtor.com Research', url:'https://www.realtor.com/research/data/', cost:'Free', desc:'Listing prices and market activity by zip and metro.' },
-  { name:'Google Maps satellite view', url:'https://www.google.com/maps', cost:'Free', desc:'Quick visual check of backyard size and neighborhood type near the venue.' },
-  { name:'NOAA U.S. Climate Normals', url:'https://www.ncei.noaa.gov/products/land-based-station/us-climate-normals', cost:'Free', desc:'Temperature and rainfall averages to judge outdoor season length.' },
-  { name:'10times', url:'https://10times.com/', cost:'Free', desc:'Trade show directory with dates, estimated attendance, and exhibitor info.' },
-  { name:'TSNN', url:'https://www.tsnn.com/', cost:'Free', desc:'Trade show news and event listings.' }
+  { name:'Realtor.com Research', url:'https://www.realtor.com/research/data/', cost:'Free', desc:'Listing prices and market activity by zip and metro.' }
 ];
+// Looks up a checklist item's plain-text source name (e.g. "data.census.gov B25003") against the
+// directory above so it can be rendered as a real link under the item. Table-specific citations
+// like "data.census.gov B25003" all point at the same data.census.gov entry -- the table number is
+// just part of the display text, not a distinct resource. Returns null (rendered as plain text,
+// not a link) for a source with no fixed URL, like "County assessor site" -- that one genuinely
+// varies per county, so there's no single link to give it.
+function vettingResourceUrl(sourceName){
+  const exact = VETTING_RESOURCES.find(r => r.name === sourceName);
+  if(exact) return exact.url;
+  if(sourceName.startsWith('data.census.gov')){
+    const base = VETTING_RESOURCES.find(r => r.name === 'data.census.gov');
+    return base ? base.url : null;
+  }
+  return null;
+}
 const REQUIRED_FIELDS = [
   ['eventName','Event Name'],
   ['branch','Branch'],
@@ -5290,6 +5275,12 @@ function render(){
   const allEvents = state.events;
   const submittedCount = allEvents.filter(e=>e.status===STATUS.SUBMITTED).length;
   const pendingApprovalCount = allEvents.filter(e=>e.status===STATUS.EXECUTE).length;
+  // Events still needing the Vetting Checklist finished -- Patio Enclosures only, and only while
+  // there's still time to act on it (once Submitted the checklist is locked in either way).
+  const vettingNeededEvents = state.currentBrand === 'patio-enclosures'
+    ? allEvents.filter(e => (e.status===STATUS.RESEARCHING || e.status===STATUS.EXECUTE)
+        && vettingCheckedCount(e.vettingChecklist, VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys)) < VETTING_TOTAL_ITEMS)
+    : [];
   const regionTabsHtml = state.regionNames.map((name, idx)=>{
     const count = allEvents.filter(e=>e.region===idx).length;
     const hasDenied = allEvents.some(e=>e.region===idx && e.status===STATUS.DECLINED && e.deniedBySupervisor);
@@ -5514,6 +5505,7 @@ function render(){
         </div>
         <div class="header-stats">
           ${pendingApprovalCount>0 ? `<button class="pending-approval-badge" id="pendingApprovalBadge">⚠ ${pendingApprovalCount} Pending Approval</button>` : ''}
+          ${vettingNeededEvents.length>0 ? `<button class="pending-approval-badge" id="vettingNeededBadge" style="background:var(--amber-soft);color:var(--amber);">📋 ${vettingNeededEvents.length} Vetting Checklist${vettingNeededEvents.length===1?'':'s'} Needed</button>` : ''}
           ${isSuperAdmin() ? `
           <div class="stat" style="text-align:right;">
             <div class="stat-label">Viewing brand (Super Admin)</div>
@@ -5734,6 +5726,32 @@ function renderOverview(allEvents){
           <span class="badge execute">${STATUS_LABEL.execute}</span>
         </div>
       `;}).join('') + `</div>`;
+  // Events still needing the Vetting Checklist finished -- Patio Enclosures only. Scoped to
+  // Researching and Execute (approved, awaiting contract): both still have time to act on it,
+  // and once an event reaches Submitted the checklist was already required to get there.
+  const vettingChecklistKeys = VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys);
+  const vettingNeeded = state.currentBrand === 'patio-enclosures'
+    ? allEvents
+        .filter(e => (e.status===STATUS.RESEARCHING || e.status===STATUS.EXECUTE)
+          && vettingCheckedCount(e.vettingChecklist, vettingChecklistKeys) < VETTING_TOTAL_ITEMS)
+        .sort((a,b)=> (a.startDate||'9999').localeCompare(b.startDate||'9999'))
+    : [];
+  const vettingNeededHtml = vettingNeeded.length===0
+    ? `<div class="empty" style="padding:28px;"><div class="empty-title" style="font-size:16px;">Nothing waiting on a Vetting Checklist</div><div>Every Researching or Approved event has its checklist fully answered.</div></div>`
+    : `<div class="needs-decision-list">` + vettingNeeded.map(ev=>{
+        const n = vettingCheckedCount(ev.vettingChecklist, vettingChecklistKeys);
+        const pct = vettingScorePct(ev.vettingChecklist, vettingChecklistKeys);
+        const tier = vettingScoreTier(pct);
+        return `
+        <div class="needs-decision-row" style="border-left-color:var(--amber);">
+          <div class="needs-decision-main" data-goto-event="${ev.id}" data-goto-event-region="${ev.region}" style="cursor:pointer;">
+            <div class="needs-decision-name">${escapeHtml(ev.eventName)}</div>
+            <div class="needs-decision-meta">${escapeHtml(state.regionNames[ev.region])} · ${escapeHtml(ev.startDate)||'No start date'} · <span style="color:var(--amber);">${n} of ${VETTING_TOTAL_ITEMS} answered</span></div>
+          </div>
+          ${n>0 ? `<span class="badge vetting-${tier}">${vettingScoreLabel(pct, false)}</span>` : ''}
+          <button class="btn btn-outline btn-sm" data-vetting-checklist="${ev.id}">📋 Complete Checklist</button>
+        </div>
+      `;}).join('') + `</div>`;
   const STALE_SEVERITY = { event_passed: 0, cutoff_passed: 1, cutoff_soon: 2, missing_date: 3 };
   const staleResearch = allResearching
     .map(ev=>({ ev, flag: getStalenessFlag(ev) }))
@@ -5948,6 +5966,13 @@ function renderOverview(allEvents){
         ${awaitingContractHtml}
         ${awaitingContract.length>0 ? `<button class="btn btn-outline btn-sm" style="margin-top:8px;" data-download-section-csv="awaitingContract">⬇ Download CSV</button>` : ''}
       ` : ''}
+      ${state.currentBrand==='patio-enclosures' ? `
+      ${sectionHeader('vettingNeeded', `Vetting Checklist Needed (${vettingNeeded.length})`, 'vettingNeededSection', '📋')}
+      ${state.overviewSectionsOpen.vettingNeeded ? `
+        <div class="hint" style="margin:-6px 0 10px 2px;">Researching and Approved events that don't have all ${VETTING_TOTAL_ITEMS} Vetting Checklist items answered yet.</div>
+        ${vettingNeededHtml}
+      ` : ''}
+      ` : ''}
       ${sectionHeader('needsDecision', `Needs a Decision — ${NEXT_MONTH_LABEL} (${needsDecision.length})`, 'needsDecisionSection', '⏰')}
       ${state.overviewSectionsOpen.needsDecision ? `
         ${needsDecisionHtml}
@@ -6085,7 +6110,7 @@ function renderEventCard(ev, showRegion){
             const pct = vettingScorePct(ev.vettingChecklist, keys);
             const tier = vettingScoreTier(pct);
             const complete = n===VETTING_TOTAL_ITEMS;
-            return `<span class="badge vetting-${tier}" title="${n} of ${VETTING_TOTAL_ITEMS} checklist items answered${complete?'':' (still in progress)'} — passing bar is ${VETTING_PASS_THRESHOLD_PCT}% Go">Vetting ${pct}% Go${complete?'':' (partial)'}</span>`;
+            return `<span class="badge vetting-${tier}" title="${n} of ${VETTING_TOTAL_ITEMS} checklist items answered${complete?'':' (still in progress)'} — ${pct}% marked Go, passing bar is ${VETTING_PASS_THRESHOLD_PCT}%">${vettingScoreLabel(pct, complete)}</span>`;
           })() : ''}
           ${(()=>{ const flag = getStalenessFlag(ev); return flag ? `<span class="badge stale-${flag}">⚠ ${STALENESS_LABEL[flag]}</span>` : ''; })()}
           ${isLegacyImportEvent(ev) ? `<span class="badge legacy-import" title="From the original bulk import — data quality not guaranteed">🗂️ Original Import</span>` : ''}
@@ -6446,7 +6471,8 @@ function renderVettingChecklistPanel(){
     const pill = (value, label, bandText) => {
       const selected = current === value;
       const colorVar = value==='go' ? 'green' : value==='check' ? 'amber' : 'red';
-      return `<button type="button" class="vet-pill" data-vet-key="${item.key}" data-vet-value="${value}" title="Click again to clear" style="font-family:inherit;cursor:pointer;background:${selected?`var(--${colorVar})`:`var(--${colorVar}-soft)`};color:${selected?'#fff':`var(--${colorVar})`};font-size:11px;font-weight:700;padding:4px 10px;border-radius:10px;white-space:nowrap;border:2px solid ${selected?`var(--${colorVar})`:'transparent'};">${label} — ${escapeHtml(bandText)}</button>`;
+      const checkboxHtml = `<span style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;flex-shrink:0;border:1.5px solid ${selected?'#fff':`var(--${colorVar})`};border-radius:3px;background:${selected?'rgba(255,255,255,0.25)':'transparent'};">${selected ? `<span style="color:#fff;font-size:10px;line-height:1;font-weight:700;">✓</span>` : ''}</span>`;
+      return `<button type="button" class="vet-pill" data-vet-key="${item.key}" data-vet-value="${value}" title="Click again to clear" style="font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:${selected?`var(--${colorVar})`:`var(--${colorVar}-soft)`};color:${selected?'#fff':`var(--${colorVar})`};font-size:11px;font-weight:700;padding:4px 10px;border-radius:10px;white-space:nowrap;border:2px solid ${selected?`var(--${colorVar})`:'transparent'};">${checkboxHtml}${label} — ${escapeHtml(bandText)}</button>`;
     };
     return `
     <div style="padding:12px 0;border-bottom:1px solid var(--border);">
@@ -6454,10 +6480,15 @@ function renderVettingChecklistPanel(){
       <div style="font-size:12px;color:var(--ink-soft);margin:2px 0 8px 0;">${escapeHtml(item.note)}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
         ${pill('go','GO',item.go)}
-        ${pill('check','CHECK',item.check)}
+        ${pill('check','CAUTION',item.check)}
         ${pill('nogo','NO-GO',item.nogo)}
       </div>
-      <div style="font-size:11px;color:var(--ink-soft);">Where to find it: ${item.sources.map(escapeHtml).join(' · ')}</div>
+      <div style="font-size:11px;color:var(--ink-soft);">Where to find it: ${item.sources.map(s=>{
+        const url = vettingResourceUrl(s);
+        return url
+          ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-dark);text-decoration:underline;">${escapeHtml(s)}</a>`
+          : escapeHtml(s);
+      }).join(' · ')}</div>
     </div>`;
   };
   const categoryBlock = (cat) => {
@@ -6484,7 +6515,7 @@ function renderVettingChecklistPanel(){
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <div id="vettingChecklistProgress" class="checklist-progress ${badgeClass}">${totalChecked} of ${VETTING_TOTAL_ITEMS} answered</div>
-        ${totalChecked>0 ? `<span class="badge vetting-${scoreTier}" title="${goCount} Go · ${checkCount} Check · ${nogoCount} No-Go · passing bar is ${VETTING_PASS_THRESHOLD_PCT}% Go">Vetting ${scorePct}% Go</span>` : ''}
+        ${totalChecked>0 ? `<span class="badge vetting-${scoreTier}" title="${goCount} Go · ${checkCount} Caution · ${nogoCount} No-Go · passing bar is ${VETTING_PASS_THRESHOLD_PCT}%">${vettingScoreLabel(scorePct, totalChecked===VETTING_TOTAL_ITEMS)}</span>` : ''}
       </div>
       <button type="button" class="btn btn-outline btn-sm" id="clearVettingChecklistBtn">Clear Answers</button>
     </div>
@@ -7775,6 +7806,24 @@ function attachHandlers(){
         if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
       };
       state.overviewSectionsOpen.awaitingContract = true;
+      if(state.activeRegion === 'overview'){
+        render();
+        setTimeout(goToSection, 50);
+      } else {
+        state.activeRegion = 'overview';
+        render();
+        setTimeout(goToSection, 50);
+      }
+    });
+  }
+  const vettingNeededBadge = document.getElementById('vettingNeededBadge');
+  if(vettingNeededBadge){
+    vettingNeededBadge.addEventListener('click', ()=>{
+      const goToSection = () => {
+        const el = document.getElementById('vettingNeededSection');
+        if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+      };
+      state.overviewSectionsOpen.vettingNeeded = true;
       if(state.activeRegion === 'overview'){
         render();
         setTimeout(goToSection, 50);

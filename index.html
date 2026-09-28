@@ -2406,13 +2406,13 @@ function vettingScoreLabel(pct, complete){
 function vettingCategoryKeys(cat){
   return cat.items.map(it=>it.key);
 }
-// Every outside source referenced anywhere in the checklist above, in one place -- so a manager
-// doesn't have to go hunting through 25 items to find the right link.
-const VETTING_RESOURCES_INTRO = "Every outside source used in the checklist below -- all free public data on income, housing, and homeowner tenure. Each item also links straight to its own sources.";
+// Every outside source referenced anywhere in the checklist above. No longer shown as its own
+// directory section (removed -- each item links straight to its own sources instead, see
+// vettingResourceUrl below), just used as the lookup table backing those inline links.
 // Pruned to just what the 7 remaining items actually cite -- Esri Business Analyst, Claritas
 // PRIZM, Google Maps satellite view, NOAA Climate Normals, 10times, and TSNN were only used by
 // items (spending indexes, backyard size, climate, event/booth logistics) that have since been
-// removed from the checklist, so they'd just be dead links here now.
+// removed from the checklist, so they'd just be dead entries here now.
 const VETTING_RESOURCES = [
   { name:'Census Reporter', url:'https://censusreporter.org/', cost:'Free', desc:'Plain-English Census profiles by zip, city, or county. Start here for income, owners vs. renters, housing types, home values, age, and time in home.' },
   { name:'data.census.gov', url:'https://data.census.gov/', cost:'Free', desc:'Official American Community Survey tables. Search the table number shown on each item (e.g. B25003) plus the zip or county.' },
@@ -6528,21 +6528,6 @@ function renderVettingChecklistPanel(){
       <div class="hint">${escapeHtml(VETTING_CALIBRATION_NOTE)}</div>
     </div>
     ${VETTING_CHECKLIST_CATEGORIES.map(categoryBlock).join('')}
-    <div class="field-group">
-      <div class="field-group-title">Resource Directory</div>
-      <div class="hint" style="margin-bottom:2px;">Links open in a new tab</div>
-      <div class="hint" style="margin-bottom:10px;">${escapeHtml(VETTING_RESOURCES_INTRO)}</div>
-      ${VETTING_RESOURCES.map(r=>`
-      <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);align-items:flex-start;">
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
-            <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer" style="font-weight:600;font-size:13.5px;color:var(--accent-dark);text-decoration:underline;">${escapeHtml(r.name)}</a>
-            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--ink-soft);">${escapeHtml(r.cost)}</span>
-          </div>
-          <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${escapeHtml(r.desc)}</div>
-        </div>
-      </div>`).join('')}
-    </div>
   </div>
   <div class="panel-footer">
     <button class="btn btn-outline" id="cancelVettingChecklistBtn">Cancel</button>

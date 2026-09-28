@@ -885,6 +885,9 @@
   .badge.on-master-list{background:var(--green-soft);color:var(--green);}
   .badge.waiting-on-info{background:var(--amber-soft);color:var(--amber);}
   .badge.submitted{background:var(--green-soft);color:var(--green);}
+  .badge.vetting-pass{background:var(--green-soft);color:var(--green);}
+  .badge.vetting-partial{background:var(--amber-soft);color:var(--amber);}
+  .badge.vetting-fail{background:var(--red-soft);color:var(--red);}
   .chevron{color:var(--ink-faint);transition:transform 0.15s;font-size:13px;}
   .chevron.open{transform:rotate(90deg);}
   .event-detail{
@@ -2316,7 +2319,7 @@ function leadCalcCompute(inputs){
 // people walking the aisles own a home with a backyard and can fund a major remodel.
 // Tracked PER EVENT (opened from that event's card, same pattern as Post-Event Evaluation),
 // since two shows in the same region can have very different venues and trade areas. State is
-// saved on the event itself as ev.vettingChecklist = { itemKey: true/false, ... }.
+// saved on the event itself as ev.vettingChecklist = { itemKey: 'go'|'check'|'nogo', ... }.
 const VETTING_INTRO = 'What to confirm about the market, the audience, and the show before signing an exhibitor contract. Built for a high-ticket, owner-occupied product: every item asks whether the people walking the aisles own a home with a backyard and can fund a major remodel.';
 const VETTING_CALIBRATION_NOTE = 'Thresholds are starting points. Calibrate them against the zip codes of your last two years of closed contracts.';
 // The five go/no-go gates are a static summary, not individually checked -- they don't count
@@ -2400,9 +2403,33 @@ const VETTING_CHECKLIST_CATEGORIES = [
 // Total checkable items -- computed from the data above, not hardcoded, so it can never drift
 // out of sync if a category is edited later.
 const VETTING_TOTAL_ITEMS = VETTING_CHECKLIST_CATEGORIES.reduce((n,cat)=>n+cat.items.length, 0);
+// Each item's answer is one of these three strings now (previously just a "reviewed" boolean) --
+// so the checklist captures what the manager actually found, not just that they looked.
+const VETTING_ANSWER_VALUES = ['go','check','nogo'];
 function vettingCheckedCount(checklist, keys){
   if(!checklist) return 0;
-  return keys.filter(k=>checklist[k]).length;
+  return keys.filter(k=>VETTING_ANSWER_VALUES.includes(checklist[k])).length;
+}
+function vettingGoCount(checklist, keys){
+  if(!checklist) return 0;
+  return keys.filter(k=>checklist[k]==='go').length;
+}
+// Straight % Go, out of every item on the checklist -- not just the ones answered so far. That's
+// intentional: an event that's only 5 of 25 answered shouldn't show an inflated score just
+// because everything touched so far happened to be Go. The score only means what it says once
+// the checklist is fully reviewed.
+function vettingScorePct(checklist, keys){
+  if(!keys.length) return 0;
+  return Math.round(vettingGoCount(checklist, keys) / keys.length * 100);
+}
+// Fixed company-wide passing bar -- intentionally not editable per event, same philosophy as
+// TARGET_MAR_MAX_PCT above. This flags the event for the approver; it does not block submission,
+// so the approver keeps final judgment (e.g. a strategic new-territory show with a lower score).
+const VETTING_PASS_THRESHOLD_PCT = 80;
+function vettingScoreTier(pct){
+  if(pct >= VETTING_PASS_THRESHOLD_PCT) return 'pass';
+  if(pct >= 50) return 'partial';
+  return 'fail';
 }
 function vettingCategoryKeys(cat){
   return cat.items.map(it=>it.key);
@@ -2512,7 +2539,7 @@ function getMissingApprovalFields(ev){
   // so only require it there -- other brands have no way to even open the panel.
   if(state.currentBrand==='patio-enclosures'){
     const vettedCount = vettingCheckedCount(ev.vettingChecklist, VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys));
-    if(vettedCount < VETTING_TOTAL_ITEMS) missing.push(`Event Vetting Checklist (${vettedCount} of ${VETTING_TOTAL_ITEMS} reviewed)`);
+    if(vettedCount < VETTING_TOTAL_ITEMS) missing.push(`Event Vetting Checklist (${vettedCount} of ${VETTING_TOTAL_ITEMS} answered)`);
   }
   if(blank(ev.notes)) missing.push('Research Notes');
   if(blank(ev.paymentDueDate)) missing.push('Payment Due Date');
@@ -3400,7 +3427,7 @@ async function saveVettingChecklist(){
     alert('This could not be saved -- likely a connection issue. Please try again.');
     return;
   }
-  logActivity(ev.id, ev.eventName, 'Updated Event Vetting Checklist', `${vettingCheckedCount(updated.vettingChecklist, VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys))} of ${VETTING_TOTAL_ITEMS} reviewed`);
+  logActivity(ev.id, ev.eventName, 'Updated Event Vetting Checklist', `${vettingCheckedCount(updated.vettingChecklist, VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys))} of ${VETTING_TOTAL_ITEMS} answered, ${vettingScorePct(updated.vettingChecklist, VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys))}% Go`);
   closeVettingChecklistPanel();
 }
 // Requires an active checkbox confirmation before proceeding, rather than a plain alert() that's
@@ -6051,6 +6078,15 @@ function renderEventCard(ev, showRegion){
             ${renderFinancialsMini(ev)}
           </div>
           <span class="badge ${ev.status}">${STATUS_LABEL[ev.status]}</span>
+          ${state.currentBrand==='patio-enclosures' ? (()=>{
+            const keys = VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys);
+            const n = vettingCheckedCount(ev.vettingChecklist, keys);
+            if(n===0) return '';
+            const pct = vettingScorePct(ev.vettingChecklist, keys);
+            const tier = vettingScoreTier(pct);
+            const complete = n===VETTING_TOTAL_ITEMS;
+            return `<span class="badge vetting-${tier}" title="${n} of ${VETTING_TOTAL_ITEMS} checklist items answered${complete?'':' (still in progress)'} — passing bar is ${VETTING_PASS_THRESHOLD_PCT}% Go">Vetting ${pct}% Go${complete?'':' (partial)'}</span>`;
+          })() : ''}
           ${(()=>{ const flag = getStalenessFlag(ev); return flag ? `<span class="badge stale-${flag}">⚠ ${STALENESS_LABEL[flag]}</span>` : ''; })()}
           ${isLegacyImportEvent(ev) ? `<span class="badge legacy-import" title="From the original bulk import — data quality not guaranteed">🗂️ Original Import</span>` : ''}
           ${ev.onMasterList ? `<span class="badge on-master-list" title="Matched by Event Name in the most recently uploaded master list">📑 On Master List</span>` : ''}
@@ -6400,21 +6436,28 @@ function renderVettingChecklistPanel(){
   const allKeys = VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys);
   const totalChecked = vettingCheckedCount(draft, allKeys);
   const badgeClass = totalChecked===0 ? 'state-red' : totalChecked===VETTING_TOTAL_ITEMS ? 'state-green' : 'state-amber';
+  const scorePct = vettingScorePct(draft, allKeys);
+  const scoreTier = vettingScoreTier(scorePct);
+  const goCount = vettingGoCount(draft, allKeys);
+  const checkCount = allKeys.filter(k=>draft[k]==='check').length;
+  const nogoCount = allKeys.filter(k=>draft[k]==='nogo').length;
   const itemRow = (item) => {
-    const checked = !!draft[item.key];
+    const current = draft[item.key]; // 'go' | 'check' | 'nogo' | undefined -- required, no default
+    const pill = (value, label, bandText) => {
+      const selected = current === value;
+      const colorVar = value==='go' ? 'green' : value==='check' ? 'amber' : 'red';
+      return `<button type="button" class="vet-pill" data-vet-key="${item.key}" data-vet-value="${value}" title="Click again to clear" style="font-family:inherit;cursor:pointer;background:${selected?`var(--${colorVar})`:`var(--${colorVar}-soft)`};color:${selected?'#fff':`var(--${colorVar})`};font-size:11px;font-weight:700;padding:4px 10px;border-radius:10px;white-space:nowrap;border:2px solid ${selected?`var(--${colorVar})`:'transparent'};">${label} — ${escapeHtml(bandText)}</button>`;
+    };
     return `
-    <div style="display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--border);align-items:flex-start;">
-      <input type="checkbox" data-vet-key="${item.key}" ${checked?'checked':''} style="margin-top:3px;width:16px;height:16px;flex-shrink:0;cursor:pointer;"/>
-      <div style="flex:1;min-width:0;">
-        <div style="font-weight:600;font-size:13.5px;color:var(--ink);">${escapeHtml(item.label)}</div>
-        <div style="font-size:12px;color:var(--ink-soft);margin:2px 0 8px 0;">${escapeHtml(item.note)}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
-          <span style="background:var(--green-soft);color:var(--green);font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap;">GO — ${escapeHtml(item.go)}</span>
-          <span style="background:var(--amber-soft);color:var(--amber);font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap;">CHECK — ${escapeHtml(item.check)}</span>
-          <span style="background:var(--red-soft);color:var(--red);font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap;">NO-GO — ${escapeHtml(item.nogo)}</span>
-        </div>
-        <div style="font-size:11px;color:var(--ink-soft);">Where to find it: ${item.sources.map(escapeHtml).join(' · ')}</div>
+    <div style="padding:12px 0;border-bottom:1px solid var(--border);">
+      <div style="font-weight:600;font-size:13.5px;color:var(--ink);">${escapeHtml(item.label)} ${!current ? '<span style="color:var(--red);font-weight:700;">*</span>' : ''}</div>
+      <div style="font-size:12px;color:var(--ink-soft);margin:2px 0 8px 0;">${escapeHtml(item.note)}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+        ${pill('go','GO',item.go)}
+        ${pill('check','CHECK',item.check)}
+        ${pill('nogo','NO-GO',item.nogo)}
       </div>
+      <div style="font-size:11px;color:var(--ink-soft);">Where to find it: ${item.sources.map(escapeHtml).join(' · ')}</div>
     </div>`;
   };
   const categoryBlock = (cat) => {
@@ -6424,7 +6467,7 @@ function renderVettingChecklistPanel(){
     <div class="field-group">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;gap:10px;">
         <div class="field-group-title" style="margin:0;">${escapeHtml(cat.title)}</div>
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--ink-soft);white-space:nowrap;">${catChecked} / ${keys.length} reviewed</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--ink-soft);white-space:nowrap;">${catChecked} / ${keys.length} answered</div>
       </div>
       <div class="hint" style="margin-bottom:6px;">${escapeHtml(cat.hint)}</div>
       ${cat.items.map(itemRow).join('')}
@@ -6439,8 +6482,11 @@ function renderVettingChecklistPanel(){
   <div class="panel-body">
     <div class="hint" style="margin-bottom:16px;">${escapeHtml(VETTING_INTRO)}</div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
-      <div id="vettingChecklistProgress" class="checklist-progress ${badgeClass}">${totalChecked} of ${VETTING_TOTAL_ITEMS} reviewed</div>
-      <button type="button" class="btn btn-outline btn-sm" id="clearVettingChecklistBtn">Clear Checks</button>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div id="vettingChecklistProgress" class="checklist-progress ${badgeClass}">${totalChecked} of ${VETTING_TOTAL_ITEMS} answered</div>
+        ${totalChecked>0 ? `<span class="badge vetting-${scoreTier}" title="${goCount} Go · ${checkCount} Check · ${nogoCount} No-Go · passing bar is ${VETTING_PASS_THRESHOLD_PCT}% Go">Vetting ${scorePct}% Go</span>` : ''}
+      </div>
+      <button type="button" class="btn btn-outline btn-sm" id="clearVettingChecklistBtn">Clear Answers</button>
     </div>
     <div class="field-group">
       <div class="field-group-title">Must Pass Before Committing</div>
@@ -8721,19 +8767,26 @@ function attachHandlers(){
       if(e.target.id==='vettingChecklistOverlay') closeVettingChecklistPanel();
     });
   }
-  document.querySelectorAll('[data-vet-key]').forEach(cb=>{
-    cb.addEventListener('change', ()=>{
+  document.querySelectorAll('[data-vet-key][data-vet-value]').forEach(pill=>{
+    pill.addEventListener('click', ()=>{
       if(!state.vettingChecklistDraft) return;
-      const key = cb.getAttribute('data-vet-key');
-      state.vettingChecklistDraft[key] = cb.checked;
-      render(); // cheap -- only updates the open panel's counters/checkbox states, panel stays open
+      const key = pill.getAttribute('data-vet-key');
+      const value = pill.getAttribute('data-vet-value');
+      // Clicking the already-selected pill again clears that item's answer. Delete the key rather
+      // than setting it to undefined -- Firestore rejects undefined values even nested inside a map.
+      if(state.vettingChecklistDraft[key] === value){
+        delete state.vettingChecklistDraft[key];
+      } else {
+        state.vettingChecklistDraft[key] = value;
+      }
+      render(); // cheap -- only updates the open panel's counters/pill states, panel stays open
     });
   });
   const clearVettingChecklistBtn = document.getElementById('clearVettingChecklistBtn');
   if(clearVettingChecklistBtn){
     clearVettingChecklistBtn.addEventListener('click', ()=>{
       if(!state.vettingChecklistDraft) return;
-      if(!confirm('Clear all checks on this checklist? This only takes effect once you Save.')) return;
+      if(!confirm('Clear all answers on this checklist? This only takes effect once you Save.')) return;
       state.vettingChecklistDraft = {};
       render();
     });

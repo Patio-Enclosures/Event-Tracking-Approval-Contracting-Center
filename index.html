@@ -6914,7 +6914,7 @@ function renderTargetOppsSuggestionHint(d){
   }
   const typed = num(d.forecastedOpps);
   const below = d.forecastedOpps !== '' && d.forecastedOpps !== undefined && d.forecastedOpps !== null && typed < result.suggestedTargetOpps;
-  return `<div class="hint" style="${below ? 'color:var(--amber);font-weight:600;' : ''}">${below ? '⚠ ' : ''}Calculator's benchmark minimum: ${result.suggestedTargetOpps} opps (Gross Opps at the minimum lead volume). ${below ? 'Your target is below this floor.' : 'See the Lead Target Calculator below.'}</div>`;
+  return `<div class="hint" style="${below ? 'color:var(--amber);font-weight:600;' : ''}">${below ? '⚠ ' : ''}Calculator's benchmark minimum: ${result.suggestedTargetOpps} opps (Gross Opps -- after the ${result.setRatePct.toFixed(1)}% set rate is applied to the ${result.totalLeads} minimum leads needed below). ${below ? 'Your target is below this floor.' : 'See the Lead Target Calculator below.'}</div>`;
 }
 // Lead Target Calculator -- built directly into the New Event / Edit Event form (Financials
 // section), not a separate button/modal, so the manager sees cost, benchmarks, and the
@@ -6939,7 +6939,7 @@ function renderLeadCalcSection(d){
           <div class="lc-section-label">The Event</div>
           <div class="lc-row-field">
             <label>Total ad spend (all-in event cost, $)</label>
-            <div class="lc-value-box">${money(adSpend)}</div>
+            <div class="lc-value-box" id="lc_adSpendDisplay">${money(adSpend)}</div>
           </div>
           <div class="lc-row-field">
             <label>Target $/Mar., maximum (%)</label>
@@ -8954,6 +8954,24 @@ function attachHandlers(){
         if(cpoOut) cpoOut.innerHTML = costPerOppDisplayFlagged(draftLike);
         const mileageTotalOut = document.getElementById('mileageTotalDisplay');
         if(mileageTotalOut) mileageTotalOut.textContent = eventTotalMileage(draftLike) + ' mi';
+        // These same fields feed the Lead Target Calculator's "Total ad spend" (it's just
+        // totalCost(state.draft) -- see renderLeadCalcSection), but state.draft itself was only
+        // ever updated by readDraftFromForm() on Save, so the calculator sat frozen at $0 (or
+        // whatever it was when the panel opened) while the manager typed cost numbers in here.
+        // Write the live values into state.draft now, same as readDraftFromForm() would, so the
+        // calculator (ad spend box, funnel results, and the Target Opps benchmark hint) tracks
+        // Financials in real time instead of only catching up after Save.
+        if(state.draft){
+          state.draft.contractCost = document.getElementById('f_contractCost')?.value ?? state.draft.contractCost;
+          state.draft.laborHours = document.getElementById('f_laborHours')?.value ?? state.draft.laborHours;
+          state.draft.travelDays = document.getElementById('f_travelDays')?.value ?? state.draft.travelDays;
+          state.draft.milesPerDay = document.getElementById('f_milesPerDay')?.value ?? state.draft.milesPerDay;
+          state.draft.hotelNights = document.getElementById('f_hotelNights')?.value ?? state.draft.hotelNights;
+          state.draft.vehicleRentalDays = document.getElementById('f_vehicleRentalDays')?.value ?? state.draft.vehicleRentalDays;
+          state.draft.miscCosts = document.getElementById('f_miscCosts')?.value ?? state.draft.miscCosts;
+          state.draft.forecastedOpps = document.getElementById('f_forecastedOpps')?.value ?? state.draft.forecastedOpps;
+          refreshLeadCalc();
+        }
       });
     }
   });
@@ -8982,6 +9000,10 @@ function attachHandlers(){
     if(resultsOut) resultsOut.innerHTML = renderLeadCalcResults(result);
     const suggestionHint = document.getElementById('targetOppsSuggestionHint');
     if(suggestionHint) suggestionHint.innerHTML = renderTargetOppsSuggestionHint(state.draft);
+    // Ad spend box up top of the calculator (read-only -- it mirrors Financials, see
+    // renderLeadCalcSection) isn't part of #leadCalcResults, so it needs its own update here.
+    const adSpendOut = document.getElementById('lc_adSpendDisplay');
+    if(adSpendOut) adSpendOut.textContent = money(totalCost(state.draft));
   };
   ['lc_setRate','lc_cancelRate','lc_meetRate','lc_closeRate','lc_avgSaleGross','lc_avgSaleNet'].forEach(id=>{
     const el = document.getElementById(id);

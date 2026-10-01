@@ -2450,12 +2450,9 @@ const REQUIRED_FIELDS = [
   ['hotelNights','# of Hotel Nights'],
   ['miscCosts','Misc. Costs'],
   ['forecastedOpps','Target Opps'],
-  ['leadCalcSetRate','Lead Calculator: Set Rate'],
-  ['leadCalcCancelRate','Lead Calculator: Cancel Rate'],
-  ['leadCalcMeetRate','Lead Calculator: Meet Rate'],
-  ['leadCalcCloseRate','Lead Calculator: Close Rate'],
-  ['leadCalcAvgSaleGross','Lead Calculator: Avg. Sale (Gross)'],
-  ['leadCalcAvgSaleNet','Lead Calculator: Avg. Sale (Net)'],
+  // Lead Calculator fields are NOT listed here -- they're Patio Enclosures-only (see
+  // renderLeadCalcSection's brand gate and the conditional block below) and other brands have
+  // no inputs to ever fill these in, so they're required separately, only for that brand.
   ['organizer','Event Organizer'],
   ['contactName','Name of Contact'],
   ['contactPhone','Phone'],
@@ -2475,6 +2472,17 @@ function getMissingFields(ev){
   const hasLegacyMileage = ev.mileage && String(ev.mileage).trim()!=='';
   if(!hasNewMileage && !hasLegacyMileage){
     missing.push('Forecasted Mileage (Travel Days & Miles Per Day)');
+  }
+  // Lead Target Calculator ($/Mar.) is Patio Enclosures-only -- see renderLeadCalcSection's
+  // brand gate. Other brands never see these inputs, so never require them.
+  if(state.currentBrand === 'patio-enclosures'){
+    const blank = v => v===undefined || v===null || String(v).trim()==='';
+    if(blank(ev.leadCalcSetRate)) missing.push('Lead Calculator: Set Rate');
+    if(blank(ev.leadCalcCancelRate)) missing.push('Lead Calculator: Cancel Rate');
+    if(blank(ev.leadCalcMeetRate)) missing.push('Lead Calculator: Meet Rate');
+    if(blank(ev.leadCalcCloseRate)) missing.push('Lead Calculator: Close Rate');
+    if(blank(ev.leadCalcAvgSaleGross)) missing.push('Lead Calculator: Avg. Sale (Gross)');
+    if(blank(ev.leadCalcAvgSaleNet)) missing.push('Lead Calculator: Avg. Sale (Net)');
   }
   return missing;
 }
@@ -2516,15 +2524,16 @@ function getMissingApprovalFields(ev){
   // there would create a field nobody can ever fill in.
   if(state.currentBrand !== 'patio-enclosures' && blank(ev.vehicleRentalDays)) missing.push('Vehicle Rental Days');
   if(blank(ev.forecastedOpps)) missing.push('Target Opps');
-  if(blank(ev.leadCalcSetRate)) missing.push('Lead Calculator: Set Rate');
-  if(blank(ev.leadCalcCancelRate)) missing.push('Lead Calculator: Cancel Rate');
-  if(blank(ev.leadCalcMeetRate)) missing.push('Lead Calculator: Meet Rate');
-  if(blank(ev.leadCalcCloseRate)) missing.push('Lead Calculator: Close Rate');
-  if(blank(ev.leadCalcAvgSaleGross)) missing.push('Lead Calculator: Avg. Sale (Gross)');
-  if(blank(ev.leadCalcAvgSaleNet)) missing.push('Lead Calculator: Avg. Sale (Net)');
-  // Event Vetting Checklist is Patio Enclosures-only (see the button gating on the event card),
-  // so only require it there -- other brands have no way to even open the panel.
+  // Lead Target Calculator ($/Mar.) and the Event Vetting Checklist are both Patio
+  // Enclosures-only (see renderLeadCalcSection's and the event card button's brand gates) --
+  // other brands have no inputs to ever fill these in, so only require them there.
   if(state.currentBrand==='patio-enclosures'){
+    if(blank(ev.leadCalcSetRate)) missing.push('Lead Calculator: Set Rate');
+    if(blank(ev.leadCalcCancelRate)) missing.push('Lead Calculator: Cancel Rate');
+    if(blank(ev.leadCalcMeetRate)) missing.push('Lead Calculator: Meet Rate');
+    if(blank(ev.leadCalcCloseRate)) missing.push('Lead Calculator: Close Rate');
+    if(blank(ev.leadCalcAvgSaleGross)) missing.push('Lead Calculator: Avg. Sale (Gross)');
+    if(blank(ev.leadCalcAvgSaleNet)) missing.push('Lead Calculator: Avg. Sale (Net)');
     const vettedCount = vettingCheckedCount(ev.vettingChecklist, VETTING_CHECKLIST_CATEGORIES.flatMap(vettingCategoryKeys));
     if(vettedCount < VETTING_TOTAL_ITEMS) missing.push(`Event Vetting Checklist (${vettedCount} of ${VETTING_TOTAL_ITEMS} answered)`);
   }
@@ -7108,14 +7117,14 @@ function renderPanel(){
         <div class="computed-row total-row"><span class="label">Total Costs</span><span class="value" id="computedTotal">${money(total)}</span></div>
       </div>
     </div>
-    ${renderLeadCalcSection(d)}
+    ${state.currentBrand === 'patio-enclosures' ? renderLeadCalcSection(d) : ''}
     <div class="field-group">
       <div class="field-group-title">Target Opps</div>
-      <div class="hint" style="margin-bottom:10px;">Now that you've seen the calculator's benchmark minimum above, enter what you're actually planning to hit for this event.</div>
+      <div class="hint" style="margin-bottom:10px;">${state.currentBrand === 'patio-enclosures' ? "Now that you've seen the calculator's benchmark minimum above, enter what you're actually planning to hit for this event." : 'Enter what you\'re planning to hit for this event.'}</div>
       <div class="field">
         <label>Target Opps${reconfirmMark(d)}</label>
         <input id="f_forecastedOpps" type="number" value="${escapeHtml(d.forecastedOpps)}"/>
-        <div id="targetOppsSuggestionHint" style="margin-top:4px;">${renderTargetOppsSuggestionHint(d)}</div>
+        ${state.currentBrand === 'patio-enclosures' ? `<div id="targetOppsSuggestionHint" style="margin-top:4px;">${renderTargetOppsSuggestionHint(d)}</div>` : ''}
       </div>
       <div class="computed-box" style="flex-direction:column;align-items:stretch;gap:6px;margin-top:4px;">
         <div class="computed-row"><span class="label">Cost Per Opp</span><span class="value" id="calc_cpo">${costPerOppDisplayFlagged(d)}</span></div>
@@ -8970,7 +8979,11 @@ function attachHandlers(){
           state.draft.vehicleRentalDays = document.getElementById('f_vehicleRentalDays')?.value ?? state.draft.vehicleRentalDays;
           state.draft.miscCosts = document.getElementById('f_miscCosts')?.value ?? state.draft.miscCosts;
           state.draft.forecastedOpps = document.getElementById('f_forecastedOpps')?.value ?? state.draft.forecastedOpps;
-          refreshLeadCalc();
+          // The calculator itself only exists in the DOM for Patio Enclosures (see renderPanel's
+          // brand gate on renderLeadCalcSection) -- calling refreshLeadCalc() for other brands
+          // would read lc_* inputs that aren't there, each returning '', and overwrite
+          // state.draft's leadCalc* fields with blanks for no reason.
+          if(state.currentBrand === 'patio-enclosures') refreshLeadCalc();
         }
       });
     }

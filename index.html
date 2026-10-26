@@ -1808,6 +1808,11 @@ function emptyDraft(regionIdx){
     zip:'',
     startDate:'',
     endDate:'',
+    // Show/booth public operating hours for each day of the event, keyed by 'YYYY-MM-DD' date
+    // string -> {open:'HH:MM', close:'HH:MM'}. Auto-generated with one row per day in the
+    // Start Date-End Date range (see renderDayHoursRows()); unrelated to laborHours below, which
+    // is a single forecasted-total-hours figure, not per-day public hours.
+    hoursByDay:{},
     contractCost:'',
     laborHours:'',
     mileage:'',           // legacy total, kept for backward compatibility with older events
@@ -7145,6 +7150,52 @@ function renderLeadCalcSection(d){
     </div>
   `;
 }
+// Every 'YYYY-MM-DD' date string from startDate through endDate, inclusive. Returns [] if either
+// date is missing/invalid or endDate is before startDate (the existing dateSanityWarning already
+// flags that case elsewhere in the form). Capped at MAX_HOURS_BY_DAY_ROWS days so a mistyped
+// multi-year range can't generate thousands of rows.
+const MAX_HOURS_BY_DAY_ROWS = 31;
+function eventDayList(startDate, endDate){
+  if(!startDate || !endDate) return [];
+  const start = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+  if(isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return [];
+  const days = [];
+  const cur = new Date(start);
+  while(cur <= end && days.length < MAX_HOURS_BY_DAY_ROWS){
+    // Build the 'YYYY-MM-DD' string from LOCAL date parts, not toISOString() -- toISOString()
+    // converts through UTC, which would silently shift every date back a day in any timezone
+    // ahead of UTC (e.g. a date parsed as local midnight becomes the previous day once rendered
+    // in UTC).
+    const y = cur.getFullYear();
+    const m = String(cur.getMonth() + 1).padStart(2, '0');
+    const dd = String(cur.getDate()).padStart(2, '0');
+    days.push(`${y}-${m}-${dd}`);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+// Renders one Open/Close time row per day in the event's current date range, pre-filled from
+// d.hoursByDay[date] when present. Lives in its own function (rather than inline in renderPanel)
+// so the f_startDate/f_endDate change listener can refresh just this block's innerHTML without
+// re-rendering the whole panel -- see the dayHoursRows listener near readDraftFromForm().
+function renderDayHoursRows(d){
+  const days = eventDayList(d.startDate, d.endDate);
+  if(days.length === 0){
+    return `<div class="hint">Set both Start Date and End Date above to list each day's booth hours.</div>`;
+  }
+  const truncated = days.length >= MAX_HOURS_BY_DAY_ROWS;
+  return days.map(day => {
+    const hrs = d.hoursByDay && d.hoursByDay[day] ? d.hoursByDay[day] : {open:'', close:''};
+    const label = new Date(day + 'T00:00:00').toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'});
+    return `
+      <div data-day-hours-row="${day}" style="display:flex;align-items:flex-end;gap:10px;margin-bottom:10px;">
+        <div class="field" style="flex:1 1 140px;margin-bottom:0;"><label>${escapeHtml(label)}</label></div>
+        <div class="field" style="flex:1 1 120px;margin-bottom:0;"><label>Open</label><input type="time" data-day-open="${day}" value="${escapeHtml(hrs.open||'')}"/></div>
+        <div class="field" style="flex:1 1 120px;margin-bottom:0;"><label>Close</label><input type="time" data-day-close="${day}" value="${escapeHtml(hrs.close||'')}"/></div>
+      </div>`;
+  }).join('') + (truncated ? `<div class="hint">Showing the first ${MAX_HOURS_BY_DAY_ROWS} days of this range -- double-check Start/End Date if that's not the full event.</div>` : '');
+}
 function renderPanel(){
   const d = state.draft;
   const isEdit = !!state.editingEventId;
@@ -7191,6 +7242,11 @@ function renderPanel(){
         <div class="field"><label>End Date <span style="color:var(--red);">*</span>${reconfirmMark(d)}</label><input id="f_endDate" type="date" class="${(d.startDate && d.endDate && d.endDate < d.startDate) ? 'field-invalid' : ''}" value="${escapeHtml(d.endDate)}"/></div>
       </div>
       <div id="dateSanityWarning">${(d.startDate && d.endDate && d.endDate < d.startDate) ? `<div class="field-note-warn">End Date is before Start Date — double-check these.</div>` : ''}</div>
+      <div class="field" style="background:var(--bg);border-radius:8px;padding:10px 12px;">
+        <div class="field-group-title" style="margin-bottom:2px;">Event Hours by Day</div>
+        <div class="hint" style="margin-bottom:8px;">Show/booth public operating hours for each day of the event, generated from the Start Date and End Date above.</div>
+        <div id="dayHoursRows">${renderDayHoursRows(d)}</div>
+      </div>
       <div class="field" style="background:var(--bg);border-radius:8px;padding:10px 12px;">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
           <input type="checkbox" id="f_recurrenceEnabled" ${state.additionalOccurrences.length>0?'checked':''} style="width:auto;"/>
@@ -7549,6 +7605,23 @@ function readDraftFromForm(){
   d.website = val('f_website', d.website);
   d.startDate = val('f_startDate', d.startDate);
   d.endDate = val('f_endDate', d.endDate);
+  // Event Hours by Day: read each visible day row's Open/Close time back into d.hoursByDay,
+  // keyed by that row's date. Rows for days no longer in the Start/End Date range are dropped
+  // here too, so hoursByDay never accumulates stale entries after the dates are narrowed.
+  if(g('dayHoursRows')){
+    const newHoursByDay = {};
+    document.querySelectorAll('[data-day-open]').forEach(input=>{
+      const day = input.getAttribute('data-day-open');
+      if(!newHoursByDay[day]) newHoursByDay[day] = {open:'', close:''};
+      newHoursByDay[day].open = input.value;
+    });
+    document.querySelectorAll('[data-day-close]').forEach(input=>{
+      const day = input.getAttribute('data-day-close');
+      if(!newHoursByDay[day]) newHoursByDay[day] = {open:'', close:''};
+      newHoursByDay[day].close = input.value;
+    });
+    d.hoursByDay = newHoursByDay;
+  }
   d.contractCost = val('f_contractCost', d.contractCost);
   d.miscCosts = val('f_miscCosts', d.miscCosts);
   d.laborHours = val('f_laborHours', d.laborHours);
@@ -8878,6 +8951,21 @@ function attachHandlers(){
       }
     });
   }
+  // Event Hours by Day: the row count is driven by the Start/End Date range, so widening or
+  // narrowing either date has to regenerate the rows themselves, not just update state -- unlike
+  // most fields, which the delegated panelBodyEl 'change' handler above already keeps in sync.
+  // Registered on f_startDate AFTER the auto-jump listener above (same element, so same-element
+  // listeners run in registration order) so this always sees the already-jumped End Date; reading
+  // the form before regenerating preserves any hours already typed for days still in range.
+  const refreshDayHoursRows = () => {
+    const container = document.getElementById('dayHoursRows');
+    if(!container || !state.draft) return;
+    readDraftFromForm();
+    container.innerHTML = renderDayHoursRows(state.draft);
+  };
+  const endDateInputEl = document.getElementById('f_endDate');
+  if(startDateInputEl) startDateInputEl.addEventListener('change', refreshDayHoursRows);
+  if(endDateInputEl) endDateInputEl.addEventListener('change', refreshDayHoursRows);
   const paymentPhoneInput = document.getElementById('f_paymentPhoneNumber');
   if(paymentPhoneInput){
     paymentPhoneInput.addEventListener('input', ()=>{

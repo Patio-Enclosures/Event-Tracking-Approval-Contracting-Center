@@ -2742,7 +2742,11 @@ function resolveMasterListBranch(regionText, branchCode){
 // possibly add as brand-new events. Read-only: never creates or changes anything by itself (see
 // commitMissingEventsFromMasterList() for that). Rows missing an Event Name or a parseable Start
 // Date are skipped outright (counted, not surfaced one by one), since neither a name-only nor a
-// date-only row can be matched against existing events or safely turned into a usable one.
+// date-only row can be matched against existing events or safely turned into a usable one. Rows
+// whose Branch code doesn't resolve to one already configured in ETACC (resolveMasterListBranch
+// returns resolved:false) are ALSO skipped entirely -- never added with a blank/guessed branch --
+// counted separately as unmatchedBranchCount, with the specific unrecognized codes kept in
+// unmatchedBranchCodes so the review screen can say what was left out and why.
 async function scanMasterListForMissingEvents(file, sheetNames){
   const buf = await file.arrayBuffer();
   const workbook = XLSX.read(buf, { type: 'array', cellDates: true });
@@ -2752,7 +2756,8 @@ async function scanMasterListForMissingEvents(file, sheetNames){
   );
   const candidates = [];
   const seenInFile = new Set();
-  let totalRows = 0, matchedCount = 0, unusableCount = 0;
+  const unmatchedBranchCodes = new Set();
+  let totalRows = 0, matchedCount = 0, unusableCount = 0, unmatchedBranchCount = 0;
   for(const sheetName of sheetNames){
     const sheet = workbook.Sheets[sheetName];
     if(!sheet) continue;
@@ -2782,6 +2787,15 @@ async function scanMasterListForMissingEvents(file, sheetNames){
       const regionText = regionCol!==-1 ? String(row[regionCol]||'').trim() : '';
       const branchCode = branchCol!==-1 ? String(row[branchCol]||'').trim() : '';
       const { regionIdx, branchValue, resolved } = resolveMasterListBranch(regionText, branchCode);
+      if(!resolved){
+        // Per instruction: never add a show whose branch isn't already configured in ETACC --
+        // no blank-branch placeholder, no guessing. Counted (and the specific codes kept) so the
+        // review screen can still say what was left out and why, rather than the numbers just
+        // not adding up.
+        unmatchedBranchCount++;
+        if(branchCode) unmatchedBranchCodes.add(branchCode);
+        continue;
+      }
       const endDateRaw = endCol!==-1 ? masterListCellToDateString(row[endCol]) : '';
       candidates.push({
         key,
@@ -2801,15 +2815,16 @@ async function scanMasterListForMissingEvents(file, sheetNames){
       });
     }
   }
-  return { candidates, totalRows, matchedCount, unusableCount };
+  return { candidates, totalRows, matchedCount, unusableCount, unmatchedBranchCount, unmatchedBranchCodes: Array.from(unmatchedBranchCodes).sort() };
 }
 // Creates a brand-new ETACC event for each candidate still checked (candidate.include), tagged
 // with the same import-batch metadata the CSV importer uses so the whole batch can be found and
 // removed later from Settings -> Import History if something's wrong. Booth size is normalized
 // the same way the CSV importer does (an exact 10x10/10x20/20x30 match, else "other" with the raw
 // text kept). Region/branch use whatever the review table currently shows -- which the admin may
-// have corrected -- not the original master-list text. An unresolved branch is deliberately left
-// blank rather than guessed, with the raw code/region recorded in Notes so nothing is lost.
+// have corrected -- not the original master-list text. Every candidate here already has a
+// resolved branch (see scanMasterListForMissingEvents()), which never adds a show whose branch
+// isn't already configured in ETACC.
 async function commitMissingEventsFromMasterList(){
   const review = state.missingEventsReview;
   if(!review || !review.candidates) return;
@@ -2838,9 +2853,9 @@ async function commitMissingEventsFromMasterList(){
       d.boothSizeOther = c.boothSizeRaw;
     }
     d.historicalShowCode = c.historicalShowCode;
-    if(!c.branchResolved && (c.branchCodeRaw || c.regionTextRaw)){
-      d.notes = `Master list branch code "${c.branchCodeRaw||'(none)'}" / region "${c.regionTextRaw||'(none)'}" wasn't recognized in ETACC -- set the correct branch manually.`;
-    }
+    // Nothing to backfill into Notes here anymore -- scanMasterListForMissingEvents() now leaves
+    // out any row whose branch isn't already configured in ETACC (see unmatchedBranchCount),
+    // so every candidate that reaches this point already has a resolved branch.
     d.importBatchId = importBatchId;
     d.importFileName = review.fileName;
     d.importedAt = importedAt;
@@ -7023,8 +7038,9 @@ function renderMissingEventsReview(){
   }
   const selectedCount = review.candidates.filter(c=>c.include).length;
   return `
-    <div style="font-weight:600;margin-bottom:8px;">${review.totalRows} show${review.totalRows===1?'':'s'} read from ${review.selectedSheets.length} sheet${review.selectedSheets.length===1?'':'s'} in "${escapeHtml(review.fileName)}". ${review.matchedCount} already match an ETACC event by name + date. ${review.unusableCount>0?`${review.unusableCount} skipped (no usable name/date). `:''}${review.candidates.length} appear to be new:</div>
-    ${review.candidates.length===0 ? `<div class="hint">Nothing to add -- every usable show in the selected sheet(s) already matches an ETACC event.</div>` : `
+    <div style="font-weight:600;margin-bottom:4px;">${review.totalRows} show${review.totalRows===1?'':'s'} read from ${review.selectedSheets.length} sheet${review.selectedSheets.length===1?'':'s'} in "${escapeHtml(review.fileName)}". ${review.matchedCount} already match an ETACC event by name + date. ${review.unusableCount>0?`${review.unusableCount} skipped (no usable name/date). `:''}${review.candidates.length} appear to be new and ready to add:</div>
+    ${review.unmatchedBranchCount>0 ? `<div class="hint" style="margin-bottom:8px;color:var(--amber);">⚠ ${review.unmatchedBranchCount} show${review.unmatchedBranchCount===1?'':'s'} left out entirely -- branch code${review.unmatchedBranchCodes.length===1?'':'s'} not yet configured in ETACC (${review.unmatchedBranchCodes.map(c=>escapeHtml(c)).join(', ')}). Add those branches in ETACC first, then re-upload to pick these up.</div>` : ''}
+    ${review.candidates.length===0 ? `<div class="hint">Nothing to add -- every usable show in the selected sheet(s) either already matches an ETACC event or has a branch ETACC doesn't recognize yet.</div>` : `
     <div style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:10px;">
       ${review.candidates.map((c,i) => `
         <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border);">
@@ -7038,7 +7054,7 @@ function renderMissingEventsReview(){
                 <option value="-1" ${c.regionIdx===-1?'selected':''}>Select ${state.regionLabelSingular.toLowerCase()}…</option>
                 ${state.regionNames.map((n,ri) => `<option value="${ri}" ${ri===c.regionIdx?'selected':''}>${escapeHtml(n)}</option>`).join('')}
               </select>
-              ${c.branchResolved ? `<span class="hint" style="margin:0;">Branch: ${escapeHtml(c.branchValue)}</span>` : `<span class="hint" style="margin:0;color:var(--amber);">⚠ Branch "${escapeHtml(c.branchCodeRaw||'none')}" not recognized -- will be added with no branch set</span>`}
+              <span class="hint" style="margin:0;">Branch: ${escapeHtml(c.branchValue)}</span>
             </div>
           </div>
         </div>`).join('')}
@@ -7071,7 +7087,7 @@ function renderSettingsPanel(){
     </div>
     <div class="field-group">
       <div class="field-group-title">Add Missing Shows from Master List</div>
-      <div class="hint" style="margin-bottom:10px;">Upload the same master list to find shows that AREN'T in ETACC yet (matched by Event Name + Start Date) and add them -- nothing is added automatically. You'll always get a reviewable list first, with each row checked off individually before anything is saved.</div>
+      <div class="hint" style="margin-bottom:10px;">Upload the same master list to find shows that AREN'T in ETACC yet (matched by Event Name + Start Date) and add them -- nothing is added automatically. You'll always get a reviewable list first, with each row checked off individually before anything is saved. A show whose branch isn't already configured in ETACC is left out entirely rather than added with no branch set.</div>
       ${renderMissingEventsReview()}
     </div>
     <div class="field-group">

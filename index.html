@@ -2737,6 +2737,14 @@ function resolveMasterListBranch(regionText, branchCode){
   const regionIdx = state.regionNames.findIndex(n => n.toLowerCase() === String(regionText||'').trim().toLowerCase());
   return { regionIdx: regionIdx !== -1 ? regionIdx : 0, branchValue: '', resolved: false };
 }
+// Today's date as a 'YYYY-MM-DD' string, built from LOCAL date parts (not toISOString(), which
+// converts through UTC and can land on the wrong day in a timezone ahead of UTC) -- the default
+// cutoff for "only future shows" in Add Missing Shows from Master List below.
+function todayDateString(){
+  const now = new Date();
+  const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
 // Reads the selected sheets of an uploaded master-list workbook and returns every row that
 // doesn't match an existing ETACC event by normalized Event Name + Start Date -- candidates to
 // possibly add as brand-new events. Read-only: never creates or changes anything by itself (see
@@ -2746,8 +2754,11 @@ function resolveMasterListBranch(regionText, branchCode){
 // whose Branch code doesn't resolve to one already configured in ETACC (resolveMasterListBranch
 // returns resolved:false) are ALSO skipped entirely -- never added with a blank/guessed branch --
 // counted separately as unmatchedBranchCount, with the specific unrecognized codes kept in
-// unmatchedBranchCodes so the review screen can say what was left out and why.
-async function scanMasterListForMissingEvents(file, sheetNames){
+// unmatchedBranchCodes so the review screen can say what was left out and why. `cutoffDate`
+// ('YYYY-MM-DD', optional) skips any row whose Start Date is before it, counted as pastCount --
+// defaults to today in the UI below, so a re-run only ever surfaces shows that haven't happened
+// yet.
+async function scanMasterListForMissingEvents(file, sheetNames, cutoffDate){
   const buf = await file.arrayBuffer();
   const workbook = XLSX.read(buf, { type: 'array', cellDates: true });
   const existingKeys = new Set(
@@ -2757,7 +2768,7 @@ async function scanMasterListForMissingEvents(file, sheetNames){
   const candidates = [];
   const seenInFile = new Set();
   const unmatchedBranchCodes = new Set();
-  let totalRows = 0, matchedCount = 0, unusableCount = 0, unmatchedBranchCount = 0;
+  let totalRows = 0, matchedCount = 0, unusableCount = 0, unmatchedBranchCount = 0, pastCount = 0;
   for(const sheetName of sheetNames){
     const sheet = workbook.Sheets[sheetName];
     if(!sheet) continue;
@@ -2780,6 +2791,9 @@ async function scanMasterListForMissingEvents(file, sheetNames){
       totalRows++;
       const startDate = startCol!==-1 ? masterListCellToDateString(row[startCol]) : '';
       if(!/^\d{4}-\d{2}-\d{2}$/.test(startDate)){ unusableCount++; continue; }
+      // 'YYYY-MM-DD' strings sort lexicographically the same as chronologically, so a plain
+      // string compare is enough here -- no need to parse into Date objects.
+      if(cutoffDate && startDate < cutoffDate){ pastCount++; continue; }
       const key = normalizeEventName(eventName) + '|' + startDate;
       if(existingKeys.has(key)){ matchedCount++; continue; }
       if(seenInFile.has(key)) continue; // same show listed twice across the selected sheets
@@ -2815,7 +2829,7 @@ async function scanMasterListForMissingEvents(file, sheetNames){
       });
     }
   }
-  return { candidates, totalRows, matchedCount, unusableCount, unmatchedBranchCount, unmatchedBranchCodes: Array.from(unmatchedBranchCodes).sort() };
+  return { candidates, totalRows, matchedCount, unusableCount, unmatchedBranchCount, unmatchedBranchCodes: Array.from(unmatchedBranchCodes).sort(), pastCount };
 }
 // Creates a brand-new ETACC event for each candidate still checked (candidate.include), tagged
 // with the same import-batch metadata the CSV importer uses so the whole batch can be found and
@@ -7029,6 +7043,11 @@ function renderMissingEventsReview(){
             ${escapeHtml(name)}
           </label>`).join('')}
       </div>
+      <div class="field" style="max-width:220px;margin-bottom:10px;">
+        <label>Only include shows starting on or after</label>
+        <input type="date" id="missingEventsCutoffDate" value="${escapeHtml(review.cutoffDate||'')}"/>
+        <div class="hint" style="margin-top:4px;">Defaults to today, so past shows on the master list are never checked. Clear it to include every date.</div>
+      </div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-primary btn-sm" id="scanMissingEventsBtn" ${review.selectedSheets.length===0?'disabled':''}>${review.status==='Scanning…' ? 'Scanning…' : 'Scan for Missing Events'}</button>
         <button class="btn btn-outline btn-sm" id="cancelMissingEventsBtn">Cancel</button>
@@ -7038,7 +7057,7 @@ function renderMissingEventsReview(){
   }
   const selectedCount = review.candidates.filter(c=>c.include).length;
   return `
-    <div style="font-weight:600;margin-bottom:4px;">${review.totalRows} show${review.totalRows===1?'':'s'} read from ${review.selectedSheets.length} sheet${review.selectedSheets.length===1?'':'s'} in "${escapeHtml(review.fileName)}". ${review.matchedCount} already match an ETACC event by name + date. ${review.unusableCount>0?`${review.unusableCount} skipped (no usable name/date). `:''}${review.candidates.length} appear to be new and ready to add:</div>
+    <div style="font-weight:600;margin-bottom:4px;">${review.totalRows} show${review.totalRows===1?'':'s'} read from ${review.selectedSheets.length} sheet${review.selectedSheets.length===1?'':'s'} in "${escapeHtml(review.fileName)}". ${review.pastCount>0?`${review.pastCount} skipped (before ${escapeHtml(review.cutoffDate)}). `:''}${review.matchedCount} already match an ETACC event by name + date. ${review.unusableCount>0?`${review.unusableCount} skipped (no usable name/date). `:''}${review.candidates.length} appear to be new and ready to add:</div>
     ${review.unmatchedBranchCount>0 ? `<div class="hint" style="margin-bottom:8px;color:var(--amber);">⚠ ${review.unmatchedBranchCount} show${review.unmatchedBranchCount===1?'':'s'} left out entirely -- branch code${review.unmatchedBranchCodes.length===1?'':'s'} not yet configured in ETACC (${review.unmatchedBranchCodes.map(c=>escapeHtml(c)).join(', ')}). Add those branches in ETACC first, then re-upload to pick these up.</div>` : ''}
     ${review.candidates.length===0 ? `<div class="hint">Nothing to add -- every usable show in the selected sheet(s) either already matches an ETACC event or has a branch ETACC doesn't recognize yet.</div>` : `
     <div style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:10px;">
@@ -8587,8 +8606,9 @@ function attachHandlers(){
           fileName: file.name,
           sheetNames,
           selectedSheets: sheetNames.filter(n => !skipPattern.test(n)),
+          cutoffDate: todayDateString(), // only future shows by default -- adjustable before scanning
           candidates: null,
-          totalRows: 0, matchedCount: 0, unusableCount: 0,
+          totalRows: 0, matchedCount: 0, unusableCount: 0, pastCount: 0,
           status: ''
         };
       }catch(e){
@@ -8611,6 +8631,13 @@ function attachHandlers(){
       render();
     });
   });
+  const missingEventsCutoffInput = document.getElementById('missingEventsCutoffDate');
+  if(missingEventsCutoffInput){
+    missingEventsCutoffInput.addEventListener('change', ()=>{
+      if(!state.missingEventsReview) return;
+      state.missingEventsReview.cutoffDate = missingEventsCutoffInput.value;
+    });
+  }
   const scanMissingEventsBtn = document.getElementById('scanMissingEventsBtn');
   if(scanMissingEventsBtn){
     scanMissingEventsBtn.addEventListener('click', async ()=>{
@@ -8618,7 +8645,7 @@ function attachHandlers(){
       state.missingEventsReview.status = 'Scanning…';
       render();
       try{
-        const result = await scanMasterListForMissingEvents(missingEventsPendingFile, state.missingEventsReview.selectedSheets);
+        const result = await scanMasterListForMissingEvents(missingEventsPendingFile, state.missingEventsReview.selectedSheets, state.missingEventsReview.cutoffDate);
         state.missingEventsReview = { ...state.missingEventsReview, ...result, status:'' };
       }catch(e){
         console.error('Master list scan failed', e);

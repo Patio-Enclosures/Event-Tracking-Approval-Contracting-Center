@@ -1687,6 +1687,10 @@ const REGION_COLORS = [
   '#6D6875'  // 13 UPL - mauve gray
 ];
 function regionColor(idx){ return REGION_COLORS[idx % REGION_COLORS.length]; }
+// Holds the File object between the "pick sheets" and "scan" steps of Add Missing Shows from
+// Master List (Settings). Kept outside `state` since a raw File isn't display state -- see
+// state.missingEventsReview for what actually renders.
+let missingEventsPendingFile = null;
 let state = {
   loaded:false,
   regionNames: ['MAN','MAS','MW','MW-2','NE','OV','PNW','SA','SA-2','SC','SC-2','SE','SW','UPL'],
@@ -1710,6 +1714,12 @@ let state = {
   filterDataSource:'',
   filterWaitingOnInfo:false,
   masterListStatus:'',
+  // "Add Missing Shows from Master List" (Settings) -- null until a file is picked. Once set:
+  // { fileName, sheetNames, selectedSheets, candidates (null until scanned), totalRows,
+  // matchedCount, unusableCount, status }. The uploaded File object itself lives in the
+  // module-level missingEventsPendingFile variable, not here -- state models what's shown on
+  // screen, not the raw file.
+  missingEventsReview:null,
   exhibitDayFieldsStatus:'',
   // Bulk Delete (Settings -> Data Cleanup) -- a safety-netted way to remove a whole bad import
   // batch at once, after seeing exactly what will be removed. Added 10/13/2026 after a bad
@@ -1998,7 +2008,7 @@ function withUnit(v, unit){
   return isPlainNumeric(v) ? (String(v).trim() + unit) : escapeHtml(String(v).trim());
 }
 const LABOR_RATE = 23;          // $ per hour
-const MILEAGE_RATE = 0.725;     // $ per mile after 30 free miles PER TRAVEL DAY
+const MILEAGE_RATE = 0.76;      // $ per mile after 30 free miles PER TRAVEL DAY
 const MILEAGE_FREE_MILES_PER_DAY = 30;
 const PER_DIEM_RATE = 43;       // $ per hotel night
 const HOTEL_RATE = 175;         // $ per hotel night
@@ -2656,6 +2666,197 @@ function findEventNameColumn(headerRow){
   if(idx===-1) idx = normalized.findIndex(h => h.includes('event'));
   if(idx===-1) idx = 0;
   return idx;
+}
+// --- Helpers for "Add Missing Shows from Master List" (Settings) below -------------------------
+// Finds a column by an exact header match (case-insensitive, trimmed) against candidates tried
+// in order -- used for Region/Branch/Venue/Booth Size/Show Code, where a real-world master
+// list's header text matches the concept closely enough that a strict match is safer than a
+// loose keyword search (unlike Event Name above, which shows up under many different spellings).
+function findColumnByHeader(headerRow, candidates){
+  const normalized = headerRow.map(h => String(h||'').toLowerCase().trim());
+  for(const c of candidates){
+    const idx = normalized.indexOf(c);
+    if(idx !== -1) return idx;
+  }
+  return -1;
+}
+// Finds the Start Date column, preferring an explicit "start date" header, then the real-world
+// "first date of show" header an actual master list export uses, then anything else date-like --
+// EXCLUDING columns that are clearly about something else (payment dates, "Date Added", contract/
+// submission dates), since a real master list typically has several of those alongside the
+// actual show date.
+function findStartDateColumn(headerRow){
+  const normalized = headerRow.map(h => String(h||'').toLowerCase().trim());
+  let idx = normalized.findIndex(h => h.includes('start date'));
+  if(idx===-1) idx = normalized.findIndex(h => h.includes('first date'));
+  if(idx===-1) idx = normalized.findIndex(h => h.includes('event date'));
+  if(idx===-1) idx = normalized.findIndex(h =>
+    h.includes('date') && !h.includes('payment') && !h.includes('added') &&
+    !h.includes('submitted') && !h.includes('last') && !h.includes('contract') && !h.includes('req'));
+  return idx;
+}
+function findEndDateColumn(headerRow){
+  const normalized = headerRow.map(h => String(h||'').toLowerCase().trim());
+  let idx = normalized.findIndex(h => h.includes('end date'));
+  if(idx===-1) idx = normalized.findIndex(h => h.includes('last date'));
+  return idx;
+}
+// A master-list date cell can come through as a real JS Date (SheetJS with cellDates:true, the
+// normal case for a well-formed Excel date column) or as text (M/D/YYYY, already exported as a
+// string). Builds the 'YYYY-MM-DD' string from LOCAL date parts for a Date object -- never
+// toISOString(), which converts through UTC and would silently shift the date in any timezone
+// ahead of UTC (the same bug fixed in eventDayList() elsewhere in this file). Falls back to the
+// same text-date parser the CSV importer already uses for anything that isn't a Date object.
+function masterListCellToDateString(v){
+  if(v instanceof Date && !isNaN(v.getTime())){
+    const y = v.getFullYear(), m = String(v.getMonth()+1).padStart(2,'0'), d = String(v.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}`;
+  }
+  return normalizeCsvDate(String(v===undefined||v===null?'':v).trim());
+}
+// Resolves a master list's Branch code (e.g. "SAN") plus Region text (e.g. "SC") into this
+// brand's own region index + branch value, the way the New Event form's Branch dropdown expects
+// them. Patio Enclosures' branch list is the fixed BRANCHES array, keyed by a short code that
+// happens to be exactly what a real master list already uses, so an exact code match is tried
+// first -- more reliable than the region text alone, which can drift out of sync with whatever
+// regions are actually configured right now (a master list can list shows in regions/branches
+// that haven't been set up in this dashboard yet). Other brands don't have a fixed code list, so
+// this falls back to matching the raw region text against whatever's currently configured.
+// Returns {regionIdx, branchValue, resolved} -- resolved:false means neither the code nor the
+// region text matched anything currently configured, so the review row should flag it (and the
+// branch should NOT be silently set to a guess) rather than risk assigning the wrong branch.
+function resolveMasterListBranch(regionText, branchCode){
+  const code = String(branchCode||'').trim().toUpperCase();
+  if(state.currentBrand === 'patio-enclosures' && code){
+    const b = BRANCHES.find(x => x.code === code);
+    if(b){
+      const regionIdx = state.regionNames.indexOf(b.region);
+      if(regionIdx !== -1) return { regionIdx, branchValue: branchLabel(b), resolved: true };
+    }
+  }
+  const regionIdx = state.regionNames.findIndex(n => n.toLowerCase() === String(regionText||'').trim().toLowerCase());
+  return { regionIdx: regionIdx !== -1 ? regionIdx : 0, branchValue: '', resolved: false };
+}
+// Reads the selected sheets of an uploaded master-list workbook and returns every row that
+// doesn't match an existing ETACC event by normalized Event Name + Start Date -- candidates to
+// possibly add as brand-new events. Read-only: never creates or changes anything by itself (see
+// commitMissingEventsFromMasterList() for that). Rows missing an Event Name or a parseable Start
+// Date are skipped outright (counted, not surfaced one by one), since neither a name-only nor a
+// date-only row can be matched against existing events or safely turned into a usable one.
+async function scanMasterListForMissingEvents(file, sheetNames){
+  const buf = await file.arrayBuffer();
+  const workbook = XLSX.read(buf, { type: 'array', cellDates: true });
+  const existingKeys = new Set(
+    state.events.filter(e => e.startDate && e.eventName)
+      .map(e => normalizeEventName(e.eventName) + '|' + e.startDate)
+  );
+  const candidates = [];
+  const seenInFile = new Set();
+  let totalRows = 0, matchedCount = 0, unusableCount = 0;
+  for(const sheetName of sheetNames){
+    const sheet = workbook.Sheets[sheetName];
+    if(!sheet) continue;
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    if(rows.length < 2) continue;
+    const header = rows[0];
+    const nameCol = findEventNameColumn(header);
+    const startCol = findStartDateColumn(header);
+    const endCol = findEndDateColumn(header);
+    const regionCol = findColumnByHeader(header, ['region']);
+    const branchCol = findColumnByHeader(header, ['branch']);
+    const venueCol = findColumnByHeader(header, ['show venue', 'venue']);
+    const boothCol = findColumnByHeader(header, ['booth size']);
+    const codeCol = findColumnByHeader(header, ['show code']);
+    for(let r=1; r<rows.length; r++){
+      const row = rows[r];
+      if(!Array.isArray(row) || row.every(c => String(c).trim()==='')) continue;
+      const eventName = String(row[nameCol]===undefined?'':row[nameCol]).trim();
+      if(!eventName) continue;
+      totalRows++;
+      const startDate = startCol!==-1 ? masterListCellToDateString(row[startCol]) : '';
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(startDate)){ unusableCount++; continue; }
+      const key = normalizeEventName(eventName) + '|' + startDate;
+      if(existingKeys.has(key)){ matchedCount++; continue; }
+      if(seenInFile.has(key)) continue; // same show listed twice across the selected sheets
+      seenInFile.add(key);
+      const regionText = regionCol!==-1 ? String(row[regionCol]||'').trim() : '';
+      const branchCode = branchCol!==-1 ? String(row[branchCol]||'').trim() : '';
+      const { regionIdx, branchValue, resolved } = resolveMasterListBranch(regionText, branchCode);
+      const endDateRaw = endCol!==-1 ? masterListCellToDateString(row[endCol]) : '';
+      candidates.push({
+        key,
+        include: true,
+        sheet: sheetName,
+        eventName,
+        startDate,
+        endDate: /^\d{4}-\d{2}-\d{2}$/.test(endDateRaw) ? endDateRaw : startDate,
+        regionIdx,
+        branchValue,
+        branchResolved: resolved,
+        regionTextRaw: regionText,
+        branchCodeRaw: branchCode,
+        venueName: venueCol!==-1 ? String(row[venueCol]||'').trim() : '',
+        boothSizeRaw: boothCol!==-1 ? String(row[boothCol]||'').trim() : '',
+        historicalShowCode: codeCol!==-1 ? String(row[codeCol]||'').trim() : ''
+      });
+    }
+  }
+  return { candidates, totalRows, matchedCount, unusableCount };
+}
+// Creates a brand-new ETACC event for each candidate still checked (candidate.include), tagged
+// with the same import-batch metadata the CSV importer uses so the whole batch can be found and
+// removed later from Settings -> Import History if something's wrong. Booth size is normalized
+// the same way the CSV importer does (an exact 10x10/10x20/20x30 match, else "other" with the raw
+// text kept). Region/branch use whatever the review table currently shows -- which the admin may
+// have corrected -- not the original master-list text. An unresolved branch is deliberately left
+// blank rather than guessed, with the raw code/region recorded in Notes so nothing is lost.
+async function commitMissingEventsFromMasterList(){
+  const review = state.missingEventsReview;
+  if(!review || !review.candidates) return;
+  const selected = review.candidates.filter(c => c.include);
+  if(selected.length === 0){
+    alert('No rows are checked -- nothing to add.');
+    return;
+  }
+  const importBatchId = uid();
+  const importedAt = Date.now();
+  const importedBy = state.userName || (state.currentUser && state.currentUser.email) || 'Unknown';
+  const newEvents = selected.map(c => {
+    const d = emptyDraft(c.regionIdx >= 0 ? c.regionIdx : 0);
+    d.id = uid();
+    d.createdAt = importedAt;
+    d.history = [];
+    d.eventName = c.eventName;
+    d.startDate = c.startDate;
+    d.endDate = c.endDate;
+    d.branch = c.branchValue;
+    d.venueName = c.venueName;
+    if(['10x10','10x20','20x30'].includes(c.boothSizeRaw.toLowerCase())){
+      d.boothSize = c.boothSizeRaw.toLowerCase();
+    } else if(c.boothSizeRaw){
+      d.boothSize = 'other';
+      d.boothSizeOther = c.boothSizeRaw;
+    }
+    d.historicalShowCode = c.historicalShowCode;
+    if(!c.branchResolved && (c.branchCodeRaw || c.regionTextRaw)){
+      d.notes = `Master list branch code "${c.branchCodeRaw||'(none)'}" / region "${c.regionTextRaw||'(none)'}" wasn't recognized in ETACC -- set the correct branch manually.`;
+    }
+    d.importBatchId = importBatchId;
+    d.importFileName = review.fileName;
+    d.importedAt = importedAt;
+    d.importedBy = importedBy;
+    return d;
+  });
+  const ok = await persistEventsBulkAtomic((latestEvents) => latestEvents.concat(newEvents));
+  if(!ok){
+    alert('These events could not be added -- likely a connection issue. Please try again.');
+    return;
+  }
+  logActivity(null, null, 'Added missing events from master list', `${newEvents.length} events from ${review.fileName}`);
+  state.missingEventsReview = null;
+  missingEventsPendingFile = null;
+  render();
+  alert(`Added ${newEvents.length} event${newEvents.length===1?'':'s'} from the master list.`);
 }
 // Parses an uploaded .xlsx master list, matches it against every current event by normalized
 // Event Name, and updates ev.onMasterList (+ ev.masterListCheckedAt) on ALL events -- so
@@ -4097,7 +4298,7 @@ function generateApprovalPDF(ev){
   addRow('Forecasted Labor Hours', ev.laborHours);
   addRow('Labor Cost (@ $20/hr)', money(laborDollars(ev)));
   addRow('Forecasted Mileage', mileageDisplay(ev));
-  addRow('Mileage Cost (@ $0.725/mi after 30 free)', money(mileageDollars(ev)));
+  addRow(`Mileage Cost (@ $${MILEAGE_RATE}/mi after 30 free)`, money(mileageDollars(ev)));
   addRow('Hotel Nights', ev.hotelNights);
   addRow('Hotel Cost (@ $150/night)', money(hotelDollars(ev)));
   addRow('Per Diem (@ $43/night)', money(perDiemDollars(ev)));
@@ -4216,7 +4417,7 @@ function downloadEventPDF(ev){
   addRow('Forecasted Labor Hours', ev.laborHours);
   addRow('Labor Cost (@ $20/hr)', money(laborDollars(ev)));
   addRow('Forecasted Mileage', mileageDisplay(ev));
-  addRow('Mileage Cost (@ $0.725/mi after 30 free)', money(mileageDollars(ev)));
+  addRow(`Mileage Cost (@ $${MILEAGE_RATE}/mi after 30 free)`, money(mileageDollars(ev)));
   addRow('Hotel Nights', ev.hotelNights);
   addRow('Hotel Cost (@ $150/night)', money(hotelDollars(ev)));
   addRow('Per Diem (@ $43/night)', money(perDiemDollars(ev)));
@@ -4329,7 +4530,7 @@ function buildFullEventTextSummary(ev){
     `Forecasted Labor Hours: ${ev.laborHours || '0'}`,
     `Labor Cost (@ $20/hr): ${money(laborDollars(ev))}`,
     `Forecasted Mileage: ${mileageDisplay(ev)}`,
-    `Mileage Cost (@ $0.725/mi after 30 free per day): ${money(mileageDollars(ev))}`,
+    `Mileage Cost (@ $${MILEAGE_RATE}/mi after 30 free per day): ${money(mileageDollars(ev))}`,
     `Hotel Nights: ${ev.hotelNights || '0'}`,
     `Hotel Cost (@ $150/night): ${money(hotelDollars(ev))}`,
     `Per Diem (@ $43/night): ${money(perDiemDollars(ev))}`,
@@ -5224,7 +5425,7 @@ function downloadContractSummary(ev){
     <tr><td class="label">Forecasted Labor Hours</td><td>${escapeHtml(ev.laborHours)||'0'}</td></tr>
     <tr><td class="label">Labor Cost (@ $20/hr)</td><td>${money(laborDollars(ev))}</td></tr>
     <tr><td class="label">Forecasted Mileage</td><td>${mileageDisplay(ev)}</td></tr>
-    <tr><td class="label">Mileage Cost (@ $0.725/mi after 30 free mi)</td><td>${money(mileageDollars(ev))}</td></tr>
+    <tr><td class="label">Mileage Cost (@ $${MILEAGE_RATE}/mi after 30 free mi)</td><td>${money(mileageDollars(ev))}</td></tr>
     <tr><td class="label">Hotel Nights</td><td>${escapeHtml(ev.hotelNights)||'0'}</td></tr>
     <tr><td class="label">Hotel Cost (@ $150/night)</td><td>${money(hotelDollars(ev))}</td></tr>
     <tr><td class="label">Per Diem (@ $43/night)</td><td>${money(perDiemDollars(ev))}</td></tr>
@@ -6448,7 +6649,7 @@ function renderEventDetail(ev){
       ${item('Forecasted Labor Hours', val(ev.laborHours), isEmptyV(ev.laborHours))}
       ${item('Labor Cost (@ $20/hr)', money(laborDollars(ev)))}
       ${item('Forecasted Mileage', mileageDisplay(ev))}
-      ${item('Mileage Cost (@ $0.725/mi after 30 free)', money(mileageDollars(ev)))}
+      ${item(`Mileage Cost (@ $${MILEAGE_RATE}/mi after 30 free)`, money(mileageDollars(ev)))}
       ${item('Hotel Nights', val(ev.hotelNights), isEmptyV(ev.hotelNights))}
       ${item('Hotel Cost (@ $150/night)', money(hotelDollars(ev)))}
       ${item('Per Diem (@ $43/night)', money(perDiemDollars(ev)))}
@@ -6790,6 +6991,65 @@ function renderPostEventEvalPanel(){
     ${EXHIBITDAY_CUSTOM_FIELD_IDS_BY_BRAND[state.currentBrand] ? `<button class="btn btn-blue" id="savePostEventEvalAndSyncBtn">Save &amp; Sync to Exhibit Day</button>` : ''}
   </div>`;
 }
+// Renders whichever step of "Add Missing Shows from Master List" is currently active:
+//   1. No file picked yet -- just the file input.
+//   2. File picked, not yet scanned -- a checklist of the workbook's own sheet names (so this
+//      works with any file, not just this org's specific sheet names) plus a Scan button.
+//   3. Scanned -- a summary line, then one row per candidate event with its own checkbox
+//      (checked by default) and an editable Region in case the master list's region/branch
+//      code isn't recognized yet, then Add/Cancel buttons. Nothing is added until "Add Selected"
+//      is clicked, and only checked rows are included.
+function renderMissingEventsReview(){
+  const review = state.missingEventsReview;
+  if(!review){
+    return `<input type="file" id="addMissingEventsFile" accept=".xlsx"/>`;
+  }
+  if(!review.candidates){
+    return `
+      <div class="hint" style="margin-bottom:8px;">Loaded "${escapeHtml(review.fileName)}". Which sheet(s) should be checked against ETACC's events?</div>
+      <div style="margin-bottom:10px;">
+        ${review.sheetNames.map(name => `
+          <label style="display:flex;align-items:center;gap:8px;margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" data-missing-sheet="${escapeHtml(name)}" ${review.selectedSheets.includes(name)?'checked':''} style="width:auto;"/>
+            ${escapeHtml(name)}
+          </label>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary btn-sm" id="scanMissingEventsBtn" ${review.selectedSheets.length===0?'disabled':''}>${review.status==='Scanning…' ? 'Scanning…' : 'Scan for Missing Events'}</button>
+        <button class="btn btn-outline btn-sm" id="cancelMissingEventsBtn">Cancel</button>
+      </div>
+      ${review.status && review.status!=='Scanning…' ? `<div class="hint" style="margin-top:10px;color:var(--red);font-weight:600;">${escapeHtml(review.status)}</div>` : ''}
+    `;
+  }
+  const selectedCount = review.candidates.filter(c=>c.include).length;
+  return `
+    <div style="font-weight:600;margin-bottom:8px;">${review.totalRows} show${review.totalRows===1?'':'s'} read from ${review.selectedSheets.length} sheet${review.selectedSheets.length===1?'':'s'} in "${escapeHtml(review.fileName)}". ${review.matchedCount} already match an ETACC event by name + date. ${review.unusableCount>0?`${review.unusableCount} skipped (no usable name/date). `:''}${review.candidates.length} appear to be new:</div>
+    ${review.candidates.length===0 ? `<div class="hint">Nothing to add -- every usable show in the selected sheet(s) already matches an ETACC event.</div>` : `
+    <div style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:10px;">
+      ${review.candidates.map((c,i) => `
+        <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border);">
+          <input type="checkbox" data-missing-include="${i}" ${c.include?'checked':''} style="width:auto;margin-top:3px;"/>
+          <div style="flex:1;">
+            <div style="font-weight:600;font-size:13px;">${escapeHtml(c.eventName)}</div>
+            <div class="hint" style="margin:2px 0 6px;">${escapeHtml(c.startDate)}${c.endDate && c.endDate!==c.startDate ? ' – ' + escapeHtml(c.endDate) : ''}${c.venueName ? ' · ' + escapeHtml(c.venueName) : ''}${c.boothSizeRaw ? ' · Booth: ' + escapeHtml(c.boothSizeRaw) : ''}</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label style="font-size:11px;color:var(--ink-soft);">Region:</label>
+              <select data-missing-region-idx="${i}" style="width:auto;padding:4px 6px;font-size:12px;">
+                <option value="-1" ${c.regionIdx===-1?'selected':''}>Select ${state.regionLabelSingular.toLowerCase()}…</option>
+                ${state.regionNames.map((n,ri) => `<option value="${ri}" ${ri===c.regionIdx?'selected':''}>${escapeHtml(n)}</option>`).join('')}
+              </select>
+              ${c.branchResolved ? `<span class="hint" style="margin:0;">Branch: ${escapeHtml(c.branchValue)}</span>` : `<span class="hint" style="margin:0;color:var(--amber);">⚠ Branch "${escapeHtml(c.branchCodeRaw||'none')}" not recognized -- will be added with no branch set</span>`}
+            </div>
+          </div>
+        </div>`).join('')}
+    </div>
+    `}
+    <div style="display:flex;gap:8px;">
+      ${review.candidates.length>0 ? `<button class="btn btn-primary btn-sm" id="commitMissingEventsBtn">Add ${selectedCount} Selected Event${selectedCount===1?'':'s'}</button>` : ''}
+      <button class="btn btn-outline btn-sm" id="cancelMissingEventsBtn">${review.candidates.length>0?'Discard':'Close'}</button>
+    </div>
+  `;
+}
 function renderSettingsPanel(){
   return `
   <div class="panel-header">
@@ -6808,6 +7068,11 @@ function renderSettingsPanel(){
       <div class="hint" style="margin-bottom:10px;">Upload a master list (.xlsx) to flag which dashboard events also appear on it, matched by Event Name. Re-run this anytime with an updated file — each run replaces the previous results, so events that dropped off the list get un-flagged automatically.</div>
       <input type="file" id="masterListFile" accept=".xlsx"/>
       ${state.masterListStatus ? `<div class="hint" style="margin-top:10px;color:var(--accent-dark);font-weight:600;">${escapeHtml(state.masterListStatus)}</div>` : ''}
+    </div>
+    <div class="field-group">
+      <div class="field-group-title">Add Missing Shows from Master List</div>
+      <div class="hint" style="margin-bottom:10px;">Upload the same master list to find shows that AREN'T in ETACC yet (matched by Event Name + Start Date) and add them -- nothing is added automatically. You'll always get a reviewable list first, with each row checked off individually before anything is saved.</div>
+      ${renderMissingEventsReview()}
     </div>
     <div class="field-group">
       <div class="field-group-title">Bulk Delete Events (Data Cleanup)</div>
@@ -6970,8 +7235,8 @@ function renderSettingsPanel(){
       ${state.bulkSubmitStatus ? `<div class="hint" style="margin-top:8px;color:var(--accent-dark);font-weight:600;">${escapeHtml(state.bulkSubmitStatus)}</div>` : ''}
     </div>
     <div class="field-group">
-      <div class="field-group-title">CSV Import History</div>
-      <div class="hint" style="margin-bottom:10px;">Every bulk CSV import you've run, with the option to cleanly remove an entire bad import in one action instead of deleting events one by one.</div>
+      <div class="field-group-title">Bulk Import History</div>
+      <div class="hint" style="margin-bottom:10px;">Every bulk import you've run -- CSV, or events added from a master list -- with the option to cleanly remove an entire bad batch in one action instead of deleting events one by one.</div>
       ${(() => {
         const batches = {};
         state.events.forEach(ev => {
@@ -7341,7 +7606,7 @@ function renderPanel(){
       <div class="hint">Labor, mileage, hotel, and per diem dollars are calculated automatically from the rates below.</div>
       <div class="computed-box" style="flex-direction:column;align-items:stretch;gap:6px;">
         <div class="computed-row"><span class="label">Labor (@ $${LABOR_RATE}/hr)</span><span class="value" id="calc_labor">${money(0)}</span></div>
-        <div class="computed-row"><span class="label">Mileage (@ $0.725/mi after 30 free)</span><span class="value" id="calc_mileage">${money(0)}</span></div>
+        <div class="computed-row"><span class="label">Mileage (@ $${MILEAGE_RATE}/mi after 30 free)</span><span class="value" id="calc_mileage">${money(0)}</span></div>
         <div class="computed-row"><span class="label">Hotel (@ $${HOTEL_RATE}/night)</span><span class="value" id="calc_hotel">${money(0)}</span></div>
         <div class="computed-row"><span class="label">Per Diem (@ $43/night)</span><span class="value" id="calc_perdiem">${money(0)}</span></div>
         ${state.currentBrand !== 'patio-enclosures' ? `<div class="computed-row"><span class="label">Vehicle Rental (@ $${VEHICLE_RENTAL_RATE}/day)</span><span class="value" id="calc_vehicle">${money(0)}</span></div>` : ''}
@@ -8285,6 +8550,103 @@ function attachHandlers(){
         state.masterListStatus = `Could not process that file: ${e.message}`;
         render();
       }
+    });
+  }
+  // Add Missing Shows from Master List -- see renderMissingEventsReview() for the 3 UI steps
+  // this drives (pick file -> pick sheets -> review candidates).
+  const addMissingEventsFileInput = document.getElementById('addMissingEventsFile');
+  if(addMissingEventsFileInput){
+    addMissingEventsFileInput.addEventListener('change', async ()=>{
+      const file = addMissingEventsFileInput.files && addMissingEventsFileInput.files[0];
+      if(!file) return;
+      try{
+        const buf = await file.arrayBuffer();
+        const workbook = XLSX.read(buf, { type: 'array' });
+        const sheetNames = workbook.SheetNames;
+        // Pre-check sheets that look like an actual show list, not a legend/goals/paused sheet --
+        // admins can always adjust the checklist before scanning.
+        const skipPattern = /paused|key|goal|archive/i;
+        missingEventsPendingFile = file;
+        state.missingEventsReview = {
+          fileName: file.name,
+          sheetNames,
+          selectedSheets: sheetNames.filter(n => !skipPattern.test(n)),
+          candidates: null,
+          totalRows: 0, matchedCount: 0, unusableCount: 0,
+          status: ''
+        };
+      }catch(e){
+        console.error('Could not read that workbook', e);
+        missingEventsPendingFile = null;
+        state.missingEventsReview = null;
+        alert(`Could not read that file: ${e.message}`);
+      }
+      render();
+    });
+  }
+  document.querySelectorAll('[data-missing-sheet]').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      if(!state.missingEventsReview) return;
+      const name = cb.getAttribute('data-missing-sheet');
+      const sel = state.missingEventsReview.selectedSheets;
+      const idx = sel.indexOf(name);
+      if(cb.checked && idx===-1) sel.push(name);
+      if(!cb.checked && idx!==-1) sel.splice(idx,1);
+      render();
+    });
+  });
+  const scanMissingEventsBtn = document.getElementById('scanMissingEventsBtn');
+  if(scanMissingEventsBtn){
+    scanMissingEventsBtn.addEventListener('click', async ()=>{
+      if(!state.missingEventsReview || !missingEventsPendingFile) return;
+      state.missingEventsReview.status = 'Scanning…';
+      render();
+      try{
+        const result = await scanMasterListForMissingEvents(missingEventsPendingFile, state.missingEventsReview.selectedSheets);
+        state.missingEventsReview = { ...state.missingEventsReview, ...result, status:'' };
+      }catch(e){
+        console.error('Master list scan failed', e);
+        state.missingEventsReview.status = `Could not process that file: ${e.message}`;
+      }
+      render();
+    });
+  }
+  document.querySelectorAll('[data-missing-include]').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      if(!state.missingEventsReview || !state.missingEventsReview.candidates) return;
+      const i = parseInt(cb.getAttribute('data-missing-include'), 10);
+      if(state.missingEventsReview.candidates[i]) state.missingEventsReview.candidates[i].include = cb.checked;
+      render();
+    });
+  });
+  document.querySelectorAll('[data-missing-region-idx]').forEach(sel=>{
+    sel.addEventListener('change', ()=>{
+      if(!state.missingEventsReview || !state.missingEventsReview.candidates) return;
+      const i = parseInt(sel.getAttribute('data-missing-region-idx'), 10);
+      if(state.missingEventsReview.candidates[i]) state.missingEventsReview.candidates[i].regionIdx = parseInt(sel.value, 10);
+    });
+  });
+  const commitMissingEventsBtn = document.getElementById('commitMissingEventsBtn');
+  if(commitMissingEventsBtn){
+    commitMissingEventsBtn.addEventListener('click', async ()=>{
+      commitMissingEventsBtn.disabled = true;
+      commitMissingEventsBtn.textContent = 'Adding…';
+      try{
+        await commitMissingEventsFromMasterList();
+      }catch(e){
+        console.error('Could not add events from master list', e);
+        alert(`Could not add those events: ${e.message}`);
+        commitMissingEventsBtn.disabled = false;
+        commitMissingEventsBtn.textContent = 'Add Selected Events';
+      }
+    });
+  }
+  const cancelMissingEventsBtn = document.getElementById('cancelMissingEventsBtn');
+  if(cancelMissingEventsBtn){
+    cancelMissingEventsBtn.addEventListener('click', ()=>{
+      state.missingEventsReview = null;
+      missingEventsPendingFile = null;
+      render();
     });
   }
   const serviceableZipsFileInput = document.getElementById('serviceableZipsFile');

@@ -319,7 +319,10 @@ function fmtFull(iso){ return parseIso(iso).toLocaleDateString('en-US',{month:'s
 function normDate(v){
   v = String(v||'').trim(); if(!v) return '';
   let m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m) return `${m[1]}-${pad(+m[2])}-${pad(+m[3])}`;
-  m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if(m){ const y = m[3].length===2 ? '20'+m[3] : m[3]; return `${y}-${pad(+m[1])}-${pad(+m[2])}`; }
+  m = v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/); if(m){ const y = m[3].length===2 ? '20'+m[3] : m[3]; return `${y}-${pad(+m[1])}-${pad(+m[2])}`; }
+  if(/^\d{5}(\.\d+)?$/.test(v)){ const d=new Date(Date.UTC(1899,11,30)+Math.floor(+v)*864e5); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())}`; } // Excel serial
+  const t = Date.parse(v.replace(/^(mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s+/i,'')); // "Oct 30, 2026", "October 30 2026"
+  if(!isNaN(t)){ const d=new Date(t); if(d.getFullYear()>2000) return isoOf(d); }
   return '';
 }
 function toMin(t){ if(!t) return null; const [h,m]=t.split(':').map(Number); return h*60+(m||0); }
@@ -355,14 +358,19 @@ function parseDaysHours(v){
     return { date, start: parseTime(m[2]), stop: parseTime(m[3]) };
   }).filter(Boolean);
 }
+function statusOk(v){ const x=String(v||'').trim().toLowerCase().replace(/\s+/g,' '); return INCLUDE_STATUSES.some(st=>x===st.toLowerCase()); }
 function eventKey(office,name,start){ return [office,name,start].map(x=>String(x||'').trim().toLowerCase()).join('|'); }
 function importCSV(text, file){
   const rows = parseCSV(text);
   if(rows.length<2){ alert('That file has no event rows.'); return; }
-  const head = rows[0].map(h=>h.trim().toLowerCase());
-  const col = name => head.indexOf(name.toLowerCase());
+  const head = rows[0].map(h=>String(h).trim().toLowerCase().replace(/\s+/g,' '));
+  // Accept a few alternate headings for the key columns.
+  const ALIASES = { 'event name':['event name','event','event title','name','show name'], 'start date':['start date','event start','start','begin date','event date','date'],
+    'end date':['end date','event end','end'], 'status':['status','approval status','event status','etacc status'], 'region':['region','market','office','territory'] };
+  const col = name => { const n=name.toLowerCase(); for(const a of (ALIASES[n]||[n])){ const i=head.indexOf(a); if(i>=0) return i; } return -1; };
   const missing = ['event name','start date'].filter(n=>col(n)<0);
-  if(missing.length){ alert('This doesn\'t look like an ETACC export. Missing column(s): '+missing.join(', ')+'.\n\nIn ETACC, use "⬇ Export CSV" and upload that file.'); return; }
+  if(missing.length){ alert('This doesn\'t look like an ETACC export. Missing column(s): '+missing.join(', ')+'.\n\nColumns found: '+rows[0].slice(0,25).join(', ')+'\n\nNothing was changed.'); return; }
+  const hasStatus = col('status')>=0;
   const g = (r,n)=>{ const i=col(n); return i<0 ? '' : String(r[i]||'').trim(); };
   // If the export covers more than one brand, keep only the Patio Enclosures rows.
   const brandCol = head.findIndex(h=>/^(brand|company|division|business unit|line of business)$/.test(h));
@@ -373,14 +381,16 @@ function importCSV(text, file){
   }
   // Setup / load-in columns: any heading with "setup", "set up", "load in" or "move in".
   const setupCols = rows[0].map((h,i)=>({h:String(h).trim(), i})).filter(c=>/set\s*-?\s*up|load\s*-?\s*in|move\s*-?\s*in/i.test(c.h));
-  const events=[]; let noDays=0;
+  const events=[]; let noDays=0, badDate=0, badDateEx='';
+  const statusSeen = {};
   for(const r of body){
     const name=g(r,'Event Name'); if(!name) continue;
-    const status=g(r,'Status');
-    if(!INCLUDE_STATUSES.includes(status)) continue;
+    const rawStatus=g(r,'Status');
+    if(hasStatus){ statusSeen[rawStatus||'(blank)'] = (statusSeen[rawStatus||'(blank)']||0)+1; if(!statusOk(rawStatus)) continue; }
+    const status = hasStatus ? INCLUDE_STATUSES.find(st=>st.toLowerCase()===rawStatus.trim().toLowerCase().replace(/\s+/g,' ')) : 'Approved';
     const office = g(r,'Region') || g(r,'Office');
     const start=normDate(g(r,'Start Date')), end=normDate(g(r,'End Date'))||start;
-    if(!start) continue;
+    if(!start){ badDate++; if(!badDateEx) badDateEx = g(r,'Start Date') || '(blank)'; continue; }
     let days = parseDaysHours(g(r,'Days & Hours'));
     if(!days.length){ noDays++; for(let d=start; d<=end && days.length<31; d=addDays(d,1)) days.push({date:d,start:'',stop:''}); }
     events.push({
@@ -391,6 +401,15 @@ function importCSV(text, file){
       setup: setupCols.map(c=>({label:c.h, value:String(r[c.i]||'').trim()})).filter(x=>x.value),
       notes:g(r,'Final Notes')
     });
+  }
+  if(!events.length){
+    const st = Object.entries(statusSeen).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,n])=>`${k} (${n})`).join(', ');
+    const why = [`Found ${body.length} row${body.length===1?'':'s'} but none could be scheduled, so nothing was changed.`];
+    if(brandNote) why.push(brandNote);
+    if(hasStatus) why.push(`Only "Approved" and "Submitted for Contract" are kept. Statuses in this file: ${st || 'none'}.`);
+    else why.push('This file has no Status column.');
+    if(badDate) why.push(`${badDate} row${badDate===1?' had a':'s had a'} Start Date that couldn't be read (e.g. "${badDateEx}").`);
+    alert(why.join('\n\n')); ui.notice = why.join(' '); render(); return;
   }
   // keep assignments only for event days that still exist
   const valid = new Set(); events.forEach(e=>e.days.forEach(d=>valid.add(dayId(e,d))));
@@ -403,6 +422,8 @@ function importCSV(text, file){
   data.sourceFile = file ? file.name : '';
   const parts = [`Imported ${events.length} event${events.length===1?'':'s'} from ${data.sourceFile||'the CSV'}.`];
   if(brandNote) parts.push(brandNote);
+  if(!hasStatus) parts.push('No Status column was found, so every event was included.');
+  if(badDate) parts.push(`${badDate} skipped because the Start Date couldn't be read (e.g. "${badDateEx}").`);
   if(noDays) parts.push(`${noDays} had no Days & Hours filled in ETACC, so their days show "Times TBD".`);
   if(dropped) parts.push(`${dropped} assigned day${dropped===1?'':'s'} no longer match an event (dates or name changed in ETACC) and were cleared.`);
   ui.notice = parts.join(' ');

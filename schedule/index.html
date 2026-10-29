@@ -388,13 +388,14 @@ function importCSV(text, file){
     const rawStatus=g(r,'Status');
     if(hasStatus){ statusSeen[rawStatus||'(blank)'] = (statusSeen[rawStatus||'(blank)']||0)+1; if(!statusOk(rawStatus)) continue; }
     const status = hasStatus ? INCLUDE_STATUSES.find(st=>st.toLowerCase()===rawStatus.trim().toLowerCase().replace(/\s+/g,' ')) : 'Approved';
-    const office = g(r,'Region') || g(r,'Office');
+    // Patio ETACC: Branch is the office (e.g. "BIR - Birmingham"); Region is the wider area (e.g. "SE").
+    const region = g(r,'Region'), office = g(r,'Branch') || region || g(r,'Office');
     const start=normDate(g(r,'Start Date')), end=normDate(g(r,'End Date'))||start;
     if(!start){ badDate++; if(!badDateEx) badDateEx = g(r,'Start Date') || '(blank)'; continue; }
     let days = parseDaysHours(g(r,'Days & Hours'));
     if(!days.length){ noDays++; for(let d=start; d<=end && days.length<31; d=addDays(d,1)) days.push({date:d,start:'',stop:''}); }
     events.push({
-      key: eventKey(office,name,start), name, office, status, start, end, days,
+      key: eventKey(office,name,start), name, office, region, status, start, end, days,
       venueName:g(r,'Venue Name'), venueAddress:g(r,'Venue Address'), zip:g(r,'Zip'),
       organizer:g(r,'Organizer'), contactName:g(r,'Contact Name'), contactPhone:g(r,'Contact Phone'), contactEmail:g(r,'Contact Email'),
       boothNumber:g(r,'Booth Number'), boothLocation:g(r,'Booth Location'), boothSize:g(r,'Booth Size'),
@@ -721,7 +722,7 @@ function detailCard(e,days){
   const editRow = (k,v)=> editing ? `<dt>${k}</dt><dd>${v}</dd>` : row(k,v);
   return `<div class="det">
     <h3>${esc(e.name)}</h3>
-    <div class="office">${esc(e.office)} · ${esc(e.status)}</div>
+    <div class="office">${esc(e.office)}${e.region && e.region!==e.office ? ' ('+esc(e.region)+')' : ''} · ${esc(e.status)}</div>
     <dl>
       ${row('Days', inWeek.map(d=>`${esc(fmtLong(d.date))} ${esc(timeRange(d))}`).join('<br>'))}
       ${row('Venue', esc(e.venueName))}

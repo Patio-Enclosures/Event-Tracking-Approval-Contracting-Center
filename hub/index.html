@@ -30,9 +30,9 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .home{max-width:980px;margin:0 auto}
 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:6px}
 @media (max-width:760px){.tiles{grid-template-columns:1fr 1fr}}
-.tile{position:relative;aspect-ratio:1/1;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;cursor:pointer;display:flex;flex-direction:column;text-align:left;transition:transform .12s,box-shadow .12s,border-color .12s}
-.tile:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(20,40,30,.10);border-color:#9cc3ad}
-.tile .ic{width:54px;height:54px;border-radius:12px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:14px}
+.tile{position:relative;aspect-ratio:1/1;background:var(--surface);border:2px solid var(--tc,var(--line));border-radius:14px;padding:20px;cursor:pointer;display:flex;flex-direction:column;text-align:left;transition:transform .12s,box-shadow .12s,border-color .12s}
+.tile:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(20,40,30,.12);border-width:3px;padding:19px}
+.tile .ic{width:54px;height:54px;border-radius:12px;background:var(--tcs,var(--accent-soft));display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:14px}
 .tile h2{font-size:18px;margin:0 0 6px}
 .tile p{margin:0;color:var(--ink-soft);font-size:13.5px}
 .tile .stat{margin-top:auto;font-size:13px;font-weight:600;color:var(--accent)}
@@ -92,6 +92,16 @@ iframe.tool{width:100%;height:calc(100vh - 170px);min-height:600px;border:1px so
 .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media (max-width:760px){.two{grid-template-columns:1fr}.wrap{padding:10px}h1{font-size:18px}iframe.tool{height:calc(100vh - 200px)}}
 .marketer .wrap{max-width:640px}
+.photobtn{display:block;text-align:center;margin-top:4px}
+/* Phones: 16px text in fields stops iPhone Safari from zooming in; bigger tap targets for thumbs. */
+@media (max-width:760px){
+  input,select,textarea{font-size:16px!important}
+  .chk{padding:9px 0;min-height:40px}
+  .chk input{width:22px;height:22px}
+  .btn.sm{padding:8px 12px;font-size:14px}
+  .panel{padding:14px 12px}
+  .overlay{padding:8px 6px}
+}
 .scopewrap{position:relative}
 .scopepanel{position:absolute;right:0;top:calc(100% + 6px);z-index:40;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.15);padding:12px;width:340px;max-height:70vh;overflow:auto}
 .scopereg{border-top:1px solid var(--line-soft);padding:6px 0}.scopereg>.chk{font-weight:600}.scopeoffs{padding-left:24px}.scopeoffs .chk{padding:2px 0;font-size:13px}
@@ -788,7 +798,8 @@ function tilesView(){
   const gear=scopedAssets().filter(isGear).map(stOf);
   const out=gear.filter(g=>g.status==='out').length, overdue=gear.filter(g=>g.overdue).length, repair=gear.filter(g=>g.status==='repair').length;
   const low=scopedAssets().filter(isLow).length, staff=needsStaffing().length;
-  const tile=(k,desc,stat,cls,flag,flagCls)=>{ const [ic,l]=SECTIONS[k]; return `<div class="tile" data-tab="${k}" role="button" tabindex="0">${flag?`<span class="flag ${flagCls||''}">${flag}</span>`:''}<div class="ic">${ic}</div><h2>${esc(l)}</h2><p>${desc}</p><div class="stat ${cls||''}">${stat}</div></div>`; };
+  const TC={ today:['#2f5f9e','#e6eef8'], events:['#2f7a78','#dcebea'], schedule:['#6b4fbb','#efeafb'], checkin:['#24583f','#e6f0ea'], assets:['#b5791f','#f6e9d2'], evals:['#b0425e','#f8e4ea'] };
+  const tile=(k,desc,stat,cls,flag,flagCls)=>{ const [ic,l]=SECTIONS[k], [c,soft]=TC[k]||['#24583f','#e6f0ea']; return `<div class="tile" data-tab="${k}" role="button" tabindex="0" style="--tc:${c};--tcs:${soft}">${flag?`<span class="flag ${flagCls||''}">${flag}</span>`:''}<div class="ic">${ic}</div><h2>${esc(l)}</h2><p>${desc}</p><div class="stat ${cls||''}">${stat}</div></div>`; };
   return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span>${scopePicker()}</div>${staffBanner()}
   <div class="tiles">
     ${tile('today','Who’s scheduled, checked in, late or done, with photos and results.', today.length?`${today.length} shifts · ${inNow} working now${late?` · ${late} late`:''}`:'No shifts today', late?'alert':'', late||'', 'alert')}
@@ -923,7 +934,7 @@ function checkInPanel(p){
   return `<div class="panel"><h2>Check in · ${esc(s.ev.name)}</h2><div class="sub">${fmtLong(s.day.date)} · ${timeRange(s.day)} · ${esc(me.name||'')}</div>
     <div class="grid">
       <div><div class="lbl">1. Location</div>${p.loc?`<div class="small">📍 Location captured (±${p.loc.acc} m). <a href="${mapLink(p.loc)}" target="_blank" rel="noopener">View</a></div>`:p.locNote?`<div class="small" style="color:var(--warn)">${esc(p.locNote)} You can still check in.</div> <button class="btn sm" data-act="getLoc">Try again</button>`:'<div class="small muted">Getting your location…</div>'}</div>
-      <div><div class="lbl">2. Booth setup photo <span style="color:var(--red)">*</span></div><input type="file" accept="image/*" capture="environment" data-act="photo" data-slot="in">${p.photo?`<img class="preview" src="${p.photo}" alt="Booth photo">`:''}</div>
+      <div><div class="lbl">2. Booth setup photo <span style="color:var(--red)">*</span></div><label class="btn big photobtn">📷 ${p.photo?'Retake booth photo':'Take booth photo'}<input type="file" accept="image/*" capture="environment" data-act="photo" data-slot="in" style="display:none"></label>${p.photo?`<img class="preview" src="${p.photo}" alt="Booth photo">`:''}</div>
       <div><div class="lbl">3. Booth gear & kits you’re taking</div>${scanBox('checkin','Scan an item or kit barcode')}${ui.scanMsg?`<div class="small" style="color:${ui.scanMsg.kind==='ok'?'var(--accent)':'var(--red)'};margin:4px 0">${esc(ui.scanMsg.text)}</div>`:''}
         ${gear.length?gear.map(a=>{ const g=stOf(a), mine=g.holder&&g.holder.personId===p.pid, blocked=(g.status==='out'&&!mine)||g.status==='lost'; return `<label class="chk"><input type="checkbox" data-gear="${a.id}" ${p.gear.includes(a.id)?'checked':''} ${blocked&&!p.gear.includes(a.id)?'disabled':''}> ${a.kind==='kit'?'🧰 ':''}${esc(a.name)} <code class="small muted">${esc(a.code||'')}</code>${a.kind==='kit'?` <span class="small muted">(${(a.contents||[]).length} items)</span>`:''}${g.status==='out'?` <span class="small muted">${mine?'(you have this)':'(with '+esc(g.holder.personName)+')'}</span>`:g.status==='repair'?' <span class="small" style="color:var(--warn)">(needs repair)</span>':g.status==='lost'?' <span class="small muted">(lost)</span>':''}</label>`; }).join(''):'<div class="small muted">No booth gear set up for this office yet.</div>'}</div>
       <div class="field"><label>Note (optional)</label><textarea data-keep="in-note" placeholder="Anything your manager should know at setup">${esc(p.note||'')}</textarea></div>
@@ -946,7 +957,7 @@ function checkOutPanel(p){
     <h3>Any issues?</h3>${ISSUE_TYPES.map((t,i)=>`<label class="chk"><input type="checkbox" data-keep="iss-${i}"> ${esc(t)}</label>`).join('')}
     <div class="field" style="margin-top:6px"><textarea data-keep="out-issue" placeholder="Describe the issue or what you need (optional)"></textarea></div>
     <div class="field" style="margin-top:10px"><label>Shift notes</label><textarea data-keep="out-notes" placeholder="How did it go? Anything for next year?"></textarea></div>
-    <div style="margin-top:10px"><div class="lbl">Teardown photo (optional)</div><input type="file" accept="image/*" capture="environment" data-act="photo" data-slot="out">${p.photo?`<img class="preview" src="${p.photo}" alt="Teardown photo">`:''}</div>
+    <div style="margin-top:10px"><div class="lbl">Teardown photo (optional)</div><label class="btn big photobtn">📷 ${p.photo?'Retake teardown photo':'Take teardown photo'}<input type="file" accept="image/*" capture="environment" data-act="photo" data-slot="out" style="display:none"></label>${p.photo?`<img class="preview" src="${p.photo}" alt="Teardown photo">`:''}</div>
     ${p.err?`<div class="notice err" style="margin-top:10px">${esc(p.err)}</div>`:''}
     <div class="foot"><button class="btn" data-act="closePanel">Cancel</button><button class="btn primary" data-act="submitOut" ${ui.busy?'disabled':''}>${ui.busy?'Saving…':'Check out'}</button></div></div>`;
 }

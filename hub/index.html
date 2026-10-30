@@ -113,6 +113,7 @@ svg.bc{max-width:100%;height:auto}
 </head>
 <body>
 <div id="app"></div>
+<div id="frames" class="wrap" style="display:none;padding-top:0"></div>
 <div id="cam" hidden><video id="camVideo" playsinline muted></video><div class="row"><span id="camMsg" class="small" style="flex:1"></span><button class="btn sm" data-act="camStop">Done</button></div></div>
 <div id="printArea"></div>
 <script>
@@ -747,6 +748,7 @@ function render(){
   // lazy-load any photos now on screen
   app.querySelectorAll('img[data-photo]').forEach(im=>{ const id=im.dataset.photo; if(ui.photoCache[id]===undefined) getPhoto(id); });
   drawBarcodes();
+  syncFrames();
 }
 // keep typed text while live updates re-render
 function captureInputs(){ const m={}; document.querySelectorAll('[data-keep]').forEach(el=>{ m[el.dataset.keep]= el.type==='checkbox'?el.checked:el.value; }); const a=document.activeElement; return {m, focus:a&&a.dataset?a.dataset.keep:null}; }
@@ -809,9 +811,20 @@ function body(){
     default: return tilesView();
   }
 }
+function syncFrames(){
+  const box=document.getElementById('frames'); if(!box) return;
+  const want = ui.tab==='events' ? 'events' : ui.tab==='schedule' ? 'schedule' : '';
+  [['events',ETACC_URL,'Event Tracking, Approval & Contracting Center'],['schedule',SCHEDULE_URL,'Marketer Weekly Schedule']].forEach(([k,url,title])=>{
+    let f=box.querySelector(`iframe[data-k="${k}"]`);
+    if(!f && want===k){ f=document.createElement('iframe'); f.className='tool'; f.dataset.k=k; f.src=url; f.title=title; box.appendChild(f); }
+    if(f) f.style.display = want===k ? 'block' : 'none';
+  });
+  box.style.display = want ? 'block' : 'none';
+}
 function toolFrame(url,title){
-  return `<div class="row" style="margin-bottom:8px"><b>${esc(title)}</b><span class="spacer"></span><a class="btn sm" href="${url}" target="_blank" rel="noopener">Open in new tab ↗</a></div>
-  <iframe class="tool" src="${url}" title="${esc(title)}"></iframe>`;
+  // The tool itself lives in #frames, outside the part of the page that redraws, so live
+  // updates never reload it (which used to make it blink and lose unsaved edits).
+  return `<div class="row" style="margin-bottom:8px"><b>${esc(title)}</b><span class="spacer"></span><a class="btn sm" href="${url}" target="_blank" rel="noopener">Open in new tab ↗</a></div>`;
 }
 
 /* ---------------- TODAY ---------------- */

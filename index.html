@@ -1740,6 +1740,7 @@ let state = {
   activityFilterDateTo:'',
   activityFeedOpen:false,
   overviewSectionsOpen:{
+    last7Days:true,
     awaitingContract:false,
     vettingNeeded:false,
     staleResearch:false,
@@ -5961,6 +5962,44 @@ function renderOverview(allEvents){
   // right now, the same way the one-time 8/20/2026 bump did.
   // (The "Leads vs. Target Opps" KPI that used to also read this cutoff was removed 8/20/2026.)
   const POST_EVENT_EVAL_REMINDER_CUTOFF = getCurrentWeekRange().from;
+  // Last 7 Days -- pipeline changes (added 10/30/2026). Built from the activity log so it shows
+  // who moved which event and when: events added, submitted for approval, submitted for
+  // contract, denied, or marked not pursuing in the past 7 days, across every region.
+  const LAST7_CUTOFF = Date.now() - 7*24*60*60*1000;
+  const last7Kind = a => { a = String(a||'');
+    if(/^Created event/i.test(a)) return 'added';
+    if(/Submitted for Approval/i.test(a)) return 'approval';
+    if(/Submitted for contract processing|Status changed to Submitted for Contract/i.test(a)) return 'contract';
+    if(/Denied by Approver|Status changed to Declined/i.test(a)) return 'denied';
+    if(/Not Pursuing/i.test(a)) return 'notPursuing';
+    if(/Status changed to Researching/i.test(a)) return 'researching';
+    return null; };
+  const LAST7_META = { added:['Added','researching'], approval:['Submitted for Approval','execute'], contract:['Submitted for Contract','submitted'], denied:['Denied','declined'], notPursuing:['Not Pursuing','not_pursuing'], researching:['Back to Researching','researching'] };
+  const last7 = (state.activityLog||[]).filter(x=>x && x.ts>=LAST7_CUTOFF && last7Kind(x.action))
+    .map(x=>Object.assign({}, x, { kind:last7Kind(x.action), ev:(allEvents.find(e=>e.id===x.eventId) || state.events.find(e=>e.id===x.eventId) || null) }))
+    .sort((a,b)=>b.ts-a.ts)
+    // The same move can be logged twice (e.g. "Submitted for Contract Processing" plus the status change): keep one.
+    .filter((x,i,arr)=>!arr.slice(0,i).some(y=>y.kind===x.kind && (y.eventId||y.eventName)===(x.eventId||x.eventName) && Math.abs(y.ts-x.ts)<5*60*1000));
+  const last7Count = k => new Set(last7.filter(x=>x.kind===k).map(x=>x.eventId||x.eventName)).size;
+  const last7ContractValue = [...new Map(last7.filter(x=>x.kind==='contract' && x.ev).map(x=>[x.ev.id, x.ev])).values()].reduce((t,e)=>t+totalCost(e),0);
+  const last7Html = last7.length===0
+    ? `<div class="empty" style="padding:22px;"><div class="empty-title" style="font-size:15px;">No pipeline changes in the last 7 days</div></div>`
+    : `<div class="summary-kpi-card" style="margin-bottom:10px;">
+        <div class="summary-kpi-item"><div class="summary-kpi-label">Events Added</div><div class="summary-kpi-value">${last7Count('added')}</div></div>
+        <div class="summary-kpi-item"><div class="summary-kpi-label">Submitted for Approval</div><div class="summary-kpi-value">${last7Count('approval')}</div></div>
+        <div class="summary-kpi-item wide"><div class="summary-kpi-label">Submitted for Contract</div><div class="summary-kpi-value">${last7Count('contract')}</div><div class="summary-kpi-detail">${money(last7ContractValue)} est. cost</div></div>
+        <div class="summary-kpi-item"><div class="summary-kpi-label">Denied</div><div class="summary-kpi-value">${last7Count('denied')}</div></div>
+        <div class="summary-kpi-item"><div class="summary-kpi-label">Not Pursuing</div><div class="summary-kpi-value">${last7Count('notPursuing')}</div></div>
+      </div>
+      <div class="needs-decision-list">` + last7.slice(0,60).map(x=>{ const ev=x.ev, meta=LAST7_META[x.kind];
+        return `<div class="needs-decision-row" ${ev?`data-goto-event="${ev.id}" data-goto-event-region="${ev.region}"`:''}>
+          <div class="needs-decision-main">
+            <div class="needs-decision-name">${escapeHtml(x.eventName || (ev && ev.eventName) || 'Event')}</div>
+            <div class="needs-decision-meta">${new Date(x.ts).toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})} · ${escapeHtml(x.user||'')}${ev?` · ${escapeHtml(state.regionNames[ev.region]||'')}${ev.branch?' / '+escapeHtml(ev.branch):''} · ${escapeHtml(ev.startDate)||'No start date'} · Est. ${money(totalCost(ev))}`:''}</div>
+            ${x.details?`<div class="needs-decision-meta">${escapeHtml(x.details)}</div>`:''}
+          </div>
+          <span class="badge ${meta[1]}">${meta[0]}</span>
+        </div>`; }).join('') + `</div>` + (last7.length>60 ? `<div class="hint" style="margin-top:6px;">Showing the 60 most recent of ${last7.length} changes.</div>` : '');
   // Per-region rollup, sorted by total value desc -- scoped to the selected month/quarter period
   const periodFilteredEvents = allEvents.filter(ev => eventMatchesPeriod(ev, state.regionSummaryPeriodType, state.regionSummaryPeriod));
   const regionRollups = state.regionNames.map((name, idx)=>{
@@ -6333,6 +6372,11 @@ function renderOverview(allEvents){
       </div>
     </div>
     <div>
+      ${sectionHeader('last7Days', `Last 7 Days — Pipeline Changes (${last7.length})`, 'last7DaysSection', '🗓️')}
+      ${state.overviewSectionsOpen.last7Days ? `
+        <div class="hint" style="margin:-6px 0 10px 2px;">Events added, submitted for approval, submitted for contract, denied or marked Not Pursuing since ${new Date(LAST7_CUTOFF).toLocaleDateString()}. Click a row to open the event.</div>
+        ${last7Html}
+      ` : ''}
       ${sectionHeader('awaitingContract', `Awaiting Contract Processing — Submitted for Approval (${awaitingContract.length})`, 'pendingApprovalSection', '📨')}
       ${state.overviewSectionsOpen.awaitingContract ? `
         ${awaitingContractHtml}

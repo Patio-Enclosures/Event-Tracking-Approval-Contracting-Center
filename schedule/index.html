@@ -48,7 +48,8 @@ label.chk{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px}
 .staffwarn table{border-collapse:collapse;width:100%;font-size:13px}
 .staffwarn td{padding:4px 6px;border-top:1px solid #f3e1c4;vertical-align:top}
 .emailprev{border:1px solid var(--line);border-radius:8px;padding:12px;max-height:340px;overflow:auto;background:#fff}
-.rlist .r input.em{width:200px}
+.rlist .r input.em{width:190px}.rlist .r input.ph{width:120px}.rlist .r input.eid{width:80px}.rlist .r input.rg{width:60px}
+.modal{max-width:1100px}
 .trow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:3px 6px;align-items:center;margin-bottom:9px;max-width:300px}
 .trow>span:first-child{grid-column:1/-1;font-weight:600;font-size:12.5px}
 .trow>span:last-child{grid-column:1/-1}
@@ -175,7 +176,7 @@ h3.bh{font-size:14px;margin:18px 0 4px}
 <body>
 <div class="wrap" id="app"></div>
 <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none">
-<input type="file" id="rosterFile" accept=".csv,text/csv" style="display:none">
+<input type="file" id="rosterFile" accept=".csv,text/csv,.xlsx,.xls" style="display:none">
 <input type="file" id="backupFile" accept=".json,application/json" style="display:none">
 <script>
 /* ======================================================================
@@ -479,19 +480,21 @@ function seedRoster(){
   data.rosterAsOf = ROSTER_SEED_ASOF;
 }
 function mergeRoster(list){
-  let added=0, moved=0, updated=0;
+  let added=0, moved=0, updated=0; const seen=new Set();
   list.forEach(p=>{
     if(!p.name) return;
-    const hit = data.roster.find(r=>r.name.toLowerCase()===p.name.toLowerCase());
+    const hit = (p.empId && data.roster.find(r=>r.empId && String(r.empId)===String(p.empId))) || data.roster.find(r=>r.name.toLowerCase()===p.name.toLowerCase());
     const stats = ('hpi' in p || 'hrs' in p) ? { hpi:p.hpi??null, hrs:p.hrs??null, iss:p.iss??null } : {};
     if(hit){
+      seen.add(hit.id);
       if(p.office && hit.office!==p.office){ hit.office=p.office; moved++; }
       if('mgr' in p) hit.mgr=!!p.mgr;
       if(p.title) hit.title=p.title; if(p.hire) hit.hire=p.hire; if(p.email) hit.email=p.email;
+      if(p.phone) hit.phone=p.phone; if('region' in p) hit.region=p.region; if(p.empId) hit.empId=p.empId; if(p.name!==hit.name && p.empId && hit.empId===p.empId) hit.name=p.name;
       if(Object.keys(stats).length){ Object.assign(hit, stats); updated++; }
-    } else { data.roster.push(Object.assign({ id:uid(), name:p.name, office:p.office||'', mgr:!!p.mgr }, p.email?{email:p.email}:{}, p.title?{title:p.title}:{}, p.hire?{hire:p.hire}:{}, stats)); added++; }
+    } else { const nid=uid(); seen.add(nid); data.roster.push(Object.assign({ id:nid, name:p.name, office:p.office||'', mgr:!!p.mgr }, p.email?{email:p.email}:{}, p.phone?{phone:p.phone}:{}, p.region?{region:p.region}:{}, p.empId?{empId:p.empId}:{}, p.title?{title:p.title}:{}, p.hire?{hire:p.hire}:{}, stats)); added++; }
   });
-  return {added, moved, updated};
+  return {added, moved, updated, seen};
 }
 // Reads a roster spreadsheet saved as CSV. Needs a Name column (or First/Last). Optional columns:
 // Office/Region/Market, Manager (yes/no) or Title/Role, Hrs/Issued, or Hours + Issued.
@@ -503,7 +506,9 @@ function importRosterCSV(text, file){
   const like = re=>head.findIndex(h=>re.test(h));
   const iName = exact('name','employee','employee name','marketer','full name');
   const iFirst = exact('first name','first'), iLast = exact('last name','last');
-  const iOffice = like(/^(office|region|market|location|branch)/), iEmail = like(/e-?mail/);
+  let iOffice = like(/branch|office|location/); if(iOffice<0) iOffice = like(/^market/);
+  const iRegion = like(/^region/), iEmail = like(/e-?mail/), iPhone = like(/phone|mobile|cell/), iEmpId = like(/employee\s*(id|#|number|no)|^emp\s*(id|#|no)|^id$|^ee\s*id|badge|^file\s*(#|number)/);
+  const noBranchButRegion = iOffice<0 && iRegion>=0;
   let iMgr = like(/job title|^title$|^role$/); if(iMgr<0) iMgr = like(/primary position|^position$|manager|mgr/);
   const iStatus = like(/employee status|^status$/), iHire = like(/hire date/);
   const iHpi = like(/hrs\s*\/\s*issued|hours\s*(\/|per)\s*issued|hrs\s*per\s*issued/);
@@ -517,7 +522,13 @@ function importRosterCSV(text, file){
     const name = cleanName(iName>=0 ? get(iName) : [get(iFirst),get(iLast)].filter(Boolean).join(' '));
     if(!name || /^count of|^report total/i.test(name)) return;
     if(iStatus>=0 && get(iStatus) && !/^active/i.test(get(iStatus))) return;
-    const p = { name, office:get(iOffice) }; if(iEmail>=0 && /@/.test(get(iEmail))) p.email = get(iEmail);
+    const fileReg = iRegion>=0 && !noBranchButRegion ? get(iRegion) : '';
+    const p = { name, office: noBranchButRegion ? matchOffice(get(iRegion)) : matchOfficeR(get(iOffice), fileReg) };
+    if(iEmail>=0 && /@/.test(get(iEmail))) p.email = get(iEmail);
+    if(iPhone>=0 && /\d{3}/.test(get(iPhone))) p.phone = get(iPhone);
+    // Region: when the branch matched an ETACC branch, use ETACC's region for it; otherwise keep the file's (as a short code).
+    if(fileReg){ p.region = regionOf(p.office) ? '' : regionCode(fileReg); }
+    if(iEmpId>=0 && get(iEmpId)) p.empId = get(iEmpId).replace(/\.0+$/,'');
     if(iMgr>=0){ const m=get(iMgr); p.mgr = /^(y|yes|true|1|x)$/i.test(m) || isMgrTitle(m); if(/[a-z]{3}/i.test(m)) p.title = m.replace(/^[A-Z]+-/,''); }
     if(iHire>=0 && normDate(get(iHire))) p.hire = normDate(get(iHire));
     if(!p.mgr && (iHpi>=0 || iHrs>=0)){
@@ -527,10 +538,19 @@ function importRosterCSV(text, file){
     }
     list.push(p);
   });
-  const {added, moved, updated} = mergeRoster(list);
+  const {added, moved, updated, seen} = mergeRoster(list);
+  // Offer to remove people who aren't in the new file (e.g. the starter list or people who left).
+  const notIn = data.roster.filter(r=>!seen.has(r.id));
+  let removed = 0;
+  if(list.length && notIn.length && confirm(`${notIn.length} people on the roster aren’t in this file (for example: ${notIn.slice(0,5).map(r=>r.name).join(', ')}${notIn.length>5?'…':''}).\n\nRemove them, and take them off any shifts from today on?\n\nOK = remove them   Cancel = keep them`)){
+    const t=todayIso(), gone=new Set(notIn.map(r=>r.id));
+    data.roster = data.roster.filter(r=>!gone.has(r.id));
+    Object.keys(data.assignments).forEach(k=>{ const dt=k.split('#').pop(); if(dt>=t){ data.assignments[k]=data.assignments[k].filter(pid=>!gone.has(pid)); if(!data.assignments[k].length) delete data.assignments[k]; } });
+    removed = notIn.length;
+  }
   data.rosterAsOf = todayIso();
   if(iHpi>=0 || iHrs>=0) data.hpiAsOf = todayIso();
-  ui.notice = `Roster from ${file ? file.name : 'the file'}: ${added} added, ${moved} moved to a new office${updated?`, ${updated} with updated Hrs/Issued`:''}. Nobody was removed — use Remove for anyone who has left.`;
+  ui.notice = `Roster from ${file ? file.name : 'the file'}: ${added} added, ${moved} moved to a new office${updated?`, ${updated} with updated Hrs/Issued`:''}. ${removed?`${removed} not in the file were removed.`:'Nobody was removed — use Remove for anyone who has left.'}${list.filter(p=>p.office && !offices().includes(p.office)).length?` Some branches didn’t match an ETACC branch (${[...new Set(list.filter(p=>p.office && !data.events.some(e=>e.office===p.office)).map(p=>p.office))].slice(0,4).join(', ')}) — check their office in the list.`:''}`;
   save(); render();
 }
 function hpiText(p){ if(!p) return ''; if(p.mgr) return 'Manager'; if(p.hpi!=null) return `${p.hpi} hrs/issued`; if(p.hrs && p.iss===0) return '0 issued'; return ''; }
@@ -555,8 +575,38 @@ function offices(){
 function regionMap(){ const c={}; data.events.forEach(e=>{ if(e.office&&e.region){ c[e.office]=c[e.office]||{}; c[e.office][e.region]=(c[e.office][e.region]||0)+1; } });
   const m={}; Object.entries(c).forEach(([o,r])=>{ m[o]=Object.entries(r).sort((a,b)=>b[1]-a[1])[0][0]; }); return m; }
 function regionOf(o){ return regionMap()[o]||''; }
-function regions(){ return [...new Set(Object.values(regionMap()))].sort(); }
+function regions(){ return [...new Set([...Object.values(regionMap()), ...data.roster.map(r=>r.region).filter(Boolean)])].sort(); }
 function inView(o){ if(ui.office) return o===ui.office; if(ui.region) return regionOf(o)===ui.region; return true; }
+// A person's region: from the roster upload if given, otherwise from their branch's ETACC events.
+function personRegion(r){ return (r && (r.region || regionOf(r.office))) || ''; }
+function inViewP(r){ if(ui.office) return r.office===ui.office; if(ui.region) return personRegion(r)===ui.region; return true; }
+// "Patio South Atlantic Region" -> "SA", "Patio Midwest Region" -> "MW", "Mid-Atlantic North" -> "MAN".
+function regionCode(v){
+  if(/marketing|corporate|great day/i.test(String(v||''))) return 'Corporate';
+  v=String(v||'').replace(/\bpatio\b|\bregion\b/gi,'').trim(); if(!v) return '';
+  if(/^[A-Z]{1,4}$/.test(v)) return v;
+  const w=v.replace(/(north|south|mid)(east|west)/ig,'$1 $2').split(/[\s\-\/]+/).filter(Boolean);
+  return w.map(x=>x[0].toUpperCase()).join('');
+}
+// Match a branch name from a roster file to an ETACC branch ("Patio-Stanek Dallas-Ft. Worth" -> "DAL - Dallas"),
+// using the region to tell apart same-named cities (Charleston SC vs Charleston WV).
+function matchOfficeR(v, reg){
+  v=String(v||'').trim(); if(!v) return '';
+  const offs=offices(), lv=v.toLowerCase().replace(/^patio[\s\-]*stanek\s*/,'').trim(), rc=regionCode(reg);
+  const exact=offs.find(o=>o.toLowerCase()===v.toLowerCase()||o.toLowerCase()===lv); if(exact) return exact;
+  const city=o=>o.toLowerCase().split(' - ').pop().trim(), code=o=>o.toLowerCase().split(' - ')[0].trim();
+  let c=offs.filter(o=>code(o)===lv || city(o)===lv || lv.startsWith(city(o)+' ') || lv.startsWith(city(o)+'-') || city(o).startsWith(lv+' ') || lv.includes(city(o)));
+  if(c.length>1 && rc){ const byR=c.filter(o=>regionOf(o)===rc); if(byR.length) c=byR; }
+  if(c.length>1){ const exactCity=c.filter(o=>city(o)===lv); if(exactCity.length) c=exactCity; }
+  if(c.length===1 && (!rc || !regionOf(c[0]) || regionOf(c[0])===rc || regions().indexOf(rc)<0)) return c[0];
+  return v.replace(/^patio[\s\-]*stanek\s*/i,'') || v;
+}
+function matchOffice(v){
+  v=String(v||'').trim(); if(!v) return ''; const offs=offices(), lv=v.toLowerCase();
+  const exact=offs.find(o=>o.toLowerCase()===lv); if(exact) return exact;
+  const part=offs.find(o=>o.toLowerCase().split(/\s*-\s*/).some(x=>x===lv)); if(part) return part;
+  const loose=offs.filter(o=>o.toLowerCase().includes(lv)||lv.includes(o.toLowerCase().split(' - ').pop())); return loose.length===1 ? loose[0] : v;
+}
 function viewLabel(){ return ui.office || (ui.region ? ui.region+' region' : 'All offices'); }
 function visibleEvents(){ return data.events.filter(e=>inView(e.office) && INCLUDE_STATUSES.includes(e.status)); }
 // Events starting in the next 4 weeks that still have days nobody is assigned to.
@@ -576,6 +626,9 @@ function assigned(id){ return data.assignments[id] || []; }
 function person(id){ return data.roster.find(r=>r.id===id); }
 // A marketer's own hours on an event day: their partial-shift hours if set, else the event's hours.
 function shiftKey(id,pid){ return id+'::'+pid; }
+// Per-event check-in link for marketers (opens the hub's check-in page for this event).
+function hubHash(str){ let h=0x811c9dc5; for(let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,0x01000193); } return (h>>>0).toString(36); }
+function checkinLink(e){ return new URL('../hub/', location.href.split('#')[0]).href + '?m=1&e=' + hubHash(e.key); }
 function personDay(e,d,pid){ const o=(data.shiftTimes||{})[shiftKey(dayId(e,d),pid)]; return o&&(o.start||o.stop) ? Object.assign({}, d, { start:o.start||d.start, stop:o.stop||d.stop, partial:true }) : d; }
 function allShiftsFor(personId, date){
   const out=[];
@@ -634,7 +687,7 @@ function render(){
   <div class="toolbar">
     <select data-act="person" aria-label="Show schedule for">
       <option value="">Everyone</option>
-      ${rosterSorted().filter(r=>inView(r.office)).map(r=>`<option value="${r.id}" ${me&&me.id===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}
+      ${rosterSorted().filter(inViewP).map(r=>`<option value="${r.id}" ${me&&me.id===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}
     </select>
     ${regions().length ? `<select data-act="region" aria-label="Region">
       <option value="">All regions</option>
@@ -741,8 +794,8 @@ function shiftCard(s){
   const pool = rosterSorted().filter(r=>!ids.includes(r.id));
   const evReg = regionOf(s.ev.office);
   const same = pool.filter(r=>r.office===s.ev.office).sort(byHpi);
-  const sameReg = pool.filter(r=>r.office!==s.ev.office && evReg && regionOf(r.office)===evReg).sort(byHpi);
-  const other = pool.filter(r=>r.office!==s.ev.office && !(evReg && regionOf(r.office)===evReg));
+  const sameReg = pool.filter(r=>r.office!==s.ev.office && evReg && personRegion(r)===evReg).sort(byHpi);
+  const other = pool.filter(r=>r.office!==s.ev.office && !(evReg && personRegion(r)===evReg));
   const lbl = r => { const m=pbsMax(r), used=weekHoursFor(r.id);
     const cap = m===null ? '' : used>=m ? ` · AT PBS MAX (${+used.toFixed(1)}/${m} hrs)` : ` · ${+(m-used).toFixed(1)} of ${m} hrs left`;
     return `${esc(r.name)}${hpiText(r)?' · '+esc(hpiText(r)):''}${cap}`; };
@@ -759,7 +812,7 @@ function shiftCard(s){
       <option value="">+ Add marketer…</option>
       ${same.length?`<optgroup label="${esc(s.ev.office||'Office')}">${same.map(r=>`<option value="${r.id}">${lbl(r)}</option>`).join('')}</optgroup>`:''}
       ${sameReg.length?`<optgroup label="Borrow from another ${esc(evReg)} office">${sameReg.map(r=>`<option value="${r.id}">${lbl(r)} (${esc(r.office)})</option>`).join('')}</optgroup>`:''}
-      ${other.length?`<optgroup label="Borrow from another region">${other.map(r=>`<option value="${r.id}">${lbl(r)}${r.office?' ('+esc(r.office)+(regionOf(r.office)?', '+esc(regionOf(r.office)):'')+')':' (no office)'}</option>`).join('')}</optgroup>`:''}
+      ${other.length?`<optgroup label="Borrow from another region">${other.map(r=>`<option value="${r.id}">${lbl(r)}${r.office?' ('+esc(r.office)+(personRegion(r)?', '+esc(personRegion(r)):'')+')':' (no office)'}</option>`).join('')}</optgroup>`:''}
     </select>` : ''}
   </div>`;
 }
@@ -774,9 +827,9 @@ function shiftEditor(s,pid){
 function scheduledPeople(days){
   const people = new Map();
   days.forEach(d=>shiftsOn(d).forEach(s=>assigned(s.id).forEach(pid=>{ const p=person(pid); if(p) people.set(pid,p); })));
-  if(ui.showAllRoster) data.roster.filter(r=>inView(r.office)).forEach(r=>people.set(r.id,r));
+  if(ui.showAllRoster) data.roster.filter(inViewP).forEach(r=>people.set(r.id,r));
   // Our own people who are on loan to another office this week still show, so their hours add up.
-  if(ui.office||ui.region) data.roster.filter(r=>inView(r.office) && days.some(d=>allShiftsFor(r.id,d).length)).forEach(r=>people.set(r.id,r));
+  if(ui.office||ui.region) data.roster.filter(r=>inViewP(r) && days.some(d=>allShiftsFor(r.id,d).length)).forEach(r=>people.set(r.id,r));
   return [...people.values()].sort((a,b)=>(a.office||'').localeCompare(b.office||'')||a.name.localeCompare(b.name));
 }
 function gridHtml(days, me){
@@ -841,6 +894,7 @@ function detailCard(e,days){
       ${row('Staff', [...staff].map(pid=>{ const p=person(pid); return p ? esc(p.name) : ''; }).filter(Boolean).join(', ') || '<span style="color:var(--red)">None yet</span>')}
       ${row('Notes', esc(e.notes))}
     </dl>
+    <div class="no-print" style="margin-top:8px;"><button class="btn sm" data-act="copylink" data-key="${esc(e.key)}">🔗 Copy check-in link</button>${ui.copiedKey===e.key?' <span class="hint" style="color:var(--accent);font-weight:600;">Copied — paste it into a text or email</span>':''}</div>
     ${!editing && canEdit() && !(cloud.status==='live' && !cloud.user) ? `<div class="no-print" style="margin-top:8px;"><a href="#" data-act="detedit" data-key="${esc(e.key)}">✎ ${e.days.some(d=>!d.start&&!d.stop) ? 'Add show hours, ' : 'Edit hours, '}booth location &amp; set up</a></div>` : ''}
   </div>`;
 }
@@ -848,7 +902,7 @@ function detailCard(e,days){
 function emailRecipients(){
   const days=viewDays(), ids=new Set();
   days.forEach(d=>shiftsOn(d).forEach(s=>assigned(s.id).forEach(pid=>ids.add(pid))));
-  if(ui.emailAll) data.roster.filter(r=>inView(r.office)).forEach(r=>ids.add(r.id));
+  if(ui.emailAll) data.roster.filter(inViewP).forEach(r=>ids.add(r.id));
   return [...ids].map(person).filter(Boolean).sort((a,b)=>a.name.localeCompare(b.name));
 }
 function emailSubject(){ const d=viewDays(); return d.length>7 ? `Patio Enclosures event schedule – ${viewLabel()} – ${fmtFull(d[0])} to ${fmtFull(d[d.length-1])}` : `Patio Enclosures event schedule – ${viewLabel()} – week of ${fmtFull(d[0])}`; }
@@ -856,7 +910,7 @@ function emailHtml(days, label){
   const td='padding:6px 8px;border:1px solid #d8dfda;font:13px Segoe UI,Arial,sans-serif;vertical-align:top;';
   const th=td+'background:#24583f;color:#ffffff;font-weight:600;text-align:left;';
   const evs=visibleEvents().filter(e=>e.days.some(d=>days.includes(d.date))).sort((a,b)=>a.start.localeCompare(b.start)||a.name.localeCompare(b.name));
-  const parts=[`<p style="font:14px Segoe UI,Arial,sans-serif;">Hi team,</p><p style="font:14px Segoe UI,Arial,sans-serif;">Here is the event schedule for <b>${esc(viewLabel())}</b>, ${days.length>7?'':'week of '}<b>${esc(label)}</b>. Please check in at the booth when you arrive and check out at the end of your shift using the <b>📍 Check in / out</b> button on the schedule.</p>`];
+  const parts=[`<p style="font:14px Segoe UI,Arial,sans-serif;">Hi team,</p><p style="font:14px Segoe UI,Arial,sans-serif;">Here is the event schedule for <b>${esc(viewLabel())}</b>, ${days.length>7?'':'week of '}<b>${esc(label)}</b>. When you arrive at the booth, tap the <b>📍 Check in / out</b> button under your event below. Use the same button to check out at the end of your shift.</p>`];
   evs.forEach(e=>{
     const det=(data.details||{})[e.key]||{}, addr=[e.venueName,e.venueAddress,e.zip].filter(Boolean).join(', ');
     const booth=[e.boothNumber?'Booth #'+e.boothNumber:'', det.booth||e.boothLocation||'', e.boothSize].filter(Boolean).join(' · ');
@@ -865,6 +919,7 @@ function emailHtml(days, label){
       return `<tr><td style="${td}">${esc(fmtLong(d.date))}</td><td style="${td}">${esc(timeRange(d))}</td><td style="${td}">${ppl||'<span style="color:#b42318;font-weight:600;">Unstaffed</span>'}</td></tr>`; }).join('');
     parts.push(`<h3 style="font:600 16px Segoe UI,Arial,sans-serif;color:#24583f;margin:18px 0 4px;">${esc(e.name)}</h3>
       <div style="font:13px Segoe UI,Arial,sans-serif;color:#333;margin-bottom:6px;">${esc(e.office||'')}${addr?' · '+(e.venueAddress?`<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}">${esc(addr)}</a>`:esc(addr)):''}${booth?'<br>'+esc(booth):''}${setup?'<br><b>Set up:</b> '+esc(setup):''}${e.contactName||e.contactPhone?'<br><b>Contact:</b> '+esc([e.contactName,e.contactPhone].filter(Boolean).join(' · ')):''}</div>
+      <div style="font:13px Segoe UI,Arial,sans-serif;margin:0 0 6px;"><a href="${checkinLink(e)}" style="display:inline-block;background:#24583f;color:#ffffff;text-decoration:none;font-weight:600;padding:6px 12px;border-radius:6px;">📍 Check in / out for this event</a></div>
       <table style="border-collapse:collapse;"><tr><th style="${th}">Day</th><th style="${th}">Shift</th><th style="${th}">Marketers</th></tr>${rows}</table>`);
   });
   if(!evs.length) parts.push('<p style="font:14px Segoe UI,Arial,sans-serif;">No events are scheduled this week.</p>');
@@ -902,13 +957,15 @@ function rosterModal(){
   return `<div class="modal-bg" data-act="closemodal"><div class="modal" role="dialog" aria-modal="true" aria-label="Roster">
     <h2>Marketer roster</h2>
     <div class="hint" style="margin-bottom:10px;">${data.rosterAsOf ? `Last roster upload ${esc(fmtFull(data.rosterAsOf))}. ` : ''}${data.hpiAsOf ? `Hrs/Issued as of ${esc(fmtFull(data.hpiAsOf))} (${esc(HPI_NOTE)}). ` : ''}
-      <button class="btn sm" data-act="rosterfile">Upload roster CSV…</button>
-      <span class="hint">A UKG roster saved as CSV works. Also reads Office, and Hrs/Issued — or Hours and Issued.</span></div>
+      <button class="btn sm" data-act="rosterfile">Upload roster (Excel or CSV)…</button>
+      <button class="btn sm" data-act="rosterdl">⬇ Download roster CSV</button>
+      <span class="hint">Columns read: Employee ID, Name (or First/Last), Branch, Region, Email, Phone, Title, Hire Date, Status, Hrs/Issued. People are matched by Employee ID, then name. Tip: download the roster, fill it in with Excel, save as CSV and upload it back.</span></div>
     <div class="hint" style="margin-bottom:8px;">Or paste one name per line, type or pick their office, and click Add.</div>
     <textarea id="rosterNames" placeholder="Jane Smith&#10;Carlos Rivera"></textarea>
     <div class="row" style="margin-top:8px;">
       <input type="text" id="rosterOffice" list="officeList" placeholder="Office" value="${esc(ui.office)}" aria-label="Office">
       <datalist id="officeList">${offs.map(o=>`<option value="${esc(o)}">`).join('')}</datalist>
+      <datalist id="regionList">${regions().map(r=>`<option value="${esc(r)}">`).join('')}</datalist>
       <label class="chk"><input type="checkbox" id="rosterMgr"> Managers</label>
       <button class="btn primary" data-act="rosteradd">Add</button>
     </div>
@@ -917,8 +974,10 @@ function rosterModal(){
       <span class="nm">${esc(r.name)}${r.mgr?' <span class="tag" style="background:var(--accent-soft);color:var(--accent);">MGR</span>':''}${r.title?`<span class="hint" style="display:block;font-weight:400;">${esc(r.title)}${r.hire?' · hired '+esc(fmtFull(r.hire)):''}</span>`:''}</span>
       ${pbsText(r)?`<span class="hpi ${hpiTier(r)}">${esc(pbsText(r))}</span>`:''}
       ${r.mgr ? '' : `<input type="number" min="0" step="0.1" data-hpiperson="${r.id}" value="${r.hpi??''}" placeholder="Hrs/Iss" title="Hrs/Issued" aria-label="Hrs per issued for ${esc(r.name)}">`}
-      <input type="email" class="em" data-emailperson="${r.id}" value="${esc(r.email||'')}" placeholder="Email (for schedule emails)" aria-label="Email for ${esc(r.name)}">
-      ${regionOf(r.office)?`<span class="hint">${esc(regionOf(r.office))}</span>`:''}
+      <input type="email" class="em" data-emailperson="${r.id}" value="${esc(r.email||'')}" placeholder="Email" aria-label="Email for ${esc(r.name)}">
+      <input type="tel" class="ph" data-phoneperson="${r.id}" value="${esc(r.phone||'')}" placeholder="Phone" aria-label="Phone for ${esc(r.name)}">
+      <input type="text" class="eid" data-empperson="${r.id}" value="${esc(r.empId||'')}" placeholder="Emp ID" aria-label="Employee ID for ${esc(r.name)}">
+      <input type="text" class="rg" data-regionperson="${r.id}" value="${esc(r.region||'')}" placeholder="${esc(regionOf(r.office)||'Region')}" list="regionList" title="Region (blank = from branch's ETACC events)" aria-label="Region for ${esc(r.name)}">
       <select class="of" data-moveperson="${r.id}" aria-label="Office for ${esc(r.name)}">${(r.office ? [] : ['']).concat(offs).map(o=>`<option ${o===(r.office||'')?'selected':''}>${esc(o)}</option>`).join('')}</select>
       <button class="btn sm" data-delperson="${r.id}">Remove</button></div>`).join('') || '<div class="r hint">No marketers yet.</div>'}</div>
     <div class="row" style="margin-top:12px;justify-content:flex-end;"><button class="btn" data-act="closemodal-btn">Done</button></div>
@@ -971,6 +1030,8 @@ document.addEventListener('click', e=>{
     }
     case 'discard': discardChanges(); break;
     case 'shcancel': ui.editShift=null; render(); break;
+    case 'copylink': { const ev=data.events.find(x=>x.key===t.dataset.key); if(!ev) break; const link=checkinLink(ev);
+      navigator.clipboard.writeText(link).then(()=>{ ui.copiedKey=ev.key; render(); setTimeout(()=>{ if(ui.copiedKey===ev.key){ ui.copiedKey=null; render(); } },4000); }).catch(()=>{ prompt('Copy this check-in link:', link); }); break; }
     case 'shfull': { if(!canEdit()) break; delete (data.shiftTimes||{})[t.dataset.key]; ui.editShift=null; save(); render(); break; }
     case 'shsave': {
       if(!canEdit()) break;
@@ -990,6 +1051,13 @@ document.addEventListener('click', e=>{
     }
     case 'import': document.getElementById('csvFile').click(); break;
     case 'rosterfile': document.getElementById('rosterFile').click(); break;
+    case 'rosterdl': {
+      const head=['Employee ID','Name','Branch','Region','Email','Phone','Title','Hire Date','Manager','Hrs/Issued'];
+      const rows=rosterSorted().map(r=>[r.empId||'', r.name, r.office||'', personRegion(r), r.email||'', r.phone||'', r.title||'', r.hire||'', r.mgr?'Yes':'', r.hpi??'']);
+      const csv=[head,...rows].map(r=>r.map(x=>{ const v=String(x??''); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(',')).join('\r\n');
+      const url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'})), a=document.createElement('a');
+      a.href=url; a.download=`patio-enclosures-roster_${todayIso()}.csv`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); break;
+    }
     case 'roster': ui.modal='roster'; render(); setTimeout(()=>{ const el=document.getElementById('rosterNames'); el&&el.focus(); },0); break;
     case 'closemodal': case 'closemodal-btn': ui.modal=null; render(); break;
     case 'rosteradd': {
@@ -1026,6 +1094,9 @@ document.addEventListener('change', e=>{
   const t=e.target;
   if(t.dataset.moveperson){ const p=person(t.dataset.moveperson); if(p){ p.office=t.value; save(); render(); } return; }
   if(t.dataset.emailperson){ const p=person(t.dataset.emailperson); if(p){ p.email=t.value.trim(); save(); } return; }
+  if(t.dataset.phoneperson){ const p=person(t.dataset.phoneperson); if(p){ p.phone=t.value.trim(); save(); } return; }
+  if(t.dataset.empperson){ const p=person(t.dataset.empperson); if(p){ p.empId=t.value.trim(); save(); } return; }
+  if(t.dataset.regionperson){ const p=person(t.dataset.regionperson); if(p){ p.region=t.value.trim(); save(); render(); } return; }
   if(t.dataset.hpiperson){ const p=person(t.dataset.hpiperson); if(p){ const v=parseFloat(t.value); p.hpi = isNaN(v)||v<=0 ? null : Math.round(v*10)/10; data.hpiAsOf=todayIso(); save(); render(); } return; }
   if(t.dataset.assign){ if(t.value && canEdit()){ const id=t.dataset.assign; data.assignments[id]=[...assigned(id), t.value]; ui.editShift=shiftKey(id,t.value); save(); render(); } return; }
   switch(t.dataset.act){
@@ -1045,7 +1116,14 @@ function readFile(input, fn){
   });
 }
 readFile(document.getElementById('csvFile'), importCSV);
-readFile(document.getElementById('rosterFile'), importRosterCSV);
+// Roster accepts CSV or Excel (.xlsx/.xls); Excel is converted with SheetJS (same library ETACC uses).
+document.getElementById('rosterFile').addEventListener('change', e=>{
+  const f=e.target.files[0]; if(!f) return;
+  if(/\.xlsx?$/i.test(f.name)){
+    const go=()=>{ const r=new FileReader(); r.onload=()=>{ try{ const wb=XLSX.read(r.result,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; importRosterCSV(XLSX.utils.sheet_to_csv(ws,{blankrows:false}), f); }catch(err){ alert('Couldn’t read that Excel file. Save it as CSV and try again.'); } e.target.value=''; }; r.readAsArrayBuffer(f); };
+    if(window.XLSX) go(); else { const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; sc.onload=go; sc.onerror=()=>{ alert('Couldn’t load the Excel reader. Save the file as CSV and upload that instead.'); e.target.value=''; }; document.head.appendChild(sc); }
+  } else { const r=new FileReader(); r.onload=()=>{ importRosterCSV(r.result, f); e.target.value=''; }; r.readAsText(f); }
+});
 readFile(document.getElementById('backupFile'), (text)=>{
   try{ const d=JSON.parse(text); if(!Array.isArray(d.events)||!Array.isArray(d.roster)) throw new Error('bad');
     if(confirm('Replace everything here with this backup?')){ data=Object.assign({events:[],roster:[],assignments:{},details:{}},d); ui.notice='Backup restored.'; save(); render(); } }

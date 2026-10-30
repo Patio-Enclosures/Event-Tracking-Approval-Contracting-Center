@@ -218,7 +218,7 @@ function shiftsOn(date){
   liveEvents().forEach(e=>e.days.forEach(d=>{
     if(d.date!==date) return;
     const id=dayId(e,d);
-    (S.sched.assignments[id]||[]).forEach(pid=>out.push({ ev:e, day:d, dayId:id, personId:pid, cid:checkinId(id,pid), c:S.checkins[checkinId(id,pid)]||null }));
+    (S.sched.assignments[id]||[]).forEach(pid=>out.push({ ev:e, day:personDay(id,d,pid), dayId:id, personId:pid, cid:checkinId(id,pid), c:S.checkins[checkinId(id,pid)]||null }));
   }));
   // Unscheduled check-ins (marketer filled in) for that date
   Object.values(S.checkins).forEach(c=>{
@@ -228,6 +228,8 @@ function shiftsOn(date){
   });
   return out.sort((a,b)=>(toMin(a.day.start)??9999)-(toMin(b.day.start)??9999) || a.ev.name.localeCompare(b.ev.name) || personName(a.personId).localeCompare(personName(b.personId)));
 }
+// A marketer's own hours that day (partial shift) or the event's hours.
+function personDay(id,d,pid){ const o=((S.sched.shiftTimes||{})[id+'::'+pid]); return o&&(o.start||o.stop) ? Object.assign({}, d, { start:o.start||d.start, stop:o.stop||d.stop, partial:true }) : d; }
 function shiftStatus(s){
   const c=s.c;
   if(c && c.status==='out') return { k:'out', label:`Checked out ${fmtClock(c.outAt)}`, cls:'p-green' };
@@ -621,7 +623,7 @@ async function initDB(){
         live(); const d=snap.exists()?snap.data():null;
         if(name==='events') S.sched.events=(d&&d.list)||[];
         if(name==='roster') S.sched.roster=(d&&d.list)||[];
-        if(name==='assignments') S.sched.assignments=Object.fromEntries(((d&&d.list)||[]).map(x=>[x.id,x.people||[]]));
+        if(name==='assignments'){ S.sched.assignments=Object.fromEntries(((d&&d.list)||[]).map(x=>[x.id,x.people||[]])); S.sched.shiftTimes={}; ((d&&d.list)||[]).forEach(x=>Object.entries(x.times||{}).forEach(([pid,t])=>{ S.sched.shiftTimes[x.id+'::'+pid]=t; })); }
         if(name==='details') S.sched.details=Object.fromEntries(((d&&d.list)||[]).map(x=>[x.key,x]));
         mergeMgrTimes(); S.schedLoaded=true; render();
       }, fail('schedule'));
@@ -899,7 +901,7 @@ function shiftCard(s){
     <div style="margin-top:10px">${canIn?`<button class="btn big primary" data-act="openIn" data-day="${esc(s.dayId)}" data-pid="${esc(s.personId)}">📍 Check in</button>`:canOut?`<button class="btn big primary" data-act="openOut" data-cid="${c.id}">✅ Check out</button>`:(!c&&s.day.date>today?'<span class="small muted">Check-in opens on the day of the shift.</span>':'')}</div></div>`;
 }
 function findShift(dId,pid){
-  for(const e of S.sched.events) for(const d of e.days) if(dayId(e,d)===dId) return {ev:e,day:d,dayId:dId,personId:pid,cid:checkinId(dId,pid),c:S.checkins[checkinId(dId,pid)]||null};
+  for(const e of S.sched.events) for(const d of e.days) if(dayId(e,d)===dId) return {ev:e,day:personDay(dId,d,pid),dayId:dId,personId:pid,cid:checkinId(dId,pid),c:S.checkins[checkinId(dId,pid)]||null};
   return null;
 }
 function checkInPanel(p){

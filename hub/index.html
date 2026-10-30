@@ -175,7 +175,7 @@ function addDays(iso,n){ const d=parseIso(iso); d.setDate(d.getDate()+n); return
 function fmtLong(iso){ return iso ? parseIso(iso).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) : ''; }
 function fmtMD(iso){ const d=parseIso(iso); return `${d.getMonth()+1}/${d.getDate()}`; }
 function toMin(t){ if(!t) return null; const [h,m]=t.split(':').map(Number); return h*60+(m||0); }
-function fmtTime(t){ const x=toMin(t); if(x===null) return ''; const h=Math.floor(x/60), m=x%60; return `${((h+11)%12)+1}${m?':'+pad(m):''}${h>=12?'p':'a'}`; }
+function fmtTime(t){ const x=toMin(t); if(x===null) return ''; const h=Math.floor(x/60)%24, m=x%60; return `${((h+11)%12)+1}${m?':'+pad(m):''}${h>=12?'p':'a'}`; }
 function timeRange(d){ return (d.start||d.stop) ? `${fmtTime(d.start)||'?'}–${fmtTime(d.stop)||'?'}` : 'Times TBD'; }
 function fmtClock(ms){ return ms ? new Date(ms).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : ''; }
 function fmtStamp(ms){ return ms ? new Date(ms).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : ''; }

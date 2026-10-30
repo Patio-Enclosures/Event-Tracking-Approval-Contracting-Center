@@ -93,6 +93,8 @@ iframe.tool{width:100%;height:calc(100vh - 170px);min-height:600px;border:1px so
 @media (max-width:760px){.two{grid-template-columns:1fr}.wrap{padding:10px}h1{font-size:18px}iframe.tool{height:calc(100vh - 200px)}}
 .marketer .wrap{max-width:640px}
 .photobtn{display:block;text-align:center;margin-top:4px}
+.adpbox{background:#fff6e0;border:2px solid #f0c060;border-radius:10px;padding:10px 12px}
+.adpbox .adpt{font-weight:700;font-size:15px;color:#7a4b00;margin-bottom:2px}
 /* Phones: 16px text in fields stops iPhone Safari from zooming in; bigger tap targets for thumbs. */
 @media (max-width:760px){
   input,select,textarea{font-size:16px!important}
@@ -111,9 +113,18 @@ svg.bc{max-width:100%;height:auto}
 #cam video{width:100%;border-radius:8px;display:block;max-height:46vh;object-fit:cover}
 #cam .row{color:#fff;margin-top:6px}
 #printArea{display:none}
+.exrow{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px;background:#fbfcfb}
+table.extot{width:auto;min-width:280px;margin-top:8px}table.extot td,table.extot th{padding:4px 10px;border-bottom:1px solid var(--line-soft);text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--ink)}table.extot td:last-child,table.extot th:last-child{text-align:right}
+table.extab th{font-size:11px}table.meals{width:auto;margin:6px 0}table.meals td,table.meals th{text-align:center;padding:4px 10px}table.meals td:first-child{text-align:left}
+.exthumb{width:70px;height:52px;object-fit:cover;border-radius:5px;border:1px solid var(--line);vertical-align:middle;cursor:zoom-in}
+.exdoc h3{margin:14px 0 4px}
 @media print{
-  body.printing-labels #app, body.printing-labels .overlay, body.printing-labels #cam{display:none!important}
+  body.printing-labels #app, body.printing-labels .overlay, body.printing-labels #cam, body.printing-labels #frames{display:none!important}
   body.printing-labels #printArea{display:block}
+  body.printing-expense #app, body.printing-expense .overlay, body.printing-expense #cam, body.printing-expense #frames{display:none!important}
+  body.printing-expense #printArea{display:block;font:11px Arial,sans-serif}
+  body.printing-expense table{border-collapse:collapse;width:100%}body.printing-expense td,body.printing-expense th{border:1px solid #ccc;padding:3px 5px;font-size:10.5px}
+  body.printing-expense .prcpt{max-width:240px;max-height:300px;display:block;margin:4px 0}
   @page{margin:0.5in 0.19in}
   .labels{display:grid;grid-template-columns:repeat(3,2.625in);grid-auto-rows:1in;column-gap:0.125in}
   .label{height:1in;padding:0.06in 0.1in;overflow:hidden;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;font:9px Arial,sans-serif}
@@ -153,6 +164,16 @@ const SITE = 'https://patio-enclosures.github.io/Event-Tracking-Approval-Contrac
 const ETACC_URL = SITE, SCHEDULE_URL = SITE + 'schedule/';
 const INCLUDE_STATUSES = ['Approved','Submitted for Contract'];
 const LATE_MIN = 15;              // minutes after shift start before "Late"
+// ADP stays the time clock: check-in/out reminds marketers to punch there too.
+const ADP_URL = 'https://my.adp.com/';
+function adpBox(kind, checked){
+  const word = kind==='in' ? 'in' : 'out';
+  return `<div class="adpbox"><div class="adpt">⏰ Clock ${word} on ADP</div>
+    <div class="small">Your pay comes from ADP, not this check-${word}. Open the ADP app and clock ${word} now${kind==='out'?' (and record any meal break)':''}.</div>
+    ${kind==='in'?`<div class="small" style="margin-top:4px"><b>Picking up equipment at the office?</b> Clock in on ADP when you <b>arrive at the office</b>, not at the booth. Your paid time runs from the office until you clock out at the end of your shift.</div>`:''}
+    <a class="btn sm" href="${ADP_URL}" target="_blank" rel="noopener" style="margin:6px 0;display:inline-block;text-decoration:none">Open ADP ↗</a>
+    <label class="chk"><input type="checkbox" data-keep="adp-${word}" ${checked?'checked':''}> <b>I’ve clocked ${word} on ADP</b></label></div>`;
+}
 const ISSUE_TYPES = ['Missing or damaged booth gear','Running low on giveaways / print','Booth location problem','Low foot traffic','Organizer / venue issue','Weather','Other'];
 const EVAL_FIELDS = ['eventActivationStatus','numberOfLeads','totalAppointments','leadsPerHour','totalCallToSets','whoWorkedEvent','overallEventRating','staffComplianceRating','issuesEncountered','whatWentWell','notesForNextYear','roiNotes','actualLaborCost','actualPerDiem','actualPhoneCost','actualMileageCost','actualMiscExpenses'];
 
@@ -164,7 +185,7 @@ const EVENT_LINK = params.get('e') || '';   // per-event check-in link: ?m=1&e=<
 const S = {
   mode:'connecting', err:'', user:null, authErr:'',
   sched:{ events:[], roster:[], assignments:{}, details:{} }, schedLoaded:false,
-  checkins:{}, assets:[], assetsMeta:{}, evals:{}, alog:[], audits:{},
+  checkins:{}, assets:[], assetsMeta:{}, evals:{}, alog:[], audits:{}, expenses:{},
   etacc:null, etaccErr:'',
 };
 const ui = {
@@ -581,6 +602,258 @@ function drawBarcodes(){
   loadScript(JSB_URL).then(()=>svgs.forEach(sv=>{ if(sv.dataset.code && !sv.dataset.done){ try{ JsBarcode(sv, sv.dataset.code, { format:'CODE128', height:50, width:1.8, fontSize:13, margin:4 }); sv.dataset.done=1; }catch(e){} } })).catch(()=>{});
 }
 
+/* =====================================================================
+   EXPENSE REPORTS (replaces the GDI Expense Reimbursement Jotform)
+   One report per marketer per week (Mon–Sun). Mileage GL 73200, per diem
+   GL 73300, reimbursable expenses. Marketer submits; a manager approves
+   or returns it. Approved totals feed post-event evaluation costs.
+   Banking details are NOT collected here (see BANKING_FORM_URL).
+   ===================================================================== */
+const RATE_MARKETER = 0.76, RATE_MANAGER = 0.26;            // $/mile; managers (REM) have a car allowance
+const PER_DIEM = { b:6, l:12, d:25 };                         // only on hotel dates
+const MISC_CATS = ['Parking','Tolls','Fuel','Hotel (paid personally)','Event supplies','Booth cost','Shipping','Phone stipend','Other'];
+const NO_RECEIPT_CATS = ['Phone stipend'];
+const BANKING_FORM_URL = 'https://form.jotform.com/263027465665059';   // secure, encrypted banking-only Jotform (goes to Accounts Payable)
+const ACCOUNTING_EMAIL = 'accountspayable@greatdayimprovements.com';   // approved reports are emailed here
+const CERTIFY_TEXT = 'I confirm that the information provided above is accurate and truthful, that these expenses were incurred for company business, and that receipts are attached as required.';
+
+function money2(n){ return '$'+(Math.round(num(n)*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function mondayOf(iso){ const d=parseIso(iso); const k=(d.getDay()+6)%7; d.setDate(d.getDate()-k); return isoOf(d); }
+function datesBetween(a,b){ const out=[]; if(!a||!b||b<a) return out; for(let d=a; d<=b && out.length<31; d=addDays(d,1)) out.push(d); return out; }
+function myExpIds(){ try{ return JSON.parse(lsGet('peHub.myExp')||'[]'); }catch(e){ return []; } }
+function rememberExp(id){ const a=myExpIds(); if(!a.includes(id)){ a.push(id); lsSet('peHub.myExp', JSON.stringify(a.slice(-60))); } }
+function expRate(p){ return p && p.mgr ? RATE_MANAGER : RATE_MARKETER; }
+function getPath(o,p){ return p.split('.').reduce((x,k)=>x==null?x:x[k], o); }
+function setPath(o,p,v){ const ks=p.split('.'); let x=o; ks.slice(0,-1).forEach(k=>{ if(x[k]==null) x[k]={}; x=x[k]; }); x[ks[ks.length-1]]=v; }
+
+function expCalc(x){
+  const totalMiles=(x.trips||[]).reduce((t,r)=>t+num(r.miles),0);
+  const nonReimb=num(x.commuteDays)*num(x.commuteMiles);
+  const eligible=Math.max(0,totalMiles-nonReimb);
+  const mileage=Math.round(eligible*num(x.rate)*100)/100;
+  let b=0,l=0,d=0,nights=0;
+  (x.stays||[]).forEach(s=>{ nights+=Math.max(0,datesBetween(s.checkIn,s.checkOut).length-1); datesBetween(s.checkIn,s.checkOut).forEach(dt=>{ const m=(s.meals||{})[dt]||{}; if(m.b!==false) b++; if(m.l!==false) l++; if(m.d!==false) d++; }); });
+  const perDiem=b*PER_DIEM.b+l*PER_DIEM.l+d*PER_DIEM.d;
+  const misc=Math.round((x.misc||[]).reduce((t,r)=>t+num(r.amount),0)*100)/100;
+  return { totalMiles, nonReimb, eligible, mileage, b, l, d, nights, perDiem, misc, total:Math.round((mileage+perDiem+misc)*100)/100 };
+}
+// Dollars per event from approved reports (mileage split by each trip's share of miles).
+function expenseCostsForEvent(e){
+  const out={ mileage:0, perDiem:0, misc:0, phone:0, reports:0 };
+  Object.values(S.expenses).filter(x=>x.status==='approved').forEach(x=>{
+    const c=expCalc(x); let hit=false;
+    const ratio=c.totalMiles ? c.mileage/c.totalMiles : 0;
+    (x.trips||[]).forEach(r=>{ if(r.eventKey===e.key){ out.mileage+=num(r.miles)*ratio; hit=true; } });
+    (x.stays||[]).forEach(s=>{ if(s.eventKey===e.key){ datesBetween(s.checkIn,s.checkOut).forEach(dt=>{ const m=(s.meals||{})[dt]||{}; out.perDiem+=(m.b!==false?PER_DIEM.b:0)+(m.l!==false?PER_DIEM.l:0)+(m.d!==false?PER_DIEM.d:0); }); hit=true; } });
+    (x.misc||[]).forEach(r=>{ if(r.eventKey===e.key){ if(r.category==='Phone stipend') out.phone+=num(r.amount); else out.misc+=num(r.amount); hit=true; } });
+    if(hit) out.reports++;
+  });
+  ['mileage','perDiem','misc','phone'].forEach(k=>out[k]=Math.round(out[k]*100)/100);
+  return out;
+}
+
+async function saveExpense(x){
+  x.updatedAt=Date.now(); x.totals=expCalc(x);
+  const clean=JSON.parse(JSON.stringify(x));
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubExpenses',x.id), clean); }
+  else { S.expenses[x.id]=clean; localSave(); }
+  S.expenses[x.id]=clean; rememberExp(x.id);
+}
+function watchMyExpenses(){
+  if(S.mode!=='live' || S.user) return;
+  const {fsM,db}=DB.fb; ui._expWatch=ui._expWatch||{};
+  myExpIds().forEach(id=>{ if(ui._expWatch[id]) return; ui._expWatch[id]=fsM.onSnapshot(fsM.doc(db,'peHubExpenses',id), snap=>{ if(snap.exists()){ S.expenses[id]=Object.assign({id},snap.data()); render(); } }, ()=>{}); });
+}
+
+function newExpense(pid){
+  const p=person(pid)||{}, wk=mondayOf(todayIso());
+  const x={ id:'x_'+uid()+uid(), personId:pid, personName:p.name||'', email:p.email||'', empId:p.empId||'', office:p.office||'', region:p.region||regionOf(p.office)||'',
+    isMgr:!!p.mgr, rate:expRate(p), commuteMiles:num(p.commuteMiles), weekStart:wk, weekEnd:addDays(wk,6),
+    supervisor:'', supervisorEmail:'', eventMgrEmail:'', method:'ach', address:{},
+    trips:[], commuteDays:'', stays:[], misc:[], certify:false, signature:'', status:'draft', createdAt:Date.now(), history:[] };
+  prefillTrips(x); return x;
+}
+function venueText(e){ return [e.venueName, e.venueAddress].filter(Boolean).join(', '); }
+// Commute days = days the marketer went to the office first (equipment pickup); home→venue days get full mileage.
+function syncCommuteDays(x){ x.commuteDays=String(new Set((x.trips||[]).filter(t=>t.officeFirst && t.date).map(t=>t.date)).size); }
+function weekShiftsFor(x){ const out=[]; datesBetween(x.weekStart,x.weekEnd).forEach(d=>shiftsOn(d).filter(s=>s.personId===x.personId).forEach(s=>out.push(s))); return out; }
+function prefillTrips(x){
+  if((x.trips||[]).length) return;
+  const seen=new Set();
+  x.trips=weekShiftsFor(x).filter(s=>{ const k=s.day.date+'|'+s.ev.key; if(seen.has(k)) return false; seen.add(k); return true; })
+    .map(s=>({ id:uid(), date:s.day.date, eventKey:s.ev.key, eventName:s.ev.name, showCode:'', from:'Home', to:venueText(s.ev), officeFirst:!!(S.checkins[s.cid]||{}).officePickup, miles:'' }));
+  syncCommuteDays(x);
+}
+function expEventOptions(x, sel){
+  const evs=[], seen=new Set(); weekShiftsFor(x).forEach(s=>{ if(!seen.has(s.ev.key)){ seen.add(s.ev.key); evs.push(s.ev); } });
+  liveEvents().filter(e=>e.days.some(d=>d.date>=x.weekStart&&d.date<=x.weekEnd) && !seen.has(e.key) && (!x.office || e.office===x.office)).forEach(e=>{ seen.add(e.key); evs.push(e); });
+  return `<option value="">Event…</option>${evs.map(e=>`<option value="${esc(e.key)}" ${e.key===sel?'selected':''}>${esc(e.name)}</option>`).join('')}<option value="__other" ${sel==='__other'?'selected':''}>Other / not listed</option>`;
+}
+
+/* ---------------- marketer: list + editor ---------------- */
+function myExpensesCard(me){
+  watchMyExpenses();
+  const mine=Object.values(S.expenses).filter(x=>x.personId===me.id).sort((a,b)=>(b.weekStart||'').localeCompare(a.weekStart||''));
+  const st={ draft:['Draft','p-gray'], submitted:['Waiting for approval','p-blue'], returned:['Returned – needs changes','p-red'], approved:['Approved','p-green'] };
+  return `<div class="card"><h2>🧾 Expense reports</h2><div class="sub">One report per week (Monday–Sunday): mileage, per diem with hotel stays, and reimbursable expenses.</div>
+    <button class="btn big primary" data-act="expNew">+ Start an expense report</button>
+    ${mine.length?`<table style="margin-top:10px"><tbody>${mine.slice(0,12).map(x=>{ const [l,c]=st[x.status]||['?','p-gray']; return `<tr class="click" data-exp="${x.id}"><td>Week of ${fmtMD(x.weekStart)}<div class="small muted">${money2((x.totals||expCalc(x)).total)}</div>${x.status==='returned'&&x.mgrNote?`<div class="small" style="color:var(--red)">${esc(x.mgrNote)}</div>`:''}</td><td style="text-align:right"><span class="pill ${c}">${l}</span></td></tr>`; }).join('')}</tbody></table>`:''}
+    ${S.mode==='live'?'<div class="small muted" style="margin-top:8px">Your reports are listed on the phone you created them on.</div>':''}</div>`;
+}
+function inp(path, val, attrs=''){ return `<input ${/type=/.test(attrs)?'':'type="text"'} data-ex="${path}" data-keep="x-${path}" value="${esc(val??'')}" ${attrs}>`; }
+function expenseEditor(){
+  const x=ui.exp, c=expCalc(x), ro=x.status==='approved';
+  const mgrs=S.sched.roster.filter(r=>r.mgr).sort((a,b)=>a.name.localeCompare(b.name));
+  const rcpt=(path,id,label)=>`<label class="btn sm">${id?'📎 Replace':'📷 '+label}<input type="file" accept="image/*,application/pdf" data-exfile="${path}" style="display:none"></label>${id?` ${photoThumb(id)}`:''}`;
+  return `<div class="row" style="margin-bottom:10px"><button class="btn sm" data-act="expClose">◀ Back</button><span class="spacer"></span>${x.status!=='draft'?`<span class="pill ${x.status==='approved'?'p-green':x.status==='returned'?'p-red':'p-blue'}">${{submitted:'Waiting for approval',returned:'Returned',approved:'Approved'}[x.status]}</span>`:''}</div>
+  ${x.status==='returned'&&x.mgrNote?`<div class="notice err"><b>Returned by ${esc(x.reviewedBy||'your manager')}:</b> ${esc(x.mgrNote)}</div>`:''}
+  <fieldset ${ro?'disabled':''} style="border:0;padding:0;margin:0">
+  <div class="card"><h2>Expense report · ${esc(x.personName)}</h2>
+    <div class="fields">
+      <div class="field"><label>Week starting (Monday)</label>${inp('weekStart',x.weekStart,'type="date"')}<span class="small muted">${fmtLong(x.weekStart)} – ${fmtLong(x.weekEnd)}</span></div>
+      <div class="field"><label>Email</label>${inp('email',x.email,'type="email"')}</div>
+      <div class="field"><label>Region & branch</label><input value="${esc([x.region,x.office].filter(Boolean).join(' · '))}" disabled></div>
+      <div class="field"><label>Supervisor</label><select data-ex="supervisor" data-keep="x-supervisor"><option value="">Choose…</option>${mgrs.map(m=>`<option ${m.name===x.supervisor?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Event manager’s email</label>${inp('eventMgrEmail',x.eventMgrEmail,'type="email" placeholder="name@greatdayimprovements.com"')}</div>
+    </div>
+    <h3>Reimbursement method</h3>
+    ${[['ach','Direct deposit (ACH) – already set up'],['achsetup','Direct deposit – first time, or my bank changed'],['check','Mail me a check']].map(([k,l])=>`<label class="chk"><input type="radio" name="xmethod" data-ex="method" value="${k}" ${x.method===k?'checked':''}> ${l}</label>`).join('')}
+    ${x.method==='achsetup'?`<div class="notice" style="margin-top:6px">For your security, bank account numbers are <b>not</b> entered here. ${BANKING_FORM_URL?`<a href="${BANKING_FORM_URL}" target="_blank" rel="noopener">Open the secure banking form ↗</a> and include a voided check or bank letter.`:'Your manager will send you the secure banking form for payroll.'}</div>`:''}
+    ${x.method==='check'?`<div class="fields" style="margin-top:6px"><div class="field"><label>Street</label>${inp('address.street',(x.address||{}).street)}</div><div class="field"><label>Apt / suite</label>${inp('address.line2',(x.address||{}).line2)}</div><div class="field"><label>City</label>${inp('address.city',(x.address||{}).city)}</div><div class="field"><label>State</label>${inp('address.state',(x.address||{}).state)}</div><div class="field"><label>ZIP</label>${inp('address.zip',(x.address||{}).zip,'inputmode="numeric"')}</div></div>`:''}
+  </div>
+  <div class="card"><h2>🚗 Mileage <span class="small muted">GL 73200 · ${money2(x.rate)}/mile${x.isMgr?' (manager rate)':''}</span></h2>
+    ${(x.trips||[]).map((t,i)=>`<div class="exrow"><div class="fields">
+      <div class="field"><label>Date</label>${inp(`trips.${i}.date`,t.date,`type="date" min="${x.weekStart}" max="${x.weekEnd}"`)}</div>
+      <div class="field"><label>Event</label><select data-ex="trips.${i}.eventKey" data-keep="x-trips.${i}.eventKey">${expEventOptions(x,t.eventKey)}</select></div>
+      <div class="field"><label>Show / source code</label>${inp(`trips.${i}.showCode`,t.showCode)}</div>
+      <div class="field"><label>From</label>${inp(`trips.${i}.from`,t.from,'placeholder="Home / office"')}</div>
+      <div class="field"><label>To</label>${inp(`trips.${i}.to`,t.to,'placeholder="Venue"')}</div>
+      <div class="field"><label>Total miles (round trip)</label>${inp(`trips.${i}.miles`,t.miles,'type="number" min="0" step="0.1" inputmode="decimal"')}</div>
+      </div><label class="chk"><input type="checkbox" data-ex="trips.${i}.officeFirst" ${t.officeFirst?'checked':''}> Went to the office first to pick up equipment</label><button class="btn sm danger" data-act="expDel" data-list="trips" data-i="${i}">Remove trip</button></div>`).join('')}
+    <div class="small muted" style="margin:-2px 0 8px">Mileage is from <b>home to the venue</b> and back. If you stopped at the office first to pick up equipment, tick that box: your normal round-trip commute is subtracted for that day.</div>
+    <button class="btn" data-act="expAdd" data-list="trips">+ Add a trip</button>
+    ${(x.trips||[]).length?`<div class="fields" style="margin-top:10px">
+      <div class="field"><label>Number of commute days</label>${inp('commuteDays',x.commuteDays,'type="number" min="0" step="1" inputmode="numeric"')}<span class="small muted">Days you went to the office first. Filled in from the boxes above.</span></div>
+      <div class="field"><label>Your normal round-trip commute (miles)</label>${inp('commuteMiles',x.commuteMiles,'type="number" min="0" step="0.1" inputmode="decimal"')}<span class="small muted">Home ↔ branch, round trip. Filled in from the roster when your manager has added it.</span></div></div>
+`:''}<div id="tot-m">${(x.trips||[]).length?totMileageHtml(x,c):''}</div>
+  </div>
+  <div class="card"><h2>🏨 Per diem (meals) <span class="small muted">GL 73300 · only with a hotel stay</span></h2>
+    <div class="small muted" style="margin-bottom:8px">Breakfast $6 · Lunch $12 · Dinner $25 for each hotel date. Untick any meal that was provided.</div>
+    ${(x.stays||[]).map((s,i)=>{ const ds=datesBetween(s.checkIn,s.checkOut); return `<div class="exrow"><div class="fields">
+      <div class="field"><label>Event</label><select data-ex="stays.${i}.eventKey" data-keep="x-stays.${i}.eventKey">${expEventOptions(x,s.eventKey)}</select></div>
+      <div class="field"><label>Show / source code</label>${inp(`stays.${i}.showCode`,s.showCode)}</div>
+      <div class="field"><label>Hotel check-in</label>${inp(`stays.${i}.checkIn`,s.checkIn,'type="date"')}</div>
+      <div class="field"><label>Hotel check-out</label>${inp(`stays.${i}.checkOut`,s.checkOut,'type="date"')}</div></div>
+      ${ds.length?`<table class="meals"><thead><tr><th>Date</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th></tr></thead><tbody>${ds.map(dt=>{ const m=(s.meals||{})[dt]||{}; return `<tr><td>${fmtLong(dt)}</td>${['b','l','d'].map(k=>`<td><input type="checkbox" data-exmeal="${i}|${dt}|${k}" ${m[k]!==false?'checked':''}></td>`).join('')}</tr>`; }).join('')}</tbody></table><div class="small muted">${ds.length-1} night${ds.length-1===1?'':'s'} in hotel</div>`:''}
+      <div style="margin-top:6px"><span class="lbl">Hotel receipt or confirmation <span style="color:var(--red)">*</span></span> ${rcpt(`stays.${i}.receipt`,s.receipt,'Add receipt')}</div>
+      <button class="btn sm danger" data-act="expDel" data-list="stays" data-i="${i}" style="margin-top:6px">Remove stay</button></div>`; }).join('')}
+    <button class="btn" data-act="expAdd" data-list="stays">+ Add a hotel stay</button>
+    <div id="tot-p">${(x.stays||[]).length?totPerDiemHtml(c):''}</div>
+  </div>
+  <div class="card"><h2>🧾 Reimbursable expenses</h2><div class="small muted" style="margin-bottom:8px">Receipts are required for all expenses except the phone stipend.</div>
+    ${(x.misc||[]).map((r,i)=>`<div class="exrow"><div class="fields">
+      <div class="field"><label>Date</label>${inp(`misc.${i}.date`,r.date,'type="date"')}</div>
+      <div class="field"><label>Type</label><select data-ex="misc.${i}.category" data-keep="x-misc.${i}.category"><option value="">Choose…</option>${MISC_CATS.map(k=>`<option ${k===r.category?'selected':''}>${k}</option>`).join('')}</select></div>
+      <div class="field"><label>Event</label><select data-ex="misc.${i}.eventKey" data-keep="x-misc.${i}.eventKey">${expEventOptions(x,r.eventKey)}</select></div>
+      <div class="field"><label>Description</label>${inp(`misc.${i}.desc`,r.desc)}</div>
+      <div class="field"><label>Amount</label>${inp(`misc.${i}.amount`,r.amount,'type="number" min="0" step="0.01" inputmode="decimal"')}</div></div>
+      ${NO_RECEIPT_CATS.includes(r.category)?'<div class="small muted">No receipt needed.</div>':`<div><span class="lbl">Receipt <span style="color:var(--red)">*</span></span> ${rcpt(`misc.${i}.receipt`,r.receipt,'Add receipt')}</div>`}
+      <button class="btn sm danger" data-act="expDel" data-list="misc" data-i="${i}" style="margin-top:6px">Remove</button></div>`).join('')}
+    <button class="btn" data-act="expAdd" data-list="misc">+ Add an expense</button>
+    <div id="tot-x">${(x.misc||[]).length?totMiscHtml(c):''}</div>
+  </div>
+  <div class="card"><h2 id="tot-h">Total: ${money2(c.total)}</h2>
+    <div id="tot-a">${totAllHtml(c)}</div>
+    <label class="chk" style="margin-top:10px"><input type="checkbox" data-ex="certify" ${x.certify?'checked':''}> <span>${esc(CERTIFY_TEXT)}</span></label>
+    <div class="field" style="margin-top:6px"><label>Signature (type your full name)</label>${inp('signature',x.signature,'autocomplete="name"')}</div>
+    ${ui.expErr?`<div class="notice err" style="margin-top:10px">${esc(ui.expErr)}</div>`:''}
+    ${ro?'':`<div class="foot">${x.status==='draft'?'<button class="btn danger" data-act="expDiscard">Delete draft</button><span class="spacer"></span>':''}<button class="btn" data-act="expSave" ${ui.busy?'disabled':''}>Save draft</button><button class="btn primary" data-act="expSubmit" ${ui.busy?'disabled':''}>${ui.busy?'Saving…':x.status==='submitted'?'Update & resubmit':'Submit for approval'}</button></div>`}
+  </div></fieldset>`;
+}
+function totMileageHtml(x,c){ return `<table class="extot"><tbody><tr><td>Total miles</td><td>${round1(c.totalMiles)}</td></tr><tr><td>Non-reimbursable miles (${num(x.commuteDays)} days × ${num(x.commuteMiles)})</td><td>− ${round1(c.nonReimb)}</td></tr><tr><td>Eligible miles</td><td>${round1(c.eligible)}</td></tr><tr><th>Mileage reimbursement (GL 73200)</th><th>${money2(c.mileage)}</th></tr></tbody></table>`; }
+function totPerDiemHtml(c){ return `<table class="extot"><tbody><tr><td>Meals</td><td>${c.b} breakfast · ${c.l} lunch · ${c.d} dinner</td></tr><tr><th>Total per diem (GL 73300)</th><th>${money2(c.perDiem)}</th></tr></tbody></table>`; }
+function totMiscHtml(c){ return `<table class="extot"><tbody><tr><th>Miscellaneous expense total</th><th>${money2(c.misc)}</th></tr></tbody></table>`; }
+function totAllHtml(c){ return `<table class="extot"><tbody><tr><td>Mileage (GL 73200)</td><td>${money2(c.mileage)}</td></tr><tr><td>Per diem (GL 73300)</td><td>${money2(c.perDiem)}</td></tr><tr><td>Reimbursable expenses</td><td>${money2(c.misc)}</td></tr><tr><th>Total reimbursement</th><th>${money2(c.total)}</th></tr></tbody></table>`; }
+// Update only the totals while typing, so the field being typed in is never redrawn (keeps the phone keyboard open).
+function updateExpTotals(){ const x=ui.exp; if(!x) return; const c=expCalc(x); const set=(id,h)=>{ const el=document.getElementById(id); if(el) el.innerHTML=h; };
+  set('tot-m', (x.trips||[]).length?totMileageHtml(x,c):''); set('tot-p', (x.stays||[]).length?totPerDiemHtml(c):''); set('tot-x', (x.misc||[]).length?totMiscHtml(c):''); set('tot-a', totAllHtml(c)); set('tot-h', 'Total: '+money2(c.total)); }
+function photoThumb(id){ const src=ui.photoCache[id]; if(src===undefined){ getPhoto(id); return '<span class="small muted">loading…</span>'; } if(!src) return '<span class="small muted">missing</span>'; return /^data:application\/pdf/.test(src) ? `<a class="small" href="${src}" target="_blank" rel="noopener">📄 PDF</a>` : `<img src="${src}" data-zoom="${id}" class="exthumb" alt="Receipt">`; }
+function expValidate(x){
+  const c=expCalc(x), errs=[];
+  if(!x.email) errs.push('your email'); if(!x.supervisor) errs.push('your supervisor'); if(!x.eventMgrEmail) errs.push('the event manager’s email');
+  if(x.method==='check'){ const a=x.address||{}; if(!a.street||!a.city||!a.state||!a.zip) errs.push('your full mailing address'); }
+  if(!(x.trips||[]).length && !(x.stays||[]).length && !(x.misc||[]).length) errs.push('at least one trip, hotel stay or expense');
+  (x.trips||[]).forEach((t,i)=>{ if(!t.date||!num(t.miles)) errs.push(`date and miles for trip ${i+1}`); if(!t.showCode) errs.push(`show code for trip ${i+1}`); });
+  if((x.trips||[]).length && x.commuteDays==='') errs.push('number of commute days');
+  (x.stays||[]).forEach((s,i)=>{ if(!s.checkIn||!s.checkOut||s.checkOut<s.checkIn) errs.push(`hotel dates for stay ${i+1}`); if(!s.showCode) errs.push(`show code for stay ${i+1}`); if(!s.receipt) errs.push(`hotel receipt for stay ${i+1}`); });
+  (x.misc||[]).forEach((r,i)=>{ if(!r.date||!r.category||!num(r.amount)) errs.push(`date, type and amount for expense ${i+1}`); if(!NO_RECEIPT_CATS.includes(r.category) && !r.receipt) errs.push(`receipt for expense ${i+1}`); });
+  if(!x.certify) errs.push('the certification checkbox'); if(!x.signature) errs.push('your signature');
+  return errs.length ? 'Please add: '+[...new Set(errs)].join(', ')+'.' : '';
+}
+
+/* ---------------- manager: review + approve ---------------- */
+function expensesView(){
+  if(!S.user) return '<div class="card"><p class="muted">Sign in (top right) to review expense reports.</p></div>';
+  if(ui.expView && S.expenses[ui.expView]) return expenseReview(S.expenses[ui.expView]);
+  const all=Object.values(S.expenses).filter(x=>!x.office || inOffice(x.office));
+  const grp=st=>all.filter(x=>x.status===st).sort((a,b)=>(b.submittedAt||b.updatedAt||0)-(a.submittedAt||a.updatedAt||0));
+  const row=x=>{ const t=x.totals||expCalc(x); return `<tr class="click" data-expview="${x.id}"><td>${esc(x.personName)}<div class="small muted">${esc(x.office||'')}</div></td><td>Week of ${fmtMD(x.weekStart)}</td><td>${esc(x.supervisor||'')}</td><td class="small">${x.submittedAt?fmtStamp(x.submittedAt):''}</td><td style="text-align:right"><b>${money2(t.total)}</b></td></tr>`; };
+  const sec=(t,list,empty)=>`<div class="card"><h2>${t} (${list.length})</h2>${list.length?`<table><thead><tr><th>Marketer</th><th>Week</th><th>Supervisor</th><th>Submitted</th><th style="text-align:right">Total</th></tr></thead><tbody>${list.slice(0,60).map(row).join('')}</tbody></table>`:`<p class="muted">${empty}</p>`}</div>`;
+  return `<div class="row" style="margin-bottom:12px"><span class="spacer"></span>${scopePicker()}</div>
+    ${sec('Waiting for approval',grp('submitted'),'Nothing waiting.')}${sec('Returned to marketer',grp('returned'),'None.')}${sec('Approved',grp('approved').filter(x=>(x.approvedAt||0)>Date.now()-90*864e5),'None in the last 90 days.')}`;
+}
+function expenseDoc(x, forPrint){
+  const c=expCalc(x), evName=k=>{ const e=S.sched.events.find(v=>v.key===k); return e?e.name:(k==='__other'?'Other':''); };
+  const img=id=>{ if(!id) return ''; const src=ui.photoCache[id]; if(src===undefined){ getPhoto(id); return ''; } return src && !/^data:application\/pdf/.test(src) ? `<img src="${src}" class="${forPrint?'prcpt':'exthumb'}" ${forPrint?'':`data-zoom="${id}"`} alt="Receipt">` : (src?`<a href="${src}" target="_blank" rel="noopener">📄 PDF receipt</a>`:''); };
+  const a=x.address||{};
+  return `<div class="exdoc"><h2 style="margin:0">GDI Expense Reimbursement · Event Marketing</h2>
+    <table class="extot"><tbody>
+      <tr><td>Employee</td><td><b>${esc(x.personName)}</b>${x.empId?` · ID ${esc(x.empId)}`:''} · ${esc(x.email||'')}</td></tr>
+      <tr><td>Region & branch</td><td>${esc([x.region,x.office].filter(Boolean).join(' · '))}</td></tr>
+      <tr><td>Accrual period</td><td>${fmtLong(x.weekStart)} – ${fmtLong(x.weekEnd)}</td></tr>
+      <tr><td>Supervisor</td><td>${esc(x.supervisor||'')}${x.supervisorEmail?` (${esc(x.supervisorEmail)})`:''}</td></tr>
+      <tr><td>Event manager’s email</td><td>${esc(x.eventMgrEmail||'')}</td></tr>
+      <tr><td>Reimbursement</td><td>${x.method==='check'?`Mail check to ${esc([a.street,a.line2,a.city,a.state,a.zip].filter(Boolean).join(', '))}`:x.method==='achsetup'?'ACH – first time / bank changed (banking sent separately)':'ACH on file'}</td></tr>
+    </tbody></table>
+    ${(x.trips||[]).length?`<h3>Mileage (GL 73200) · ${money2(x.rate)}/mile</h3><table class="extab"><thead><tr><th>Date</th><th>Event</th><th>Show code</th><th>From → To</th><th>Office first</th><th>Miles</th></tr></thead><tbody>${x.trips.map(t=>`<tr><td>${fmtMD(t.date)}</td><td>${esc(evName(t.eventKey))}</td><td>${esc(t.showCode||'')}</td><td>${esc([t.from,t.to].filter(Boolean).join(' → '))}</td><td>${t.officeFirst?'Yes':''}</td><td>${round1(num(t.miles))}</td></tr>`).join('')}</tbody></table>
+      <table class="extot"><tbody><tr><td>Total miles</td><td>${round1(c.totalMiles)}</td></tr><tr><td>Commute days (office first) × commute miles</td><td>${num(x.commuteDays)} × ${num(x.commuteMiles)} = ${round1(c.nonReimb)}</td></tr><tr><td>Eligible miles</td><td>${round1(c.eligible)}</td></tr><tr><th>Total mileage reimbursement</th><th>${money2(c.mileage)}</th></tr></tbody></table>`:''}
+    ${(x.stays||[]).length?`<h3>Per diem (GL 73300)</h3><table class="extab"><thead><tr><th>Event</th><th>Show code</th><th>Hotel</th><th>Nights</th><th>Meals (B/L/D)</th><th>Receipt</th></tr></thead><tbody>${x.stays.map(s=>{ const ds=datesBetween(s.checkIn,s.checkOut); let b=0,l=0,d=0; ds.forEach(dt=>{ const m=(s.meals||{})[dt]||{}; if(m.b!==false)b++; if(m.l!==false)l++; if(m.d!==false)d++; }); return `<tr><td>${esc(evName(s.eventKey))}</td><td>${esc(s.showCode||'')}</td><td>${fmtMD(s.checkIn)}–${fmtMD(s.checkOut)}</td><td>${Math.max(0,ds.length-1)}</td><td>${b}/${l}/${d}</td><td>${img(s.receipt)}</td></tr>`; }).join('')}</tbody></table>
+      <table class="extot"><tbody><tr><td>Meals</td><td>${c.b} × $6 + ${c.l} × $12 + ${c.d} × $25</td></tr><tr><th>Total per diem</th><th>${money2(c.perDiem)}</th></tr></tbody></table>`:''}
+    ${(x.misc||[]).length?`<h3>Reimbursable expenses</h3><table class="extab"><thead><tr><th>Date</th><th>Type</th><th>Event</th><th>Description</th><th>Amount</th><th>Receipt</th></tr></thead><tbody>${x.misc.map(r=>`<tr><td>${fmtMD(r.date)}</td><td>${esc(r.category)}</td><td>${esc(evName(r.eventKey))}</td><td>${esc(r.desc||'')}</td><td>${money2(r.amount)}</td><td>${NO_RECEIPT_CATS.includes(r.category)?'n/a':img(r.receipt)}</td></tr>`).join('')}</tbody></table>
+      <table class="extot"><tbody><tr><th>Miscellaneous expense total</th><th>${money2(c.misc)}</th></tr></tbody></table>`:''}
+    <table class="extot" style="margin-top:10px"><tbody><tr><td>Mileage (GL 73200)</td><td>${money2(c.mileage)}</td></tr><tr><td>Per diem (GL 73300)</td><td>${money2(c.perDiem)}</td></tr><tr><td>Reimbursable expenses</td><td>${money2(c.misc)}</td></tr><tr><th>TOTAL REIMBURSEMENT</th><th>${money2(c.total)}</th></tr></tbody></table>
+    <p class="small">${x.certify?'☑':'☐'} ${esc(CERTIFY_TEXT)}<br>Signed: <b>${esc(x.signature||'')}</b>${x.submittedAt?` · Submitted ${fmtStamp(x.submittedAt)}`:''}${x.approvedAt?`<br>Approved by ${esc(x.approvedBy||'')} · ${fmtStamp(x.approvedAt)}`:''}</p></div>`;
+}
+function expenseReview(x){
+  const hist=(x.history||[]).slice().reverse();
+  return `<div class="row" style="margin-bottom:10px"><button class="btn sm" data-act="expBack">◀ All reports</button><span class="spacer"></span>
+    <button class="btn sm" data-act="expPrint">🖨 Print / Save PDF</button> <button class="btn sm" data-act="expEmail">✉ Email accounting</button></div>
+    <div class="card">${expenseDoc(x,false)}
+    ${x.status==='submitted'?`<div class="foot"><button class="btn danger" data-act="expReturn">Return for changes</button><button class="btn primary" data-act="expApprove">✓ Approve ${money2((x.totals||expCalc(x)).total)}</button></div>`:''}
+    ${x.status==='approved'?`<div class="notice ok" style="margin-top:10px"><b>Approved — send it to Accounts Payable:</b><br>1. <button class="btn sm" data-act="expPrint">🖨 Save as PDF</button> (choose “Save as PDF” as the printer; receipts are included)<br>2. <button class="btn sm" data-act="expEmail">✉ Email ${esc(ACCOUNTING_EMAIL)}</button> and attach that PDF.${x.sentToAP?`<br><span class="small">Marked sent ${fmtStamp(x.sentToAP)}.</span>`:` <button class="btn sm" data-act="expSent">Mark as sent</button>`}</div>`:''}
+    ${hist.length?`<h3>History</h3><table><tbody>${hist.map(h=>`<tr><td class="small" style="width:140px">${fmtStamp(h.at)}</td><td class="small">${esc(h.action)}${h.by?' · '+esc(h.by):''}${h.note?` – ${esc(h.note)}`:''}</td></tr>`).join('')}</tbody></table>`:''}</div>`;
+}
+async function printExpense(x){
+  const ids=[...(x.stays||[]).map(s=>s.receipt), ...(x.misc||[]).map(r=>r.receipt)].filter(Boolean);
+  await Promise.all(ids.map(id=>ui.photoCache[id]===undefined?getPhoto(id):null));
+  const box=document.getElementById('printArea'); box.innerHTML=expenseDoc(x,true);
+  document.body.classList.add('printing-expense');
+  setTimeout(()=>{ window.print(); setTimeout(()=>document.body.classList.remove('printing-expense'),500); },150);
+}
+function emailExpense(x){
+  const c=expCalc(x);
+  const body=[`Expense report – ${x.personName}${x.empId?' (ID '+x.empId+')':''}`, `Week: ${fmtLong(x.weekStart)} – ${fmtLong(x.weekEnd)}`, `Region/branch: ${[x.region,x.office].filter(Boolean).join(' · ')}`, '',
+    `Mileage (GL 73200): ${money2(c.mileage)}  (${round1(c.eligible)} eligible miles × ${money2(x.rate)})`, `Per diem (GL 73300): ${money2(c.perDiem)}`, `Reimbursable expenses: ${money2(c.misc)}`, `TOTAL: ${money2(c.total)}`, '',
+    `Reimbursement: ${x.method==='check'?'Mail check':x.method==='achsetup'?'ACH – first time / bank changed':'ACH on file'}`, `Approved by ${x.approvedBy||''}${x.approvedAt?' on '+fmtStamp(x.approvedAt):''}`, '', 'The full report with receipts is attached as a PDF.'].join('\n');
+  location.href=`mailto:${encodeURIComponent(ACCOUNTING_EMAIL)}?subject=${encodeURIComponent(`Expense report – ${x.personName} – week of ${fmtMD(x.weekStart)} – ${money2(c.total)}`)}&body=${encodeURIComponent(body)}`;
+}
+async function expAction(x, status, note){
+  const by=(S.user&&S.user.email)||'';
+  const upd=Object.assign({}, x, { status, reviewedBy:by, mgrNote:note||'' }, status==='approved'?{ approvedBy:by, approvedAt:Date.now() }:{});
+  upd.history=[...(x.history||[]), { at:Date.now(), by, action: status==='approved'?'Approved':'Returned for changes', note:note||'' }];
+  await saveExpense(upd);
+}
+
 /* ---------------- evaluations ---------------- */
 function eventCode(e){ return hash(e.key); }
 function checkinLink(e){ return location.origin+location.pathname+'?m=1&e='+eventCode(e); }
@@ -616,7 +889,7 @@ function mergeMgrTimes(){
 const DB = { fb:null };
 const LOCAL_KEY='peHub.local';
 function localLoad(){ try{ return JSON.parse(lsGet(LOCAL_KEY)||'{}'); }catch(e){ return {}; } }
-function localSave(){ lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
+function localSave(){ lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
 async function initDB(){
   if(DEMO){ goLocal('demo'); return; }
   const timeout=setTimeout(()=>{ if(S.mode==='connecting') goLocal('timeout'); },10000);
@@ -651,6 +924,7 @@ async function initDB(){
       S.user=u; unsubs.forEach(f=>f()); unsubs=[]; S.etacc=null; S.etaccErr=''; S.evals={};
       if(u){
         unsubs.push(F.onSnapshot(F.collection(db,'dashboardEvents'), snap=>{ const a=[]; snap.forEach(d=>a.push(Object.assign({id:d.id},d.data()))); S.etacc=a; render(); }, err=>{ S.etaccErr=err.code||err.message; render(); }));
+        unsubs.push(F.onSnapshot(F.collection(db,'peHubExpenses'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=Object.assign({id:d.id},d.data())); S.expenses=m; render(); }, err=>console.warn('expenses',err)));
         unsubs.push(F.onSnapshot(F.collection(db,'peHubEvals'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.evals=m; render(); }, err=>console.warn('evals',err)));
       }
       render();
@@ -662,7 +936,7 @@ function goLocal(why){
   const L=localLoad();
   if(DEMO && !L.sched) seedDemo(); else {
     if(L.sched) S.sched=L.sched;
-    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; ui.localPhotos=L.photos||{};
+    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; ui.localPhotos=L.photos||{};
   }
   if(DEMO){ S.user={email:'demo.manager@patio'}; }
   S.schedLoaded=true; render();
@@ -762,7 +1036,7 @@ function render(){
 }
 // keep typed text while live updates re-render
 function captureInputs(){ const m={}; document.querySelectorAll('[data-keep]').forEach(el=>{ m[el.dataset.keep]= el.type==='checkbox'?el.checked:el.value; }); const a=document.activeElement; return {m, focus:a&&a.dataset?a.dataset.keep:null}; }
-function restoreInputs(k){ document.querySelectorAll('[data-keep]').forEach(el=>{ if(k.m[el.dataset.keep]!==undefined && !el.dataset.fresh){ if(el.type==='checkbox') el.checked=k.m[el.dataset.keep]; else el.value=k.m[el.dataset.keep]; } }); if(k.focus){ const el=document.querySelector(`[data-keep="${k.focus}"]`); if(el) el.focus(); } }
+function restoreInputs(k){ document.querySelectorAll('[data-keep]').forEach(el=>{ if(k.m[el.dataset.keep]!==undefined && !el.dataset.fresh && !el.dataset.ex){ if(el.type==='checkbox') el.checked=k.m[el.dataset.keep]; else el.value=k.m[el.dataset.keep]; } }); if(k.focus){ const el=document.querySelector(`[data-keep="${k.focus}"]`); if(el) el.focus(); } }
 
 function header(){
   const stat = S.mode==='live'?'<span class="cstat live">● Live</span>':S.mode==='connecting'?'<span class="cstat">○ Connecting…</span>':`<span class="cstat local">○ ${DEMO?'Demo data':'This device only'}</span>`;
@@ -773,7 +1047,7 @@ function header(){
     <div><h1>${MARKETER_MODE?'Event Check-In':'Event Activity Hub'}</h1><div class="asof">${stat}${S.mode==='local'&&!DEMO?` · not saving to the shared database (${esc(S.err)})`:''}</div></div>
     <div class="spacer"></div>${signin}</header>`;
 }
-const SECTIONS={ today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Marketer Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Asset Inventory & Check-Out'], evals:['📝','Post-Event Evaluations'] };
+const SECTIONS={ today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Marketer Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Asset Inventory & Check-Out'], evals:['📝','Post-Event Evaluations'], expenses:['🧾','Expense Reports'] };
 function tabs(){
   if(ui.tab==='home' || !SECTIONS[ui.tab]) return '';
   const [ic,l]=SECTIONS[ui.tab];
@@ -798,7 +1072,7 @@ function tilesView(){
   const gear=scopedAssets().filter(isGear).map(stOf);
   const out=gear.filter(g=>g.status==='out').length, overdue=gear.filter(g=>g.overdue).length, repair=gear.filter(g=>g.status==='repair').length;
   const low=scopedAssets().filter(isLow).length, staff=needsStaffing().length;
-  const TC={ today:['#2f5f9e','#e6eef8'], events:['#2f7a78','#dcebea'], schedule:['#6b4fbb','#efeafb'], checkin:['#24583f','#e6f0ea'], assets:['#b5791f','#f6e9d2'], evals:['#b0425e','#f8e4ea'] };
+  const TC={ today:['#2f5f9e','#e6eef8'], events:['#2f7a78','#dcebea'], schedule:['#6b4fbb','#efeafb'], checkin:['#24583f','#e6f0ea'], assets:['#b5791f','#f6e9d2'], evals:['#b0425e','#f8e4ea'], expenses:['#5b6b1f','#eef2dc'] };
   const tile=(k,desc,stat,cls,flag,flagCls)=>{ const [ic,l]=SECTIONS[k], [c,soft]=TC[k]||['#24583f','#e6f0ea']; return `<div class="tile" data-tab="${k}" role="button" tabindex="0" style="--tc:${c};--tcs:${soft}">${flag?`<span class="flag ${flagCls||''}">${flag}</span>`:''}<div class="ic">${ic}</div><h2>${esc(l)}</h2><p>${desc}</p><div class="stat ${cls||''}">${stat}</div></div>`; };
   return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span>${scopePicker()}</div>${staffBanner()}
   <div class="tiles">
@@ -808,6 +1082,7 @@ function tilesView(){
     ${tile('checkin','Marketers check in at the booth and check out with results.', 'Start or end a shift')}
     ${tile('assets','Inventory, barcode check-out and returns, transfers and the annual count.', `${gear.length} items · ${out} out${overdue?` · ${overdue} overdue`:''}${repair?` · ${repair} in repair`:''}${low?` · ${low} to reorder`:''}`, overdue||low?'warn':'', (overdue+low)||'')}
     ${tile('evals','Manager post-event evaluations, pre-filled from check-outs.', due?`${due} waiting for evaluation`:'All caught up', due?'warn':'', due||'')}
+    ${(()=>{ const w=Object.values(S.expenses).filter(x=>x.status==='submitted' && (!x.office||inOffice(x.office))).length; return tile('expenses','Weekly expense reports: mileage, per diem and receipts. Approve and send to accounting.', S.user?(w?`${w} waiting for approval`:'Nothing waiting'):'Sign in to review', w?'warn':'', w||''); })()}
   </div></div>`;
 }
 function body(){
@@ -818,6 +1093,7 @@ function body(){
     case 'checkin': return checkinView();
     case 'assets': return assetsView();
     case 'evals': return evalsView();
+    case 'expenses': return expensesView();
     case 'today': return homeView();
     default: return tilesView();
   }
@@ -877,6 +1153,7 @@ function upcomingLinks(){
 }
 /* ---------------- CHECK IN / OUT (marketer) ---------------- */
 function checkinView(){
+  if(ui.exp) return expenseEditor();
   const LE=linkedEvent();
   if(EVENT_LINK && !LE) return `<div class="card"><h2>Check-in link not found</h2><p class="muted">This event may have been renamed or rescheduled. Ask your manager for a new link, or <a href="?m=1">check in from your schedule</a>.</p></div>`;
   if(LE) return eventLinkView(LE);
@@ -896,7 +1173,7 @@ function checkinView(){
       <div class="small muted" style="margin:6px 0">Pick the event you’re working today. Your manager will see this as an unscheduled shift.</div>
       ${otherToday.length?otherToday.map(e=>{ const d=e.days.find(x=>x.date===today); return `<div class="row" style="margin-bottom:6px"><button class="btn sm" data-act="unsched" data-ev="${esc(e.key)}">Check in here</button><span>${esc(e.name)} <span class="muted small">· ${esc(e.office)} · ${timeRange(d)}</span></span></div>`; }).join(''):'<p class="muted small">No events in your office today.</p>'}
       ${ui.showOtherShift!=='all'?'<button class="btn sm" data-act="otherAll">Show events in all offices</button>':''}
-    </details></div>`+(MARKETER_MODE?'':upcomingLinks());
+    </details></div>`+myExpensesCard(me)+(MARKETER_MODE?'':upcomingLinks());
 }
 function eventLinkView(e){
   const today=todayIso(), day=e.days.find(d=>d.date===today);
@@ -937,6 +1214,9 @@ function checkInPanel(p){
       <div><div class="lbl">2. Booth setup photo <span style="color:var(--red)">*</span></div><label class="btn big photobtn">📷 ${p.photo?'Retake booth photo':'Take booth photo'}<input type="file" accept="image/*" capture="environment" data-act="photo" data-slot="in" style="display:none"></label>${p.photo?`<img class="preview" src="${p.photo}" alt="Booth photo">`:''}</div>
       <div><div class="lbl">3. Booth gear & kits you’re taking</div>${scanBox('checkin','Scan an item or kit barcode')}${ui.scanMsg?`<div class="small" style="color:${ui.scanMsg.kind==='ok'?'var(--accent)':'var(--red)'};margin:4px 0">${esc(ui.scanMsg.text)}</div>`:''}
         ${gear.length?gear.map(a=>{ const g=stOf(a), mine=g.holder&&g.holder.personId===p.pid, blocked=(g.status==='out'&&!mine)||g.status==='lost'; return `<label class="chk"><input type="checkbox" data-gear="${a.id}" ${p.gear.includes(a.id)?'checked':''} ${blocked&&!p.gear.includes(a.id)?'disabled':''}> ${a.kind==='kit'?'🧰 ':''}${esc(a.name)} <code class="small muted">${esc(a.code||'')}</code>${a.kind==='kit'?` <span class="small muted">(${(a.contents||[]).length} items)</span>`:''}${g.status==='out'?` <span class="small muted">${mine?'(you have this)':'(with '+esc(g.holder.personName)+')'}</span>`:g.status==='repair'?' <span class="small" style="color:var(--warn)">(needs repair)</span>':g.status==='lost'?' <span class="small muted">(lost)</span>':''}</label>`; }).join(''):'<div class="small muted">No booth gear set up for this office yet.</div>'}</div>
+      <div>${adpBox('in', p.adpIn)}</div>
+      <div><label class="chk"><input type="checkbox" data-keep="office-pick" ${p.officePickup?'checked':''}> I picked up equipment at the office today</label>
+        <div class="field" style="max-width:220px"><label class="small">Clocked in on ADP at the office at</label><input type="time" data-keep="office-time" value="${esc(p.officeTime||'')}"></div></div>
       <div class="field"><label>Note (optional)</label><textarea data-keep="in-note" placeholder="Anything your manager should know at setup">${esc(p.note||'')}</textarea></div>
     </div>
     ${p.err?`<div class="notice err" style="margin-top:10px">${esc(p.err)}</div>`:''}
@@ -956,6 +1236,7 @@ function checkOutPanel(p){
     ${(c.assetsOut||[]).length?`<h3>Booth gear</h3><div class="small muted">Tell us what came back and what shape it’s in.</div>${c.assetsOut.map(id=>`<div class="row" style="margin:4px 0"><span style="flex:1">${esc(assetName(id))}</span><select data-keep="ret-${id}"><option value="Good">Returned – good</option><option value="Needs repair">Returned – needs repair</option><option value="Damaged">Returned – damaged</option><option value="keep">I still have it</option><option value="Missing">Missing / left at venue</option></select></div>`).join('')}`:''}
     <h3>Any issues?</h3>${ISSUE_TYPES.map((t,i)=>`<label class="chk"><input type="checkbox" data-keep="iss-${i}"> ${esc(t)}</label>`).join('')}
     <div class="field" style="margin-top:6px"><textarea data-keep="out-issue" placeholder="Describe the issue or what you need (optional)"></textarea></div>
+    <div style="margin-top:12px">${adpBox('out', p.adpOut)}</div>
     <div class="field" style="margin-top:10px"><label>Shift notes</label><textarea data-keep="out-notes" placeholder="How did it go? Anything for next year?"></textarea></div>
     <div style="margin-top:10px"><div class="lbl">Teardown photo (optional)</div><label class="btn big photobtn">📷 ${p.photo?'Retake teardown photo':'Take teardown photo'}<input type="file" accept="image/*" capture="environment" data-act="photo" data-slot="out" style="display:none"></label>${p.photo?`<img class="preview" src="${p.photo}" alt="Teardown photo">`:''}</div>
     ${p.err?`<div class="notice err" style="margin-top:10px">${esc(p.err)}</div>`:''}
@@ -963,18 +1244,22 @@ function checkOutPanel(p){
 }
 async function submitIn(){
   const p=ui.panel, s=p.shift, me=person(p.pid)||{};
+  const adpEl=document.querySelector('[data-keep="adp-in"]'); p.adpIn=!!(adpEl&&adpEl.checked);
+  const opEl=document.querySelector('[data-keep="office-pick"]'), otEl=document.querySelector('[data-keep="office-time"]'); p.officePickup=!!(opEl&&opEl.checked); p.officeTime=(otEl&&otEl.value)||'';
+  if(p.officePickup && !p.officeTime){ p.err='Enter the time you clocked in on ADP at the office.'; render(); return; }
   if(!p.photo){ p.err='Please add a photo of your booth setup.'; render(); return; }
+  if(!p.adpIn){ p.err='Please clock in on ADP, then tick “I’ve clocked in on ADP.”'; render(); return; }
   ui.busy=true; p.err=''; render();
   try{
     const photoId=await putPhoto(p.photo,{checkin:p.cid, kind:'in'});
     await saveCheckin(p.cid,{
       id:p.cid, dayId:s.dayId, eventKey:s.ev.key, eventName:s.ev.name, office:s.ev.office||'', venueName:s.ev.venueName||'',
       date:s.day.date, shiftStart:s.day.start||'', shiftStop:s.day.stop||'', personId:p.pid, personName:me.name||'', unscheduled:!!p.unscheduled,
-      status:'in', inAt:Date.now(), inLoc:p.loc||null, inLocNote:p.loc?'':(p.locNote||''), inPhoto:photoId,
+      status:'in', inAt:Date.now(), adpIn:true, officePickup:!!p.officePickup, officeClockIn:p.officePickup?p.officeTime:'', inLoc:p.loc||null, inLocNote:p.loc?'':(p.locNote||''), inPhoto:photoId,
       assetsOut:p.gear, inNote:(document.querySelector('[data-keep="in-note"]')||{}).value||''
     }, true);
     try{ await logAsset(p.gear.flatMap(id=>expandKits([id])).map(x=>({ type:'checkout', assetId:x, personId:p.pid, personName:me.name||'', eventKey:s.ev.key, eventName:s.ev.name, cid:p.cid }))); }catch(err){ console.error('asset log',err); }
-    ui.panel=null; ui.scanMsg=null; ui.notice='You’re checked in. Have a great show!'; ui.noticeKind='ok';
+    ui.panel=null; ui.scanMsg=null; ui.notice='You’re checked in. Have a great show! Remember to clock out on ADP at the end of your shift.'; ui.noticeKind='ok';
   }catch(e){ console.error(e); p.err = e.code==='permission-denied' ? 'The database refused this check-in. It may already exist, or the hub rules aren’t published yet. Tell your manager.' : 'Couldn’t save: '+(e.message||e.code)+'. Check your signal and try again.'; }
   ui.busy=false; render();
 }
@@ -983,6 +1268,8 @@ async function submitOut(){
   const v=k=>{ const el=document.querySelector(`[data-keep="${k}"]`); return el ? (el.type==='checkbox'?el.checked:el.value) : undefined; };
   const leads=v('out-leads'), appts=v('out-appts');
   p.leads=leads; p.appts=appts; p.traffic=v('out-traffic');
+  p.adpOut=!!v('adp-out');
+  if(!p.adpOut){ p.err='Please clock out on ADP, then tick “I’ve clocked out on ADP.”'; render(); return; }
   if(leads==='' || appts===''){ p.err='Enter your leads and appointments (use 0 if none).'; render(); return; }
   ui.busy=true; p.err=''; render();
   try{
@@ -995,7 +1282,7 @@ async function submitOut(){
     const issues=ISSUE_TYPES.filter((t,i)=>v('iss-'+i));
     let outPhoto=''; if(p.photo) outPhoto=await putPhoto(p.photo,{checkin:p.cid, kind:'out'});
     const loc=await Promise.race([getLocation(), new Promise(r=>setTimeout(()=>r({loc:null}),8000))]);
-    await saveCheckin(p.cid,{ status:'out', outAt:Date.now(), outLoc:loc.loc||null, leads:num(leads), appts:num(appts), traffic:p.traffic||'',
+    await saveCheckin(p.cid,{ status:'out', outAt:Date.now(), adpOut:true, outLoc:loc.loc||null, leads:num(leads), appts:num(appts), traffic:p.traffic||'',
       consumables:cons, assetsReturned:returned, assetConditions:retCond, issues, issueText:v('out-issue')||'', notes:v('out-notes')||'', outPhoto }, false);
     try{ await logAsset(aEntries); }catch(err){ console.error('asset log',err); }
     ui.panel=null; ui.notice='Checked out. Thanks for your work today!'; ui.noticeKind='ok';
@@ -1027,6 +1314,8 @@ function evalDefaults(e){
   fill('whoWorkedEvent', r.names.join(', '));
   fill('issuesEncountered', r.issues.join('\n'));
   fill('whatWentWell', r.notes.join('\n'));
+  const xc=expenseCostsForEvent(e);
+  if(xc.reports){ if(xc.mileage) fill('actualMileageCost', String(xc.mileage)); if(xc.perDiem) fill('actualPerDiem', String(xc.perDiem)); if(xc.misc) fill('actualMiscExpenses', String(xc.misc)); if(xc.phone) fill('actualPhoneCost', String(xc.phone)); }
   return base;
 }
 function evalForm(e){
@@ -1046,7 +1335,7 @@ function evalForm(e){
       ${rate('overallEventRating','Overall event organization (1–5)')}${rate('staffComplianceRating','Staff compliance with booth expectations (1–5)')}
     </div>
     <div class="grid" style="margin-top:12px">${inp('whoWorkedEvent','Who worked the event?')}${ta('issuesEncountered','Did you encounter any issues?')}${ta('whatWentWell','What went well?')}${ta('notesForNextYear','Notes for next year')}${ta('roiNotes','ROI notes')}</div>
-    <h3>Actual costs</h3><div class="fields">${inp('actualLaborCost','Labor','number')}${inp('actualPerDiem','Per diem','number')}${inp('actualPhoneCost','Phone','number')}${inp('actualMileageCost','Mileage','number')}${inp('actualMiscExpenses','Misc. expenses','number')}</div>
+    <h3>Actual costs</h3>${(()=>{ const xc=expenseCostsForEvent(e); return xc.reports?`<div class="small muted" style="margin-bottom:6px">From ${xc.reports} approved expense report${xc.reports===1?'':'s'}: mileage ${money2(xc.mileage)} · per diem ${money2(xc.perDiem)} · other ${money2(xc.misc)}${xc.phone?` · phone ${money2(xc.phone)}`:''}</div>`:''; })()}<div class="fields">${inp('actualLaborCost','Labor','number')}${inp('actualPerDiem','Per diem','number')}${inp('actualPhoneCost','Phone','number')}${inp('actualMileageCost','Mileage','number')}${inp('actualMiscExpenses','Misc. expenses','number')}</div>
     <div class="foot"><span class="small muted" style="margin-right:auto">${m?'Saves to the event in ETACC. Sync to Exhibit Day from ETACC afterward.':''}</span><button class="btn primary" data-act="saveEval" ${!S.user||ui.busy?'disabled':''}>${ui.busy?'Saving…':S.user?'Save evaluation':'Sign in to save'}</button></div>
   </div>`;
 }
@@ -1068,6 +1357,8 @@ function detailPanel(){
     ${!c?'<p class="muted">Hasn’t checked in for this shift.</p>':`
     <table><tbody>
       <tr><th>Checked in</th><td>${fmtStamp(c.inAt)} ${c.inLoc?`· <a href="${mapLink(c.inLoc)}" target="_blank" rel="noopener">location (±${c.inLoc.acc} m)</a>`:`<span class="muted">${esc(c.inLocNote||'no location')}</span>`}${c.inNote?`<div class="small">${esc(c.inNote)}</div>`:''}</td></tr>
+      ${c.officePickup?`<tr><th>Equipment</th><td>Picked up at the office · clocked in on ADP at ${esc(fmtTime(c.officeClockIn)||c.officeClockIn)}</td></tr>`:''}
+      <tr><th>ADP</th><td>${c.adpIn?'✓ Confirmed clock-in':'<span style="color:var(--warn)">Clock-in not confirmed</span>'}${c.status==='out'?(c.adpOut?' · ✓ Confirmed clock-out':' · <span style="color:var(--warn)">Clock-out not confirmed</span>'):''}</td></tr>
       <tr><th>Checked out</th><td>${c.outAt?fmtStamp(c.outAt)+(c.outLoc?` · <a href="${mapLink(c.outLoc)}" target="_blank" rel="noopener">location</a>`:'')+` · ${round1(hoursOf(c))} h`:'<span class="muted">Not yet</span>'}</td></tr>
       ${c.status==='out'?`<tr><th>Results</th><td>${num(c.leads)} leads · ${num(c.appts)} appointments${c.traffic?' · '+esc(c.traffic)+' traffic':''}</td></tr>`:''}
       ${(c.assetsOut||[]).length?`<tr><th>Gear</th><td>${c.assetsOut.map(id=>{ const k=(c.assetConditions||{})[id]; return esc(assetName(id))+(c.status!=='out'?'':k==='keep'?' <span style="color:var(--warn)">still with marketer</span>':k==='Missing'?' <span style="color:var(--red)">missing</span>':(c.assetsReturned||[]).includes(id)?` ✓ returned${k&&k!=='Good'?' – '+esc(k.toLowerCase()):''}`:''); }).join('<br>')}</td></tr>`:''}
@@ -1085,11 +1376,13 @@ function detailPanel(){
 document.addEventListener('click', async ev=>{
   if(ev.target.matches && ev.target.matches('input[data-sel]')) return;
   if(ui.scopeOpen && !ev.target.closest('.scopewrap')){ ui.scopeOpen=false; render(); }
-  const t=ev.target.closest('[data-act],[data-tab],[data-detail],[data-eval],[data-zoom],[data-item],[data-audit]'); if(!t) return;
+  const t=ev.target.closest('[data-act],[data-tab],[data-detail],[data-eval],[data-zoom],[data-item],[data-audit],[data-exp],[data-expview]'); if(!t) return;
+  if(t.dataset.exp && !t.dataset.act){ const x=S.expenses[t.dataset.exp]; if(x){ ui.exp=JSON.parse(JSON.stringify(x)); ui.expErr=''; render(); window.scrollTo(0,0); } return; }
+  if(t.dataset.expview && !t.dataset.act){ ui.expView=t.dataset.expview; render(); window.scrollTo(0,0); return; }
   if(t.dataset.item && !t.dataset.act){ ev.preventDefault(); ui.item=t.dataset.item; render(); return; }
   if(t.dataset.audit && !t.dataset.act){ ui.audit=t.dataset.audit; ui.scanMsg=null; render(); return; }
   if(t.dataset.zoom){ ui.lightbox=t.dataset.zoom; render(); return; }
-  if(t.dataset.tab){ ui.tab=t.dataset.tab; ui.evalKey=null; ui.evalDraft=null; ui.scanMsg=null; ui.audit=null; stopCamera(); history.pushState(null,'',ui.tab==='home'?location.pathname+location.search:'#'+ui.tab); render(); window.scrollTo(0,0); return; }
+  if(t.dataset.tab){ ui.tab=t.dataset.tab; ui.evalKey=null; ui.evalDraft=null; ui.scanMsg=null; ui.audit=null; ui.exp=null; ui.expView=null; stopCamera(); history.pushState(null,'',ui.tab==='home'?location.pathname+location.search:'#'+ui.tab); render(); window.scrollTo(0,0); return; }
   if(t.dataset.detail && !t.dataset.act){ ui.detail={cid:t.dataset.detail, dayId:t.dataset.day||'', pid:t.dataset.pid||''}; render(); return; }
   if(t.dataset.eval && !t.dataset.act){ ui.evalKey=t.dataset.eval; ui.evalDraft=null; render(); window.scrollTo(0,0); return; }
   const a=t.dataset.act;
@@ -1116,6 +1409,23 @@ document.addEventListener('click', async ev=>{
   if(a==='openOut'){ ui.panel={type:'out', cid:t.dataset.cid, photo:''}; render(); return; }
   if(a==='submitIn'){ ui.panel.note=(document.querySelector('[data-keep="in-note"]')||{}).value; submitIn(); return; }
   if(a==='submitOut'){ submitOut(); return; }
+  if(a==='expNew'){ const me=person(ui.me); if(!me) return; ui.exp=newExpense(me.id); ui.expErr=''; render(); window.scrollTo(0,0); return; }
+  if(a==='expClose'){ ui.exp=null; ui.expErr=''; render(); return; }
+  if(a==='expAdd'){ const x=ui.exp, L=t.dataset.list; x[L]=x[L]||[]; x[L].push(L==='trips'?{ id:uid(), date:'', eventKey:'', showCode:'', from:'Home', to:'', officeFirst:false, miles:'' }:L==='stays'?{ id:uid(), eventKey:'', showCode:'', checkIn:'', checkOut:'', meals:{} }:{ id:uid(), date:'', category:'', eventKey:'', desc:'', amount:'' }); render(); return; }
+  if(a==='expDel'){ ui.exp[t.dataset.list].splice(+t.dataset.i,1); if(t.dataset.list==='trips') syncCommuteDays(ui.exp); render(); return; }
+  if(a==='expSave'||a==='expSubmit'){ const x=ui.exp;
+    if(a==='expSubmit'){ const err=expValidate(x); if(err){ ui.expErr=err; render(); return; } x.status='submitted'; x.submittedAt=Date.now(); x.history=[...(x.history||[]), { at:Date.now(), by:x.personName, action:'Submitted' }]; }
+    ui.busy=true; ui.expErr=''; render();
+    try{ await saveExpense(x); ui.notice = a==='expSubmit' ? 'Expense report submitted for approval.' : 'Draft saved.'; ui.noticeKind='ok'; if(a==='expSubmit') ui.exp=null; }
+    catch(err){ ui.expErr='Couldn’t save: '+(err.code==='permission-denied'?'permission denied (the expense rules may not be published yet).':(err.message||err.code)); }
+    ui.busy=false; render(); window.scrollTo(0,0); return; }
+  if(a==='expDiscard'){ if(!confirm('Delete this draft?')) return; const id=ui.exp.id; try{ if(S.mode==='live' && S.expenses[id]){ const {fsM,db}=DB.fb; await fsM.deleteDoc(fsM.doc(db,'peHubExpenses',id)); } }catch(e){} delete S.expenses[id]; localSave(); ui.exp=null; render(); return; }
+  if(a==='expBack'){ ui.expView=null; render(); return; }
+  if(a==='expSent'){ const x=S.expenses[ui.expView]; const by=(S.user&&S.user.email)||''; await guard(()=>saveExpense(Object.assign({}, x, { sentToAP:Date.now(), history:[...(x.history||[]), { at:Date.now(), by, action:'Sent to Accounts Payable' }] }))); return; }
+  if(a==='expPrint'){ printExpense(S.expenses[ui.expView]); return; }
+  if(a==='expEmail'){ emailExpense(S.expenses[ui.expView]); return; }
+  if(a==='expApprove'){ const x=S.expenses[ui.expView]; if(!confirm(`Approve ${x.personName}’s report for ${money2((x.totals||expCalc(x)).total)}?`)) return; await guard(()=>expAction(x,'approved')); ui.notice='Approved. Save it as a PDF and email it to Accounts Payable using the steps on the report.'; ui.noticeKind='ok'; render(); return; }
+  if(a==='expReturn'){ const x=S.expenses[ui.expView]; const note=prompt('What needs to change? (the marketer will see this)',''); if(note===null) return; await guard(()=>expAction(x,'returned',note)); ui.expView=null; render(); return; }
   if(a==='scopeToggle'){ ui.scopeOpen=!ui.scopeOpen; render(); return; }
   if(a==='scopeClear'){ ui.scope=[]; lsSet('peHub.scope','[]'); render(); return; }
   if(a==='camera'){ startCamera(t.dataset.target); return; }
@@ -1158,10 +1468,27 @@ document.addEventListener('click', async ev=>{
 async function guard(fn){ try{ await fn(); }catch(e){ console.error(e); ui.notice='Couldn’t save: '+(e.code==='permission-denied'?'permission denied. Check that you’re signed in and the hub rules are published.':(e.message||e.code)); ui.noticeKind='err'; } render(); }
 async function fetchLoc(){ const p=ui.panel; const r=await getLocation(); if(ui.panel!==p) return; p.loc=r.loc; p.locNote=r.note||''; render(); }
 function readEvalDraft(){ document.querySelectorAll('[data-ef]').forEach(el=>{ ui.evalDraft[el.dataset.ef]=el.value; }); }
-document.addEventListener('input', ev=>{ const el=ev.target; if(el.dataset.ef && ui.evalDraft) ui.evalDraft[el.dataset.ef]=el.value; if(el.dataset.act==='aq'){ ui.aq=el.value; render(); } });
+document.addEventListener('input', ev=>{ const el=ev.target; if(el.dataset.ex && ui.exp && el.type!=='checkbox' && el.type!=='radio'){ setPath(ui.exp, el.dataset.ex, el.value); if(el.type==='number') updateExpTotals(); } if(el.dataset.ef && ui.evalDraft) ui.evalDraft[el.dataset.ef]=el.value; if(el.dataset.act==='aq'){ ui.aq=el.value; render(); } });
 document.addEventListener('change', async ev=>{
   const el=ev.target;
   if(el.dataset.ef && ui.evalDraft){ ui.evalDraft[el.dataset.ef]=el.value; return; }
+  if(el.dataset.ex && ui.exp){ const x=ui.exp, pth=el.dataset.ex;
+    const v = el.type==='checkbox' ? el.checked : el.value;
+    setPath(x, pth, v);
+    if(pth==='weekStart' && v){ x.weekStart=mondayOf(v); x.weekEnd=addDays(x.weekStart,6); if(!(x.trips||[]).some(t=>t.miles)) { x.trips=[]; prefillTrips(x); } }
+    if(pth==='supervisor'){ const m=S.sched.roster.find(r=>r.name===v); x.supervisorEmail=(m&&m.email)||''; if(!x.eventMgrEmail && m && m.email) x.eventMgrEmail=m.email; }
+    if(/^stays\.\d+\.(checkIn|checkOut)$/.test(pth)){ const i=+pth.split('.')[1], st=x.stays[i]; if(pth.endsWith('checkIn') && (!st.checkOut || st.checkOut<st.checkIn)) st.checkOut=addDays(st.checkIn,1); }
+    if(/\.eventKey$/.test(pth)){ const e=S.sched.events.find(z=>z.key===v); const base=pth.replace(/\.eventKey$/,''); if(e){ setPath(x, base+'.eventName', e.name); if(/^trips\./.test(base) && !getPath(x, base+'.to')) setPath(x, base+'.to', venueText(e)); } }
+    if(/^trips\.\d+\.(officeFirst|date)$/.test(pth)){ syncCommuteDays(x); render(); return; }
+    // Text and number boxes never redraw the page (that would close the phone keyboard); only totals update.
+    if(el.tagName==='SELECT' || el.type==='date' || el.type==='radio' || pth==='supervisor') render(); else updateExpTotals();
+    return; }
+  if(el.dataset.exmeal && ui.exp){ const [i,dt,k]=el.dataset.exmeal.split('|'); const st=ui.exp.stays[+i]; st.meals=st.meals||{}; st.meals[dt]=st.meals[dt]||{}; st.meals[dt][k]=el.checked; updateExpTotals(); return; }
+  if(el.dataset.exfile && el.files && el.files[0] && ui.exp){ const f=el.files[0], pth=el.dataset.exfile;
+    try{ let data; if(/pdf/i.test(f.type)){ if(f.size>700000) throw new Error('That PDF is too large (max about 700 KB). Take a photo or screenshot instead.'); data=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); }); } else data=await compressImage(f);
+      ui.busy=true; render(); const id=await putPhoto(data,{ expense:ui.exp.id, kind:'receipt' }); setPath(ui.exp, pth, id); ui.expErr=''; }
+    catch(err){ ui.expErr=err.message||'Couldn’t add that receipt.'; }
+    ui.busy=false; render(); return; }
   if(el.dataset.gear){ const p=ui.panel; p.note=(document.querySelector('[data-keep="in-note"]')||{}).value; p.gear = el.checked ? [...p.gear, el.dataset.gear] : p.gear.filter(x=>x!==el.dataset.gear); return; }
   const a=el.dataset.act;
   if(el.dataset.scope){ const tok=el.dataset.scope; ui.scope = el.checked ? [...new Set([...(ui.scope||[]), tok])] : (ui.scope||[]).filter(x=>x!==tok); lsSet('peHub.scope', JSON.stringify(ui.scope)); render(); return; }
@@ -1198,7 +1525,7 @@ document.addEventListener('submit', async ev=>{
 window.addEventListener('popstate', ()=>{ if(MARKETER_MODE) return; const h=location.hash.replace('#',''); ui.tab=SECTIONS[h]?h:'home'; ui.evalKey=null; ui.evalDraft=null; render(); });
 document.addEventListener('keydown', e=>{ if(e.key==='Enter' && e.target.dataset && e.target.dataset.scan){ e.preventDefault(); const tg=e.target.dataset.scan, v=e.target.value; e.target.value=''; onScan(tg, v); setTimeout(()=>{ const n=document.querySelector(`[data-scan="${tg}"]`); n&&n.focus(); },0); return; }
   if(e.key==='Enter' && e.target.classList && e.target.classList.contains('tile')){ e.target.click(); return; } if(e.key==='Escape' && (ui.panel||ui.assetForm||ui.detail||ui.lightbox||ui.item) && !ui.busy){ ui.panel=null; ui.assetForm=null; ui.detail=null; ui.item=null; ui.scanMsg=null; ui.lightbox=null; render(); } });
-setInterval(()=>{ if(!ui.panel && !ui.assetForm && !ui.item && !document.activeElement.matches('input,textarea,select')) render(); }, 60000); // keep "Late" status current
+setInterval(()=>{ if(!ui.panel && !ui.assetForm && !ui.item && !ui.exp && !document.activeElement.matches('input,textarea,select')) render(); }, 60000); // keep "Late" status current
 
 /* ---------------- demo data (only with ?demo) ---------------- */
 function seedDemo(){
@@ -1207,7 +1534,7 @@ function seedDemo(){
   const E=[ ev('Fall Home & Garden Show','DAL - Dallas',y,t,[{date:y,start:'10:00',stop:'18:00'},{date:t,start:'09:00',stop:'17:00'}],'Dallas Market Hall'),
             ev('Katy Holiday Market','HOU - Houston',t,t,[{date:t,start:'08:00',stop:'14:00'}],'Merrell Center'),
             ev('Red Oak Founder’s Day','DAL - Dallas',d3,d4,[{date:d3,start:'10:00',stop:'16:00'},{date:d4,start:'10:00',stop:'16:00'}],'Red Oak Park') ];
-  const R=[{id:'p1',name:'Paul Gaiptman',office:'DAL - Dallas'},{id:'p2',name:'Kimberly Freeman',office:'DAL - Dallas'},{id:'p3',name:'Ryan Powers',office:'HOU - Houston'},{id:'p4',name:'Dana Ortiz',office:'HOU - Houston'}];
+  const R=[{id:'m1',name:'Paula Shoemaker',office:'DAL - Dallas',mgr:true,email:'paula.shoemaker@greatdayimprovements.com'},{id:'p1',name:'Paul Gaiptman',office:'DAL - Dallas',email:'paul@example.com',empId:'W2N000001',commuteMiles:18},{id:'p2',name:'Kimberly Freeman',office:'DAL - Dallas'},{id:'p3',name:'Ryan Powers',office:'HOU - Houston'},{id:'p4',name:'Dana Ortiz',office:'HOU - Houston'}];
   const A={}; const as=(e,i,p)=>{ A[dayId(e,e.days[i])]=p; };
   as(E[0],0,['p1','p2']); as(E[0],1,['p1','p2']); as(E[1],0,['p3','p4']); as(E[2],0,['p1']); as(E[2],1,['p2']);
   S.sched={ events:E, roster:R, assignments:A, details:{} };

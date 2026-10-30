@@ -243,6 +243,9 @@ const FIREBASE_CONFIG = {
   appId: "1:1028378762774:web:65b77aa3527586a0be5f37"
 };
 const CLOUD_COLL = 'patioEnclosuresSchedule';
+// Only these sign-ins may upload a roster file. Add more emails here (lowercase) to share the job.
+const ROSTER_UPLOADERS = ['paula.shoemaker@greatdayimprovements.com'];
+function canUploadRoster(){ return !!(cloud.user && ROSTER_UPLOADERS.includes(String(cloud.user.email||'').toLowerCase())); }
 const FB_VER = '10.12.2';
 const cloud = { status:'connecting', user:null, fb:null, loaded:{}, pushed:{}, remote:{}, dirty:false, saving:false, savedAt:null, err:'', saveErr:'', authErr:'', authNote:'' };
 function canEdit(){ return cloud.status!=='live' || !!cloud.user; }
@@ -697,6 +700,7 @@ function render(){
       <option value="">${ui.region ? 'All '+esc(ui.region)+' offices' : 'All offices'}</option>
       ${offs.filter(o=>!ui.region || regionOf(o)===ui.region).map(o=>`<option ${o===ui.office?'selected':''}>${esc(o)}</option>`).join('')}
     </select>
+    ${(ui.person||ui.region||ui.office||nW>1||ui.showAllRoster) ? `<button class="btn sm" data-act="clearfilters" title="Show everyone, all regions and offices, one week">✕ Clear filters</button>` : ''}
     <div class="weeknav">
       <button class="btn sm" data-act="prev" aria-label="Previous week">◀</button>
       <span class="weeklabel">${esc(nW>1?vlabel:label)}</span>
@@ -957,7 +961,7 @@ function rosterModal(){
   return `<div class="modal-bg" data-act="closemodal"><div class="modal" role="dialog" aria-modal="true" aria-label="Roster">
     <h2>Marketer roster</h2>
     <div class="hint" style="margin-bottom:10px;">${data.rosterAsOf ? `Last roster upload ${esc(fmtFull(data.rosterAsOf))}. ` : ''}${data.hpiAsOf ? `Hrs/Issued as of ${esc(fmtFull(data.hpiAsOf))} (${esc(HPI_NOTE)}). ` : ''}
-      <button class="btn sm" data-act="rosterfile">Upload roster (Excel or CSV)…</button>
+      ${canUploadRoster() ? `<button class="btn sm" data-act="rosterfile">Upload roster (Excel or CSV)…</button>` : `<span class="hint">Roster uploads are limited to the national events manager.</span>`}
       <button class="btn sm" data-act="rosterdl">⬇ Download roster CSV</button>
       <span class="hint">Columns read: Employee ID, Name (or First/Last), Branch, Region, Email, Phone, Title, Hire Date, Status, Hrs/Issued. People are matched by Employee ID, then name. Tip: download the roster, fill it in with Excel, save as CSV and upload it back.</span></div>
     <div class="hint" style="margin-bottom:8px;">Or paste one name per line, type or pick their office, and click Add.</div>
@@ -1030,6 +1034,7 @@ document.addEventListener('click', e=>{
     }
     case 'discard': discardChanges(); break;
     case 'shcancel': ui.editShift=null; render(); break;
+    case 'clearfilters': ui.person=''; ui.region=''; ui.office=''; ui.weeks=1; ui.showAllRoster=false; saveLocal(); render(); break;
     case 'copylink': { const ev=data.events.find(x=>x.key===t.dataset.key); if(!ev) break; const link=checkinLink(ev);
       navigator.clipboard.writeText(link).then(()=>{ ui.copiedKey=ev.key; render(); setTimeout(()=>{ if(ui.copiedKey===ev.key){ ui.copiedKey=null; render(); } },4000); }).catch(()=>{ prompt('Copy this check-in link:', link); }); break; }
     case 'shfull': { if(!canEdit()) break; delete (data.shiftTimes||{})[t.dataset.key]; ui.editShift=null; save(); render(); break; }
@@ -1050,7 +1055,7 @@ document.addEventListener('click', e=>{
       save(); render(); break;
     }
     case 'import': document.getElementById('csvFile').click(); break;
-    case 'rosterfile': document.getElementById('rosterFile').click(); break;
+    case 'rosterfile': if(!canUploadRoster()){ alert('Only the national events manager can upload a roster file.'); break; } document.getElementById('rosterFile').click(); break;
     case 'rosterdl': {
       const head=['Employee ID','Name','Branch','Region','Email','Phone','Title','Hire Date','Manager','Hrs/Issued'];
       const rows=rosterSorted().map(r=>[r.empId||'', r.name, r.office||'', personRegion(r), r.email||'', r.phone||'', r.title||'', r.hire||'', r.mgr?'Yes':'', r.hpi??'']);
@@ -1119,6 +1124,7 @@ readFile(document.getElementById('csvFile'), importCSV);
 // Roster accepts CSV or Excel (.xlsx/.xls); Excel is converted with SheetJS (same library ETACC uses).
 document.getElementById('rosterFile').addEventListener('change', e=>{
   const f=e.target.files[0]; if(!f) return;
+  if(!canUploadRoster()){ e.target.value=''; alert('Only the national events manager can upload a roster file.'); return; }
   if(/\.xlsx?$/i.test(f.name)){
     const go=()=>{ const r=new FileReader(); r.onload=()=>{ try{ const wb=XLSX.read(r.result,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; importRosterCSV(XLSX.utils.sheet_to_csv(ws,{blankrows:false}), f); }catch(err){ alert('Couldn’t read that Excel file. Save it as CSV and try again.'); } e.target.value=''; }; r.readAsArrayBuffer(f); };
     if(window.XLSX) go(); else { const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; sc.onload=go; sc.onerror=()=>{ alert('Couldn’t load the Excel reader. Save the file as CSV and upload that instead.'); e.target.value=''; }; document.head.appendChild(sc); }

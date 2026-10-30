@@ -92,10 +92,29 @@ iframe.tool{width:100%;height:calc(100vh - 170px);min-height:600px;border:1px so
 .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media (max-width:760px){.two{grid-template-columns:1fr}.wrap{padding:10px}h1{font-size:18px}iframe.tool{height:calc(100vh - 200px)}}
 .marketer .wrap{max-width:640px}
+.scopewrap{position:relative}
+.scopepanel{position:absolute;right:0;top:calc(100% + 6px);z-index:40;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.15);padding:12px;width:340px;max-height:70vh;overflow:auto}
+.scopereg{border-top:1px solid var(--line-soft);padding:6px 0}.scopereg>.chk{font-weight:600}.scopeoffs{padding-left:24px}.scopeoffs .chk{padding:2px 0;font-size:13px}
+.scanrow{margin:6px 0}
+svg.bc{max-width:100%;height:auto}
+#cam{position:fixed;left:50%;transform:translateX(-50%);bottom:12px;z-index:80;background:#111;border-radius:12px;padding:8px;width:min(420px,94vw);box-shadow:0 10px 40px rgba(0,0,0,.4)}
+#cam video{width:100%;border-radius:8px;display:block;max-height:46vh;object-fit:cover}
+#cam .row{color:#fff;margin-top:6px}
+#printArea{display:none}
+@media print{
+  body.printing-labels #app, body.printing-labels .overlay, body.printing-labels #cam{display:none!important}
+  body.printing-labels #printArea{display:block}
+  @page{margin:0.5in 0.19in}
+  .labels{display:grid;grid-template-columns:repeat(3,2.625in);grid-auto-rows:1in;column-gap:0.125in}
+  .label{height:1in;padding:0.06in 0.1in;overflow:hidden;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;font:9px Arial,sans-serif}
+  .label svg{height:0.55in;max-width:2.4in}.label .ln{font-weight:700;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:2.45in}.label .lt{font-size:7px;color:#555}
+}
 </style>
 </head>
 <body>
 <div id="app"></div>
+<div id="cam" hidden><video id="camVideo" playsinline muted></video><div class="row"><span id="camMsg" class="small" style="flex:1"></span><button class="btn sm" data-act="camStop">Done</button></div></div>
+<div id="printArea"></div>
 <script>
 /* =====================================================================
    Patio Enclosures Event Hub
@@ -130,18 +149,19 @@ const EVAL_FIELDS = ['eventActivationStatus','numberOfLeads','totalAppointments'
 const params = new URLSearchParams(location.search);
 const MARKETER_MODE = params.has('m') || location.hash==='#checkin';
 const DEMO = params.has('demo');
+const EVENT_LINK = params.get('e') || '';   // per-event check-in link: ?m=1&e=<code>
 const S = {
   mode:'connecting', err:'', user:null, authErr:'',
   sched:{ events:[], roster:[], assignments:{}, details:{} }, schedLoaded:false,
-  checkins:{}, assets:[], assetsMeta:{}, evals:{},
+  checkins:{}, assets:[], assetsMeta:{}, evals:{}, alog:[], audits:{},
   etacc:null, etaccErr:'',
 };
 const ui = {
   tab: MARKETER_MODE ? 'checkin' : (location.hash.replace('#','') || 'home'),
-  office: lsGet('peHub.office') || '', date: todayIso(),
+  scope: (()=>{ try{ return JSON.parse(lsGet('peHub.scope')||'[]'); }catch(e){ return []; } })(), scopeOpen:false, date: todayIso(),
   me: params.get('p') || lsGet('peHub.me') || '',
   panel:null, notice:'', noticeKind:'', busy:false, evalKey:null, evalDraft:null, detail:null,
-  photoCache:{}, lightbox:null, assetForm:null, showOtherShift:false,
+  photoCache:{}, lightbox:null, assetForm:null, showOtherShift:false, av:'inventory', item:null, scanMsg:null, labelSel:[], station:null, audit:null, auditOffice:'', auditCond:'Good',
 };
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function lsSet(k,v){ try{ v==null ? localStorage.removeItem(k) : localStorage.setItem(k,v); }catch(e){} }
@@ -175,7 +195,22 @@ function person(id){ return S.sched.roster.find(r=>r.id===id); }
 function personName(id){ const p=person(id); return p ? p.name : (Object.values(S.checkins).find(c=>c.personId===id)||{}).personName || 'Unknown'; }
 function liveEvents(){ return S.sched.events.filter(e=>INCLUDE_STATUSES.includes(e.status)); }
 function offices(){ const s=new Set(); S.sched.events.forEach(e=>e.office&&s.add(e.office)); S.sched.roster.forEach(r=>r.office&&s.add(r.office)); S.assets.forEach(a=>a.office&&s.add(a.office)); return [...s].sort(); }
-function inOffice(o){ return !ui.office || o===ui.office; }
+// Region of each office comes from the ETACC Region column on its events.
+function regionMap(){ const c={}; S.sched.events.forEach(e=>{ if(e.office&&e.region){ c[e.office]=c[e.office]||{}; c[e.office][e.region]=(c[e.office][e.region]||0)+1; } });
+  const m={}; Object.entries(c).forEach(([o,r])=>{ m[o]=Object.entries(r).sort((a,b)=>b[1]-a[1])[0][0]; }); return m; }
+function regionOf(o){ return regionMap()[o]||''; }
+function inOffice(o){ const sc=ui.scope||[]; if(!sc.length) return true; return sc.includes('o:'+o) || (!!regionOf(o) && sc.includes('r:'+regionOf(o))); }
+function scopeLabel(){ const sc=ui.scope||[]; if(!sc.length) return 'All regions & offices'; const names=sc.map(x=>x.startsWith('r:')?x.slice(2)+' region':x.slice(2)); return names.length>3 ? names.slice(0,3).join(', ')+` +${names.length-3} more` : names.join(', '); }
+function scopePicker(){
+  const rm=regionMap(), regs=[...new Set(Object.values(rm))].sort(), sc=ui.scope||[];
+  const offsFor=r=>offices().filter(o=>(rm[o]||'')===r);
+  const noReg=offices().filter(o=>!rm[o]);
+  const box=(tok,label,cls='')=>`<label class="chk ${cls}"><input type="checkbox" data-scope="${esc(tok)}" ${sc.includes(tok)?'checked':''}> ${esc(label)}</label>`;
+  return `<div class="scopewrap"><button class="btn" data-act="scopeToggle">📍 ${esc(scopeLabel())} ▾</button>
+    ${ui.scopeOpen?`<div class="scopepanel"><div class="row" style="margin-bottom:6px"><b>Show regions & offices</b><span class="spacer"></span><button class="btn sm" data-act="scopeClear">All</button><button class="btn sm primary" data-act="scopeToggle">Done</button></div>
+      ${regs.map(r=>`<div class="scopereg">${box('r:'+r, r+' region (all offices)')}<div class="scopeoffs">${offsFor(r).map(o=>box('o:'+o,o)).join('')}</div></div>`).join('')}
+      ${noReg.length?`<div class="scopereg"><div class="small muted">No region</div><div class="scopeoffs">${noReg.map(o=>box('o:'+o,o)).join('')}</div></div>`:''}</div>`:''}</div>`;
+}
 function rosterSorted(){ return S.sched.roster.slice().sort((a,b)=>a.name.localeCompare(b.name)); }
 // Every scheduled person-shift on a date, merged with its check-in record.
 function shiftsOn(date){
@@ -207,31 +242,336 @@ function shiftStatus(s){
 function hoursOf(c){ return (c && c.inAt && c.outAt && c.outAt>c.inAt) ? (c.outAt-c.inAt)/36e5 : 0; }
 
 /* ---------------- assets ---------------- */
-function gearState(a){
-  // Most recent check-in that took this item and hasn't returned it.
-  let open=null;
-  Object.values(S.checkins).forEach(c=>{
-    if(!(c.assetsOut||[]).includes(a.id)) return;
-    const back = (c.status==='out' && (c.assetsReturned||[]).includes(a.id)) || (c.mgrReturned||[]).includes(a.id);
-    if(!back && (!open || (c.inAt||0)>(open.inAt||0))) open=c;
+/* =====================================================================
+   ASSETS: inventory, check-out / return, transfers, kits, barcodes,
+   annual inventory count. Every movement is an entry in peHubAssetLog;
+   an item's current status is rebuilt from those entries.
+   ===================================================================== */
+const ASSET_CATS = ['Tent','Table','Banner / sign','Display / sample','Flooring','Lighting','Tech','Kit','Giveaway','Print','Other'];
+const CONDITIONS = ['Good','Fair','Needs repair','Damaged'];
+const STATUS_LBL = { available:['Available','p-green'], out:['Checked out','p-blue'], repair:['In repair','p-warn'], lost:['Lost','p-red'] };
+const JSB_URL = 'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
+const ZXING_URL = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+const _scripts = {};
+function loadScript(src){ return _scripts[src] || (_scripts[src] = new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>{ delete _scripts[src]; rej(new Error('Couldn’t load '+src)); }; document.head.appendChild(s); })); }
+
+function assetById(id){ return S.assets.find(a=>a.id===id); }
+function assetByCode(code){ const c=String(code||'').trim().toUpperCase(); return c ? S.assets.find(a=>!a.retired && String(a.code||'').trim().toUpperCase()===c) : null; }
+function assetName(id){ const a=assetById(id); return a ? a.name+(a.code?` (${a.code})`:'') : 'Removed item'; }
+function isGear(a){ return a && (a.kind==='gear' || a.kind==='kit'); }
+function nextCode(){ let n=0; S.assets.forEach(a=>{ const m=String(a.code||'').match(/^PE-(\d+)$/i); if(m) n=Math.max(n,+m[1]); }); return 'PE-'+String(n+1).padStart(5,'0'); }
+function kitOf(id){ return S.assets.find(k=>k.kind==='kit' && !k.retired && (k.contents||[]).includes(id)); }
+function expandKits(ids){ const out=[]; ids.forEach(id=>{ if(!out.includes(id)) out.push(id); const a=assetById(id); if(a && a.kind==='kit') (a.contents||[]).forEach(c=>{ const x=assetById(c); if(x && !x.retired && !out.includes(c)) out.push(c); }); }); return out; }
+function money(n){ return '$'+Math.round(num(n)).toLocaleString('en-US'); }
+
+// Current state of every item, rebuilt from the log on each render.
+let ST = {};
+function computeStates(){
+  const st={};
+  S.assets.forEach(a=>{ st[a.id] = isGear(a) ? { status:'available', office:a.office||'', condition:a.condition||'Good', holder:null, audits:{} } : { qty:0, office:a.office||'', audits:{}, lastCount:0 }; });
+  S.alog.slice().sort((x,y)=>(x.at||0)-(y.at||0)).forEach(e=>{
+    const s=st[e.assetId]; if(!s) return; const gear='status' in s;
+    switch(e.type){
+      case 'checkout': if(gear){ s.status='out'; s.holder={ personId:e.personId||'', personName:e.personName||'', eventKey:e.eventKey||'', eventName:e.eventName||'', cid:e.cid||'', due:e.due||'', at:e.at, by:e.by||'' }; } break;
+      case 'return': if(gear){ s.status = e.condition==='Missing' ? 'lost' : (e.condition==='Needs repair'||e.condition==='Damaged') ? 'repair' : 'available'; if(e.condition && e.condition!=='Missing') s.condition=e.condition; s.holder=null; } break;
+      case 'status': if(gear){ s.status=e.status; if(e.status!=='out') s.holder=null; if(e.condition) s.condition=e.condition; } break;
+      case 'transfer': s.office=e.toOffice||''; break;
+      case 'use': if(!gear) s.qty-=num(e.qty); break;
+      case 'restock': if(!gear) s.qty+=num(e.qty); break;
+      case 'count': if(!gear){ s.qty=num(e.qty); s.lastCount=e.at; } break;
+      case 'audit': s.audits[e.auditId]=e; s.lastSeen=e.at;
+        if(gear){ if(e.condition) s.condition=e.condition; if(s.status==='lost') s.status='available'; }
+        else if(e.qty!==undefined && e.qty!==''){ s.qty=num(e.qty); s.lastCount=e.at; }
+        break;
+    }
   });
-  if(!open) return { out:false };
-  const overdue = open.status==='out' || open.date<todayIso();
-  return { out:true, c:open, overdue };
+  Object.values(st).forEach(s=>{ if(s.holder){ const c=s.holder.cid && S.checkins[s.holder.cid]; s.overdue = !!((c && (c.status==='out' || c.date<todayIso())) || (s.holder.due && s.holder.due<todayIso())); } });
+  ST=st;
 }
-function consumableOnHand(a){
-  const since=a.countedAt||0; let used=0;
-  Object.values(S.checkins).forEach(c=>{ if(c.status==='out' && (c.outAt||0)>since && c.consumables && c.consumables[a.id]) used+=num(c.consumables[a.id]); });
-  return Math.max(0, num(a.qty)-used);
+function stOf(a){ return (a && ST[a.id]) || {}; }
+function assetInScope(a){ const o=stOf(a).office||a.office||''; return !o || inOffice(o); }
+function scopedAssets(){ return S.assets.filter(a=>!a.retired && assetInScope(a)); }
+function usedLast(a, days){ const cut=Date.now()-days*864e5; return S.alog.filter(e=>e.assetId===a.id && e.type==='use' && (e.at||0)>cut).reduce((t,e)=>t+num(e.qty),0); }
+function isLow(a){ return a.kind==='consumable' && a.reorderAt!=='' && a.reorderAt!=null && stOf(a).qty<=num(a.reorderAt); }
+function statusPill(a){ const s=stOf(a); if(!isGear(a)) return `<b>${s.qty}</b>${a.unit?' '+esc(a.unit):''} ${isLow(a)?'<span class="pill p-red">Reorder</span>':''}`;
+  const [l,c]=STATUS_LBL[s.status]||['?','p-gray']; return `<span class="pill ${s.overdue?'p-red':c}">${s.overdue?'Overdue':l}</span>${s.holder?` <span class="small">${esc(s.holder.personName||'')}${s.holder.eventName?' · '+esc(s.holder.eventName):''}</span>`:''}`; }
+
+async function logAsset(entries){
+  const by=(S.user&&S.user.email)||'';
+  entries=entries.map(e=>JSON.parse(JSON.stringify(Object.assign({ at:Date.now(), by }, e))));
+  if(!entries.length) return;
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; for(let i=0;i<entries.length;i+=400){ const b=fsM.writeBatch(db); entries.slice(i,i+400).forEach(e=>b.set(fsM.doc(fsM.collection(db,'peHubAssetLog')), e)); await b.commit(); } }
+  else { entries.forEach(e=>S.alog.push(Object.assign({ id:'l_'+uid() }, e))); localSave(); }
 }
-function usedLast(a, days){
-  const cut=Date.now()-days*864e5; let used=0;
-  Object.values(S.checkins).forEach(c=>{ if(c.status==='out' && (c.outAt||0)>cut && c.consumables && c.consumables[a.id]) used+=num(c.consumables[a.id]); });
-  return used;
+async function saveAudit(id, obj){
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubAudits',id), JSON.parse(JSON.stringify(obj)), {merge:true}); }
+  else { S.audits[id]=Object.assign({}, S.audits[id]||{}, obj); localSave(); }
 }
-function activeAssets(kind, office){ return S.assets.filter(a=>!a.retired && a.kind===kind && (!office || !a.office || a.office===office)).sort((a,b)=>a.name.localeCompare(b.name)); }
+
+/* ---------------- scanning (handheld scanner, typed code, or phone camera) ---------------- */
+// A USB/Bluetooth scanner types the code and presses Enter into the focused scan box.
+function scanBox(target, placeholder){
+  return `<div class="row scanrow"><input type="text" data-scan="${target}" placeholder="${esc(placeholder||'Scan or type a barcode, then press Enter')}" autocomplete="off" autocapitalize="characters" style="flex:1;min-width:200px;font-size:16px;padding:9px">
+    <button class="btn" data-act="camera" data-target="${target}">📷 Camera</button></div>`;
+}
+const cam = { reader:null, target:'', last:'', lastAt:0 };
+async function startCamera(target){
+  cam.target=target;
+  const box=document.getElementById('cam'); box.hidden=false; document.getElementById('camMsg').textContent='Starting camera…';
+  try{
+    await loadScript(ZXING_URL);
+    const hints=new Map(); hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.CODE_128,ZXing.BarcodeFormat.CODE_39,ZXing.BarcodeFormat.QR_CODE,ZXing.BarcodeFormat.EAN_13,ZXing.BarcodeFormat.UPC_A]);
+    cam.reader=new ZXing.BrowserMultiFormatReader(hints);
+    await cam.reader.decodeFromConstraints({ video:{ facingMode:'environment' } }, document.getElementById('camVideo'), (res)=>{
+      if(!res) return; const code=res.getText(); const now=Date.now();
+      if(code===cam.last && now-cam.lastAt<2500) return; cam.last=code; cam.lastAt=now;
+      try{ navigator.vibrate && navigator.vibrate(60); }catch(e){}
+      document.getElementById('camMsg').textContent='✓ '+code; onScan(cam.target, code);
+    });
+    document.getElementById('camMsg').textContent='Point the camera at a barcode.';
+  }catch(e){ document.getElementById('camMsg').textContent='Camera unavailable: '+(e.message||e.name)+'. Type the code instead.'; }
+}
+function stopCamera(){ try{ cam.reader && cam.reader.reset(); }catch(e){} cam.reader=null; document.getElementById('cam').hidden=true; }
+
+function onScan(target, raw){
+  if(target==='audit' && ui.audit && S.audits[ui.audit] && S.audits[ui.audit].closedAt) return;
+  const code=String(raw||'').trim(); if(!code) return;
+  const a=assetByCode(code);
+  const miss=()=>{ ui.scanMsg={kind:'err', text:`No item has the code “${code}”.`, code}; render(); };
+  if(target==='lookup'){ if(!a) return miss(); ui.item=a.id; ui.scanMsg=null; render(); return; }
+  if(target==='checkin'){ const p=ui.panel; if(!p) return; if(!a) return miss();
+    if(!isGear(a)){ ui.scanMsg={kind:'err', text:`${a.name} is a giveaway/print item. Record what you use when you check out.`}; render(); return; }
+    const s=stOf(a); if(s.status==='out' && s.holder && s.holder.personId!==p.pid){ ui.scanMsg={kind:'err', text:`${a.name} is checked out to ${s.holder.personName}. Ask your manager.`}; render(); return; }
+    if(!p.gear.includes(a.id)) p.gear.push(a.id); ui.scanMsg={kind:'ok', text:`Added ${assetName(a.id)}.`}; render(); return; }
+  if(target==='station'){ const t=ui.station; if(!a) return miss();
+    if(!t.items.includes(a.id)) t.items.push(a.id); ui.scanMsg={kind:'ok', text:`Added ${assetName(a.id)}.`}; render(); return; }
+  if(target==='audit'){ const au=S.audits[ui.audit]; if(!au || au.closedAt) return; if(!a) return miss();
+    if(!isGear(a)){ ui.auditFocus=a.id; ui.scanMsg={kind:'ok', text:`${a.name}: enter the counted quantity below.`}; render(); return; }
+    auditFound([a.id]); return; }
+}
+async function auditFound(ids){
+  const au=S.audits[ui.audit]; const office=ui.auditOffice||'';
+  const entries=[];
+  ids.forEach(id=>{ const a=assetById(id); entries.push({ type:'audit', auditId:ui.audit, assetId:id, condition:ui.auditCond||'Good', office });
+    const cur=stOf(a).office||a.office||''; if(office && cur!==office) entries.push({ type:'transfer', assetId:id, toOffice:office, note:`Found at ${office} during ${au.name}` }); });
+  await guard(()=>logAsset(entries));
+  ui.scanMsg={kind:'ok', text: ids.length===1 ? `✓ ${assetName(ids[0])} counted${office&&stOf(assetById(ids[0])).office!==office?'':''}.` : `✓ ${ids.length} items counted.`}; render();
+}
+
+/* ---------------- views ---------------- */
+function assetsView(){
+  const mgr=!!S.user, v=ui.av||'inventory';
+  const subs=[['inventory','📦 Inventory'],['station','🔄 Check out / return'],['audit','📋 Annual inventory'],['log','🕘 Activity']];
+  return `<div class="row" style="margin-bottom:12px">${subs.map(([k,l])=>`<button class="btn ${v===k?'primary':''}" data-act="av" data-v="${k}">${l}</button>`).join('')}<span class="spacer"></span>${scopePicker()}</div>
+  ${mgr?'':'<div class="notice">Sign in (top right) to add items, check gear out, transfer it, or run an inventory count.</div>'}
+  ${ui.scanMsg?`<div class="notice ${ui.scanMsg.kind==='ok'?'ok':'err'}">${esc(ui.scanMsg.text)} ${ui.scanMsg.code&&mgr?`<button class="btn sm" data-act="addAsset" data-code="${esc(ui.scanMsg.code)}">Add it as a new item</button>`:''} <button class="btn sm" data-act="clearScan">OK</button></div>`:''}
+  ${v==='station'?stationView():v==='audit'?auditView():v==='log'?assetLogView():inventoryView()}`;
+}
+function inventoryView(){
+  const mgr=!!S.user, q=(ui.aq||'').toLowerCase(), cat=ui.acat||'', stf=ui.ast||'';
+  const all=scopedAssets();
+  const match=a=>(!q || [a.name,a.code,a.serial,a.category,a.notes,(stOf(a).holder||{}).personName].join(' ').toLowerCase().includes(q)) && (!cat || a.category===cat);
+  const gear=all.filter(a=>isGear(a)&&match(a)&&(!stf || (stf==='overdue'?stOf(a).overdue:stOf(a).status===stf))).sort((a,b)=>(stOf(a).office||'').localeCompare(stOf(b).office||'')||a.name.localeCompare(b.name));
+  const cons=all.filter(a=>a.kind==='consumable'&&match(a)&&(!stf||stf==='low'&&isLow(a))).sort((a,b)=>(stOf(a).office||'').localeCompare(stOf(b).office||'')||a.name.localeCompare(b.name));
+  const allGear=all.filter(isGear);
+  const k={ items:allGear.length, out:allGear.filter(a=>stOf(a).status==='out').length, over:allGear.filter(a=>stOf(a).overdue).length, rep:allGear.filter(a=>stOf(a).status==='repair').length, lost:allGear.filter(a=>stOf(a).status==='lost').length,
+    value:allGear.reduce((t,a)=>t+num(a.cost),0)+all.filter(a=>a.kind==='consumable').reduce((t,a)=>t+num(a.cost)*Math.max(0,stOf(a).qty),0), low:all.filter(isLow).length };
+  const sel=ui.labelSel||[];
+  return `<div class="kpis">
+    <div class="kpi"><b>${k.items}</b><span>Gear & kits</span></div><div class="kpi"><b>${k.out}</b><span>Checked out</span></div>
+    <div class="kpi ${k.over?'alert':''}"><b>${k.over}</b><span>Overdue</span></div><div class="kpi ${k.rep?'warn':''}"><b>${k.rep}</b><span>In repair</span></div>
+    <div class="kpi ${k.lost?'alert':''}"><b>${k.lost}</b><span>Lost</span></div><div class="kpi ${k.low?'warn':''}"><b>${k.low}</b><span>Giveaways to reorder</span></div>
+    <div class="kpi"><b>${money(k.value)}</b><span>Inventory value</span></div></div>
+  <div class="card"><div class="row" style="margin-bottom:10px">
+    <input type="text" data-act="aq" data-keep="aq" placeholder="Search name, code, serial, person…" value="${esc(ui.aq||'')}" style="flex:1;min-width:180px">
+    <select data-act="acat"><option value="">All categories</option>${ASSET_CATS.map(c=>`<option ${c===cat?'selected':''}>${c}</option>`).join('')}</select>
+    <select data-act="ast"><option value="">Any status</option>${[['available','Available'],['out','Checked out'],['overdue','Overdue'],['repair','In repair'],['lost','Lost'],['low','Giveaways to reorder']].map(([x,l])=>`<option value="${x}" ${x===stf?'selected':''}>${l}</option>`).join('')}</select>
+    ${mgr?'<button class="btn primary" data-act="addAsset">+ Add item</button>':''}</div>
+    ${scanBox('lookup','Scan an item to look it up')}
+    <div class="row small" style="margin:8px 0">${sel.length?`<b>${sel.length} selected</b> <button class="btn sm" data-act="labels">🏷 Print ${sel.length} label${sel.length===1?'':'s'}</button> <button class="btn sm" data-act="selNone">Clear</button>`:`<button class="btn sm" data-act="labelsAll">🏷 Print labels for everything shown</button> <span class="muted">or tick items to choose</span>`}</div>
+    <h3>Booth gear & kits (${gear.length})</h3>
+    ${gear.length?`<table><thead><tr><th style="width:26px"></th><th>Code</th><th>Item</th><th>Office</th><th>Status</th><th>Condition</th><th>Value</th></tr></thead><tbody>${gear.map(a=>{ const s=stOf(a), kit=kitOf(a.id);
+      return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td>${a.kind==='kit'?'🧰 ':''}${esc(a.name)}<div class="small muted">${esc(a.category||'')}${a.kind==='kit'?` · ${(a.contents||[]).length} items`:''}${kit?` · in ${esc(kit.name)}`:''}</div></td><td class="small">${esc(s.office||'Any')}</td><td>${statusPill(a)}</td><td class="small">${esc(s.condition||'')}</td><td class="small">${a.cost?money(a.cost):''}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No booth gear matches.</p>'}
+    <h3>Giveaways & print (${cons.length})</h3>
+    ${cons.length?`<table><thead><tr><th style="width:26px"></th><th>Code</th><th>Item</th><th>Office</th><th>On hand</th><th>Reorder at</th><th>Used (30 days)</th><th>Last count</th></tr></thead><tbody>${cons.map(a=>{ const s=stOf(a);
+      return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td>${esc(a.name)}<div class="small muted">${esc(a.category||'')}</div></td><td class="small">${esc(s.office||'Any')}</td><td>${statusPill(a)}</td><td class="small">${a.reorderAt!==''&&a.reorderAt!=null?esc(a.reorderAt):'—'}</td><td class="small">${usedLast(a,30)}</td><td class="small">${s.lastCount?fmtStamp(s.lastCount):'—'}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No giveaway or print items match.</p>'}
+  </div>`;
+}
+function stationView(){
+  if(!S.user) return '<div class="card"><p class="muted">Sign in to check gear out, take returns or transfer items.</p></div>';
+  const t=ui.station || (ui.station={ mode:'checkout', items:[], qty:{}, cond:{}, personId:'', eventKey:'', due:'', toOffice:'' });
+  const modes=[['checkout','Check out to a marketer'],['return','Return / check in'],['transfer','Transfer to another office']];
+  const t0=todayIso(), evs=liveEvents().filter(e=>inOffice(e.office)&&(e.end||e.start)>=addDays(t0,-3)&&e.start<=addDays(t0,30)).sort((a,b)=>a.start.localeCompare(b.start));
+  const people=rosterSorted(), inS=people.filter(r=>!r.office||inOffice(r.office)), outS=people.filter(r=>r.office&&!inOffice(r.office));
+  const rows=t.items.map(id=>{ const a=assetById(id); if(!a) return ''; const s=stOf(a);
+    let warn='';
+    if(t.mode==='checkout' && isGear(a) && s.status==='out') warn=`Already checked out to ${esc(s.holder.personName)}. Confirming moves it to the new person.`;
+    if(t.mode==='checkout' && isGear(a) && (s.status==='repair'||s.status==='lost')) warn=`Marked ${STATUS_LBL[s.status][0].toLowerCase()}.`;
+    if(t.mode==='return' && isGear(a) && s.status!=='out') warn='Not checked out.';
+    const extra = t.mode==='checkout' && !isGear(a) ? `<input type="number" min="0" data-sqty="${id}" value="${esc(t.qty[id]??'')}" placeholder="Qty" style="width:80px"> <span class="small muted">${s.qty} on hand</span>`
+      : t.mode==='return' && isGear(a) ? `<select data-scond="${id}">${[...CONDITIONS,'Missing'].map(c=>`<option ${c===(t.cond[id]||'Good')?'selected':''}>${c}</option>`).join('')}</select>` : '';
+    return `<tr><td><code class="small">${esc(a.code||'')}</code></td><td>${a.kind==='kit'?'🧰 ':''}${esc(a.name)}${a.kind==='kit'?`<div class="small muted">+ ${(a.contents||[]).length} items inside</div>`:''}${warn?`<div class="small" style="color:var(--warn)">${warn}</div>`:''}</td><td class="small">${statusPill(a)}</td><td>${extra}</td><td><button class="btn sm" data-act="unstation" data-aid="${id}">✕</button></td></tr>`; }).join('');
+  const ready = t.items.length && (t.mode!=='checkout' || t.personId) && (t.mode!=='transfer' || t.toOffice);
+  return `<div class="card"><div class="row" style="margin-bottom:12px">${modes.map(([k,l])=>`<button class="btn ${t.mode===k?'primary':''}" data-act="smode" data-v="${k}">${l}</button>`).join('')}</div>
+    ${t.mode==='checkout'?`<div class="fields" style="margin-bottom:10px">
+      <div class="field"><label>Marketer</label><select data-act="sperson"><option value="">Choose…</option>${inS.map(r=>`<option value="${r.id}" ${r.id===t.personId?'selected':''}>${esc(r.name)}${r.office?' ('+esc(r.office)+')':''}</option>`).join('')}${outS.length?`<optgroup label="Other offices">${outS.map(r=>`<option value="${r.id}" ${r.id===t.personId?'selected':''}>${esc(r.name)} (${esc(r.office)})</option>`).join('')}</optgroup>`:''}</select></div>
+      <div class="field"><label>For event (optional)</label><select data-act="sevent"><option value="">—</option>${evs.map(e=>`<option value="${esc(e.key)}" ${e.key===t.eventKey?'selected':''}>${esc(fmtMD(e.start))} ${esc(e.name)} (${esc(e.office)})</option>`).join('')}</select></div>
+      <div class="field"><label>Due back (optional)</label><input type="date" data-act="sdue" value="${esc(t.due)}"></div></div>`:''}
+    ${t.mode==='transfer'?`<div class="fields" style="margin-bottom:10px"><div class="field"><label>Move to office</label><select data-act="sto"><option value="">Choose…</option>${offices().map(o=>`<option ${o===t.toOffice?'selected':''}>${esc(o)}</option>`).join('')}</select></div></div>`:''}
+    ${scanBox('station')}
+    <div class="small muted" style="margin:6px 0">Or pick by hand: <select data-act="spick"><option value="">Choose an item…</option>${scopedAssets().filter(a=>!t.items.includes(a.id) && (t.mode!=='return' || stOf(a).status==='out')).sort((a,b)=>a.name.localeCompare(b.name)).map(a=>`<option value="${a.id}">${esc(a.name)} ${a.code?'('+esc(a.code)+')':''}${stOf(a).holder?' – '+esc(stOf(a).holder.personName):''}</option>`).join('')}</select></div>
+    ${t.items.length?`<table style="margin-top:8px"><thead><tr><th>Code</th><th>Item</th><th>Status</th><th>${t.mode==='return'?'Condition':t.mode==='checkout'?'Qty (giveaways)':''}</th><th></th></tr></thead><tbody>${rows}</tbody></table>`:'<p class="muted">Scan items to add them here.</p>'}
+    <div class="foot"><button class="btn" data-act="sclear" ${t.items.length?'':'disabled'}>Clear list</button><button class="btn primary" data-act="sconfirm" ${ready&&!ui.busy?'':'disabled'}>${ui.busy?'Saving…':t.mode==='checkout'?`Check out ${t.items.length} item${t.items.length===1?'':'s'}`:t.mode==='return'?`Return ${t.items.length} item${t.items.length===1?'':'s'}`:`Transfer ${t.items.length} item${t.items.length===1?'':'s'}`}</button></div></div>`;
+}
+async function stationConfirm(){
+  const t=ui.station, p=person(t.personId), ev=S.sched.events.find(e=>e.key===t.eventKey);
+  const entries=[];
+  if(t.mode==='checkout'){
+    t.items.forEach(id=>{ const a=assetById(id);
+      if(isGear(a)) expandKits([id]).forEach(x=>entries.push({ type:'checkout', assetId:x, personId:p.id, personName:p.name, eventKey:ev?ev.key:'', eventName:ev?ev.name:'', due:t.due||'' }));
+      else if(num(t.qty[id])>0) entries.push({ type:'use', assetId:id, qty:num(t.qty[id]), personId:p.id, personName:p.name, eventKey:ev?ev.key:'', eventName:ev?ev.name:'' }); });
+  } else if(t.mode==='return'){
+    t.items.forEach(id=>{ const a=assetById(id); if(!isGear(a)) return; const c=t.cond[id]||'Good'; expandKits([id]).forEach(x=>entries.push({ type:'return', assetId:x, condition:c, personName:(stOf(assetById(x)).holder||{}).personName||'' })); });
+  } else {
+    t.items.forEach(id=>expandKits([id]).forEach(x=>entries.push({ type:'transfer', assetId:x, toOffice:t.toOffice })));
+  }
+  ui.busy=true; render();
+  await guard(()=>logAsset(entries));
+  ui.busy=false; const n=t.items.length;
+  ui.scanMsg={ kind:'ok', text: t.mode==='checkout'?`Checked out ${n} item${n===1?'':'s'} to ${p.name}.`:t.mode==='return'?`Returned ${n} item${n===1?'':'s'}.`:`Moved ${n} item${n===1?'':'s'} to ${t.toOffice}.` };
+  ui.station=Object.assign({}, t, { items:[], qty:{}, cond:{} }); render();
+}
+function auditView(){
+  if(ui.audit && S.audits[ui.audit]) return auditDetail(Object.assign({ id:ui.audit }, S.audits[ui.audit]));
+  const list=Object.entries(S.audits).map(([id,a])=>Object.assign({id},a)).sort((a,b)=>(b.startedAt||0)-(a.startedAt||0));
+  return `<div class="card"><h2>Annual inventory</h2><div class="sub">Walk each office, scan every item’s barcode, and count giveaways. Anything not scanned shows up as missing.</div>
+    ${S.user?`<div class="row" style="margin-bottom:10px"><input type="text" data-keep="auditName" placeholder="${new Date().getFullYear()} Annual Inventory" style="min-width:240px"><button class="btn primary" data-act="auditStart">Start a count for ${esc(scopeLabel())}</button></div>`:''}
+    ${list.length?`<table><thead><tr><th>Count</th><th>Offices</th><th>Started</th><th>Progress</th><th>Status</th></tr></thead><tbody>${list.map(a=>{ const p=auditProgress(a); return `<tr class="click" data-audit="${a.id}"><td>${esc(a.name)}</td><td class="small">${esc((a.offices||[]).length?a.offices.join(', '):'All offices')}</td><td class="small">${fmtStamp(a.startedAt)}<div class="muted">${esc(a.startedBy||'')}</div></td><td>${p.found} of ${p.expected} found</td><td>${a.closedAt?`<span class="pill p-green">Closed ${fmtMD(isoOf(new Date(a.closedAt)))}</span>`:'<span class="pill p-blue">In progress</span>'}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No counts yet.</p>'}</div>`;
+}
+function auditItems(au){ const offs=au.offices||[]; return S.assets.filter(a=>!a.retired && (!offs.length || !(stOf(a).office||a.office) || offs.includes(stOf(a).office||a.office) )); }
+function auditProgress(au){ const items=auditItems(au).filter(isGear); const found=items.filter(a=>stOf(a).audits[au.id]); return { items, found:found.length, expected:items.length }; }
+function auditDetail(au){
+  const mgr=!!S.user, open=!au.closedAt, items=auditItems(au), gear=items.filter(isGear), cons=items.filter(a=>a.kind==='consumable');
+  const found=gear.filter(a=>stOf(a).audits[au.id]), missing=gear.filter(a=>!stOf(a).audits[au.id]);
+  const offs=(au.offices&&au.offices.length)?au.offices:offices();
+  const byOff=offs.map(o=>{ const g=gear.filter(a=>(stOf(a).office||a.office)===o); return [o,g.length,g.filter(a=>stOf(a).audits[au.id]).length]; }).filter(x=>x[1]);
+  return `<div class="row" style="margin-bottom:10px"><button class="btn sm" data-act="auditBack">◀ All counts</button><span class="spacer"></span><button class="btn sm" data-act="auditCsv">⬇ Download report (CSV)</button></div>
+  <div class="card"><h2>${esc(au.name)}</h2><div class="sub">${esc((au.offices||[]).join(', ')||'All offices')} · started ${fmtStamp(au.startedAt)} by ${esc(au.startedBy||'')}${au.closedAt?` · closed ${fmtStamp(au.closedAt)}`:''}</div>
+    <div class="kpis"><div class="kpi"><b>${found.length} / ${gear.length}</b><span>Gear & kits found</span></div><div class="kpi ${missing.length?'warn':''}"><b>${missing.length}</b><span>Not found yet</span></div><div class="kpi"><b>${cons.filter(a=>stOf(a).audits[au.id]).length} / ${cons.length}</b><span>Giveaways counted</span></div></div>
+    ${byOff.length>1?`<div class="small" style="margin-bottom:10px">${byOff.map(([o,n,f])=>`<span class="pill ${f===n?'p-green':'p-gray'}" style="margin:2px">${esc(o)}: ${f}/${n}</span>`).join(' ')}</div>`:''}
+    ${open&&mgr?`<div class="fields" style="margin-bottom:8px"><div class="field"><label>Counting at office</label><select data-act="aoff"><option value="">(item’s own office)</option>${offs.map(o=>`<option ${o===ui.auditOffice?'selected':''}>${esc(o)}</option>`).join('')}</select></div>
+      <div class="field"><label>Condition for scanned items</label><select data-act="acond">${CONDITIONS.map(c=>`<option ${c===(ui.auditCond||'Good')?'selected':''}>${c}</option>`).join('')}</select></div></div>
+      ${scanBox('audit','Scan each item’s barcode')}`:''}
+  </div>
+  <div class="two"><div class="card"><h2>Not found yet (${missing.length})</h2>${missing.length?`<table><tbody>${missing.map(a=>`<tr><td><code class="small">${esc(a.code||'')}</code></td><td>${esc(a.name)}<div class="small muted">${esc(stOf(a).office||'')} · ${STATUS_LBL[stOf(a).status][0]}${stOf(a).holder?' – '+esc(stOf(a).holder.personName):''}</div></td><td style="text-align:right">${open&&mgr?`<button class="btn sm" data-act="auditMark" data-aid="${a.id}">Found</button>`:''}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">Everything has been found. 🎉</p>'}</div>
+    <div class="card"><h2>Found (${found.length})</h2>${found.length?`<table><tbody>${found.sort((a,b)=>stOf(b).audits[au.id].at-stOf(a).audits[au.id].at).map(a=>{ const e=stOf(a).audits[au.id]; return `<tr><td><code class="small">${esc(a.code||'')}</code></td><td>${esc(a.name)}<div class="small muted">${esc(e.office||stOf(a).office||'')} · ${esc(e.condition||'')}</div></td><td class="small">${fmtStamp(e.at)}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">Nothing scanned yet.</p>'}</div></div>
+  ${cons.length?`<div class="card"><h2>Giveaways & print counts</h2><table><thead><tr><th>Item</th><th>Office</th><th>System says</th><th>Counted</th><th></th></tr></thead><tbody>${cons.map(a=>{ const e=stOf(a).audits[au.id]; return `<tr ${ui.auditFocus===a.id?'style="background:var(--accent-soft)"':''}><td>${esc(a.name)} <code class="small">${esc(a.code||'')}</code></td><td class="small">${esc(stOf(a).office||'Any')}</td><td>${stOf(a).qty}</td><td>${e?`<b>${esc(e.qty)}</b> <span class="small muted">${fmtStamp(e.at)}</span>`:open&&mgr?`<input type="number" min="0" data-keep="ac-${a.id}" style="width:90px">`:'—'}</td><td>${!e&&open&&mgr?`<button class="btn sm" data-act="auditCount" data-aid="${a.id}">Save</button>`:''}</td></tr>`; }).join('')}</tbody></table></div>`:''}
+  ${open&&mgr?`<div class="card"><h2>Finish the count</h2><label class="chk"><input type="checkbox" data-keep="auditLost" ${missing.length?'':'disabled'}> Mark the ${missing.length} item${missing.length===1?'':'s'} not found as <b>Lost</b></label><div class="foot"><button class="btn primary" data-act="auditClose">Close this count</button></div></div>`:''}`;
+}
+function auditCsv(au){
+  const rows=[['Code','Item','Category','Type','Office','Status','Condition','Found in count','Found at','Counted qty','Value']];
+  auditItems(au).forEach(a=>{ const s=stOf(a), e=s.audits[au.id]; rows.push([a.code||'',a.name,a.category||'',a.kind,s.office||'',isGear(a)?(STATUS_LBL[s.status]||[''])[0]:'',s.condition||'',e?'Yes':'No',e?new Date(e.at).toLocaleString():'',e&&e.qty!==undefined?e.qty:'',a.cost||'']); });
+  const csv=rows.map(r=>r.map(x=>{ const v=String(x??''); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'}), url=URL.createObjectURL(blob), link=document.createElement('a');
+  link.href=url; link.download=`${au.name.replace(/[^\w-]+/g,'_')}.csv`; document.body.appendChild(link); link.click(); link.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+const LOG_LBL={ checkout:'Checked out', return:'Returned', use:'Used', restock:'Restocked', count:'Counted', transfer:'Transferred', status:'Status changed', audit:'Counted in inventory' };
+function logLine(e){ const a=assetById(e.assetId); return `${LOG_LBL[e.type]||e.type}${e.type==='use'||e.type==='restock'||e.type==='count'?` ${esc(e.qty)}`:''}: <b>${esc(a?a.name:'Removed item')}</b>${a&&a.code?` <code class="small">${esc(a.code)}</code>`:''}${e.type==='transfer'?` → ${esc(e.toOffice)}`:''}${e.type==='status'?` → ${esc((STATUS_LBL[e.status]||[e.status])[0])}`:''}${e.condition?` · ${esc(e.condition)}`:''}`; }
+function assetLogView(){
+  const list=S.alog.filter(e=>{ const a=assetById(e.assetId); return !a || assetInScope(a); }).sort((a,b)=>(b.at||0)-(a.at||0)).slice(0,200);
+  return `<div class="card"><h2>Asset activity</h2>${list.length?`<table><tbody>${list.map(e=>`<tr class="click" data-item="${esc(e.assetId)}"><td class="small" style="width:130px">${fmtStamp(e.at)}</td><td>${logLine(e)}</td><td class="small">${esc([e.personName,e.eventName].filter(Boolean).join(' · '))}<div class="muted">${esc(e.by||'')}${e.note?' · '+esc(e.note):''}</div></td></tr>`).join('')}</tbody></table>`:'<p class="muted">No activity yet.</p>'}</div>`;
+}
+function itemPanel(){
+  const a=assetById(ui.item); if(!a) return '';
+  const s=stOf(a), mgr=!!S.user, gear=isGear(a), kit=kitOf(a.id);
+  const hist=S.alog.filter(e=>e.assetId===a.id).sort((x,y)=>(y.at||0)-(x.at||0)).slice(0,40);
+  const btn=(act,l,extra='')=>`<button class="btn sm" data-act="${act}" data-aid="${a.id}" ${extra}>${l}</button>`;
+  return `<div class="panel"><div class="row"><h2>${a.kind==='kit'?'🧰 ':''}${esc(a.name)}</h2><span class="spacer"></span>${statusPill(a)}</div>
+    <div class="sub">${esc(a.category||'')} · ${esc(s.office||'Any office')}${kit?` · part of <a href="#" data-item="${kit.id}">${esc(kit.name)}</a>`:''}</div>
+    <div class="row" style="align-items:flex-start;gap:16px"><svg class="bc" data-code="${esc(a.code||'')}"></svg>
+    <table style="flex:1;min-width:240px"><tbody>
+      <tr><th>Code</th><td><code>${esc(a.code||'—')}</code></td></tr>
+      ${gear?`<tr><th>Condition</th><td>${esc(s.condition||'')}</td></tr>`:`<tr><th>On hand</th><td>${s.qty}${a.unit?' '+esc(a.unit):''} · reorder at ${a.reorderAt!==''&&a.reorderAt!=null?esc(a.reorderAt):'—'}</td></tr>`}
+      ${s.holder?`<tr><th>With</th><td>${esc(s.holder.personName)}${s.holder.eventName?' · '+esc(s.holder.eventName):''}<div class="small muted">since ${fmtStamp(s.holder.at)}${s.holder.due?' · due '+fmtMD(s.holder.due):''}</div></td></tr>`:''}
+      ${a.serial?`<tr><th>Serial #</th><td>${esc(a.serial)}</td></tr>`:''}
+      ${a.purchaseDate||a.cost||a.vendor?`<tr><th>Purchased</th><td>${esc([a.purchaseDate?fmtMD(a.purchaseDate)+'/'+a.purchaseDate.slice(0,4):'', a.cost?money(a.cost)+(gear?'':' each'):'', a.vendor].filter(Boolean).join(' · '))}</td></tr>`:''}
+      ${a.kind==='kit'?`<tr><th>In this kit</th><td>${(a.contents||[]).map(id=>`<a href="#" data-item="${id}">${esc(assetName(id))}</a>`).join('<br>')||'—'}</td></tr>`:''}
+      ${s.lastSeen?`<tr><th>Last counted</th><td>${fmtStamp(s.lastSeen)}</td></tr>`:''}
+      ${a.notes?`<tr><th>Notes</th><td>${esc(a.notes)}</td></tr>`:''}
+    </tbody></table></div>
+    ${mgr?`<div class="row" style="margin-top:12px;gap:6px">${btn('editAsset','✎ Edit')}${btn('labelOne','🏷 Print label')}
+      ${gear?`${s.status!=='out'?btn('itemOut','Check out'):btn('itemReturn','Return')}${s.status!=='repair'?btn('itemStatus','Send to repair','data-st="repair"'):btn('itemStatus','Repaired','data-st="available"')}${s.status!=='lost'?btn('itemStatus','Mark lost','data-st="lost"'):btn('itemStatus','Found it','data-st="available"')}`
+        :`${btn('itemRestock','+ Restock')}${btn('itemCount','Recount')}`}${btn('itemTransfer','Transfer')}</div>`:''}
+    <h3>History</h3>${hist.length?`<table><tbody>${hist.map(e=>`<tr><td class="small" style="width:120px">${fmtStamp(e.at)}</td><td class="small">${logLine(e)}<div class="muted">${esc([e.personName,e.eventName,e.note].filter(Boolean).join(' · '))}${e.by?' · by '+esc(e.by):''}</div></td></tr>`).join('')}</tbody></table>`:'<p class="muted small">No history yet.</p>'}
+    <div class="foot"><button class="btn" data-act="closePanel">Close</button></div></div>`;
+}
+function assetPanel(){
+  const f=ui.assetForm, a=f.id?assetById(f.id):{ kind:'gear', office:soleOffice(), code:f.code||nextCode(), condition:'Good' };
+  const kind=f.kind||a.kind, off=a.office||'';
+  const kitPool=S.assets.filter(x=>!x.retired && x.kind==='gear' && x.id!==a.id && (!kitOf(x.id) || kitOf(x.id).id===a.id)).sort((x,y)=>x.name.localeCompare(y.name));
+  return `<div class="panel"><h2>${f.id?'Edit item':'Add item'}</h2><form data-form="asset"><div class="fields">
+    <div class="field"><label>Type</label><select name="kind" data-act="akind" ${f.id?'disabled':''}><option value="gear" ${kind==='gear'?'selected':''}>Booth gear (checked out & returned)</option><option value="kit" ${kind==='kit'?'selected':''}>Event kit (a set of gear)</option><option value="consumable" ${kind==='consumable'?'selected':''}>Giveaway / print (used up)</option></select></div>
+    <div class="field"><label>Name</label><input type="text" name="name" required value="${esc(a.name||'')}" placeholder="10x10 tent, Event kit A, Brochures…"></div>
+    <div class="field"><label>Category</label><select name="category">${ASSET_CATS.map(c=>`<option ${c===(a.category||(kind==='kit'?'Kit':kind==='consumable'?'Giveaway':''))?'selected':''}>${c}</option>`).join('')}</select></div>
+    <div class="field"><label>Barcode / code</label><input type="text" name="code" required value="${esc(a.code||'')}"><span class="small muted">Keep the suggested code, or scan the item’s existing barcode into this box.</span></div>
+    <div class="field"><label>Home office</label><input type="text" name="office" list="officeList" value="${esc(off)}" placeholder="Blank = any office"><datalist id="officeList">${offices().map(o=>`<option value="${esc(o)}">`).join('')}</datalist></div>
+    ${kind!=='consumable'?`<div class="field"><label>Condition</label><select name="condition">${CONDITIONS.map(c=>`<option ${c===(f.id?stOf(a).condition:a.condition)?'selected':''}>${c}</option>`).join('')}</select></div>
+      <div class="field"><label>Serial #</label><input type="text" name="serial" value="${esc(a.serial||'')}"></div>`
+      :`${f.id?'':`<div class="field"><label>Quantity on hand now</label><input type="number" name="qty" min="0" value="0"></div>`}
+      <div class="field"><label>Unit</label><input type="text" name="unit" value="${esc(a.unit||'')}" placeholder="each, box, case…"></div>
+      <div class="field"><label>Reorder when at or below</label><input type="number" name="reorderAt" min="0" value="${esc(a.reorderAt??'')}"></div>`}
+    <div class="field"><label>Purchase date</label><input type="date" name="purchaseDate" value="${esc(a.purchaseDate||'')}"></div>
+    <div class="field"><label>Cost${kind==='consumable'?' (each)':''}</label><input type="number" name="cost" min="0" step="0.01" value="${esc(a.cost??'')}"></div>
+    <div class="field"><label>Vendor</label><input type="text" name="vendor" value="${esc(a.vendor||'')}"></div>
+  </div>
+  ${kind==='kit'?`<h3>What’s in this kit</h3><div class="small muted">Checking out the kit checks out everything in it.</div><div style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-top:6px">${kitPool.map(x=>`<label class="chk"><input type="checkbox" name="contents" value="${x.id}" ${(a.contents||[]).includes(x.id)?'checked':''}> ${esc(x.name)} <code class="small">${esc(x.code||'')}</code> <span class="small muted">${esc(stOf(x).office||'')}</span></label>`).join('')||'<span class="small muted">Add the individual gear items first, then build the kit.</span>'}</div>`:''}
+  <div class="field" style="margin-top:10px"><label>Notes</label><input type="text" name="notes" value="${esc(a.notes||'')}"></div>
+  ${f.err?`<div class="notice err" style="margin-top:10px">${esc(f.err)}</div>`:''}
+  <div class="foot">${f.id?'<button type="button" class="btn danger" data-act="retireAsset">Retire item</button><span class="spacer"></span>':''}<button type="button" class="btn" data-act="closePanel">Cancel</button><button class="btn primary">Save</button></div></form></div>`;
+}
+async function saveAssetForm(f){
+  const g=n=>f.elements[n] ? String(f.elements[n].value||'').trim() : '';
+  const id=ui.assetForm.id, old=id?assetById(id):null, kind=old?old.kind:g('kind');
+  const code=g('code').toUpperCase(); const clash=S.assets.find(x=>x.id!==id && !x.retired && String(x.code||'').toUpperCase()===code);
+  if(clash){ ui.assetForm.err=`The code ${code} is already used by ${clash.name}.`; render(); return; }
+  const rec={ name:g('name'), category:g('category'), code, office:g('office'), serial:g('serial'), purchaseDate:g('purchaseDate'), cost:g('cost')===''?'':num(g('cost')), vendor:g('vendor'), notes:g('notes') };
+  if(kind==='consumable'){ rec.unit=g('unit'); rec.reorderAt=g('reorderAt')===''?'':num(g('reorderAt')); }
+  if(kind==='kit') rec.contents=[...f.querySelectorAll('input[name=contents]:checked')].map(x=>x.value);
+  const entries=[];
+  let list;
+  if(old){
+    list=S.assets.map(x=>x.id===id?Object.assign({},x,rec):x);
+    if(isGear(old) && g('condition') && g('condition')!==stOf(old).condition) entries.push({ type:'status', assetId:id, status:stOf(old).status, condition:g('condition'), note:'Condition updated' });
+    if(rec.office!==old.office && rec.office!==stOf(old).office) entries.push({ type:'transfer', assetId:id, toOffice:rec.office, note:'Home office changed' });
+  } else {
+    const nid='a_'+uid(); list=[...S.assets, Object.assign({ id:nid, kind, createdAt:Date.now(), retired:false, condition:kind==='consumable'?undefined:g('condition') }, rec)];
+    if(kind==='consumable') entries.push({ type:'count', assetId:nid, qty:num(g('qty')), note:'Starting quantity' });
+  }
+  await guard(async()=>{ await saveAssets(list); await logAsset(entries); });
+  ui.assetForm=null; render();
+}
+function soleOffice(){ const o=(ui.scope||[]).filter(x=>x.startsWith('o:')); return o.length===1 && ui.scope.length===1 ? o[0].slice(2) : ''; }
+
+/* ---------------- barcode labels ---------------- */
+async function printLabels(ids){
+  const items=ids.map(assetById).filter(a=>a && a.code);
+  if(!items.length){ ui.scanMsg={kind:'err', text:'None of those items has a code yet.'}; render(); return; }
+  try{ await loadScript(JSB_URL); }catch(e){ ui.scanMsg={kind:'err', text:'Couldn’t load the barcode tool. Check your connection and try again.'}; render(); return; }
+  const box=document.getElementById('printArea');
+  box.innerHTML=`<div class="labels">${items.map(a=>`<div class="label"><div class="lt">Patio Enclosures</div><svg data-lbl="${esc(a.code)}"></svg><div class="ln">${esc(a.name)}</div></div>`).join('')}</div>`;
+  box.querySelectorAll('svg[data-lbl]').forEach(sv=>{ try{ JsBarcode(sv, sv.dataset.lbl, { format:'CODE128', height:34, width:1.6, fontSize:12, margin:0 }); }catch(e){} });
+  document.body.classList.add('printing-labels');
+  setTimeout(()=>{ window.print(); setTimeout(()=>document.body.classList.remove('printing-labels'), 500); }, 120);
+}
+function drawBarcodes(){
+  const svgs=document.querySelectorAll('svg.bc[data-code]'); if(!svgs.length) return;
+  loadScript(JSB_URL).then(()=>svgs.forEach(sv=>{ if(sv.dataset.code && !sv.dataset.done){ try{ JsBarcode(sv, sv.dataset.code, { format:'CODE128', height:50, width:1.8, fontSize:13, margin:4 }); sv.dataset.done=1; }catch(e){} } })).catch(()=>{});
+}
 
 /* ---------------- evaluations ---------------- */
+function eventCode(e){ return hash(e.key); }
+function checkinLink(e){ return location.origin+location.pathname+'?m=1&e='+eventCode(e); }
+function linkedEvent(){ return EVENT_LINK ? S.sched.events.find(e=>eventCode(e)===EVENT_LINK) : null; }
 function evalKey(e){ return 'e_'+hash(e.key); }
 function etaccMatch(e){
   if(!S.etacc) return null;
@@ -254,11 +594,16 @@ function rollup(e){
   return { cs, done, leads, appts, hrs, names, issues, notes, lph: hrs ? round1(leads/hrs) : 0 };
 }
 
+// Show hours a manager typed on the schedule's event card override ETACC's blank/old hours.
+function mergeMgrTimes(){
+  S.sched.events.forEach(e=>{ const det=S.sched.details[e.key]||{}; const t={}; (det.times||[]).forEach(x=>{ if(x.date) t[x.date]=x; });
+    (e.days||[]).forEach(d=>{ if(!('_s' in d)){ d._s=d.start||''; d._t=d.stop||''; } const o=t[d.date]; d.start=(o&&o.start)||d._s; d.stop=(o&&o.stop)||d._t; }); });
+}
 /* ---------------- data layer (Firebase, or this device only) ---------------- */
 const DB = { fb:null };
 const LOCAL_KEY='peHub.local';
 function localLoad(){ try{ return JSON.parse(lsGet(LOCAL_KEY)||'{}'); }catch(e){ return {}; } }
-function localSave(){ lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
+function localSave(){ lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
 async function initDB(){
   if(DEMO){ goLocal('demo'); return; }
   const timeout=setTimeout(()=>{ if(S.mode==='connecting') goLocal('timeout'); },10000);
@@ -278,7 +623,7 @@ async function initDB(){
         if(name==='roster') S.sched.roster=(d&&d.list)||[];
         if(name==='assignments') S.sched.assignments=Object.fromEntries(((d&&d.list)||[]).map(x=>[x.id,x.people||[]]));
         if(name==='details') S.sched.details=Object.fromEntries(((d&&d.list)||[]).map(x=>[x.key,x]));
-        S.schedLoaded=true; render();
+        mergeMgrTimes(); S.schedLoaded=true; render();
       }, fail('schedule'));
     });
     const since=addDays(todayIso(),-150);
@@ -286,6 +631,8 @@ async function initDB(){
       const m={}; snap.forEach(d=>m[d.id]=Object.assign({id:d.id},d.data())); S.checkins=m; render();
     }, fail('check-ins'));
     F.onSnapshot(F.doc(db,'peHubAssets','inventory'), snap=>{ const d=snap.exists()?snap.data():{}; S.assets=d.list||[]; S.assetsMeta={updatedAt:d.updatedAt,updatedBy:d.updatedBy}; render(); }, fail('assets'));
+    F.onSnapshot(F.collection(db,'peHubAssetLog'), snap=>{ const a=[]; snap.forEach(d=>a.push(Object.assign({id:d.id},d.data()))); S.alog=a; render(); }, fail('asset activity'));
+    F.onSnapshot(F.collection(db,'peHubAudits'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.audits=m; render(); }, fail('inventory counts'));
     let unsubs=[];
     authM.onAuthStateChanged(auth, u=>{
       S.user=u; unsubs.forEach(f=>f()); unsubs=[]; S.etacc=null; S.etaccErr=''; S.evals={};
@@ -302,7 +649,7 @@ function goLocal(why){
   const L=localLoad();
   if(DEMO && !L.sched) seedDemo(); else {
     if(L.sched) S.sched=L.sched;
-    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; ui.localPhotos=L.photos||{};
+    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; ui.localPhotos=L.photos||{};
   }
   if(DEMO){ S.user={email:'demo.manager@patio'}; }
   S.schedLoaded=true; render();
@@ -350,8 +697,14 @@ async function saveEval(e, fields){
 async function signIn(email,pw){
   S.authErr='';
   if(!DB.fb){ S.authErr='Not connected to the shared database.'; render(); return; }
-  try{ await DB.fb.authM.signInWithEmailAndPassword(DB.fb.auth,email,pw); }
-  catch(e){ S.authErr=['auth/invalid-credential','auth/wrong-password','auth/user-not-found','auth/invalid-email'].includes(e.code)?'Incorrect email or password.':`Sign-in failed: ${e.code||e.message}`; render(); }
+  S.authErr='Signing in…'; render();
+  try{
+    try{ await DB.fb.authM.signInWithEmailAndPassword(DB.fb.auth,email,pw); }
+    catch(e){ if(e.code!=='auth/network-request-failed') throw e; await new Promise(r=>setTimeout(r,1500)); await DB.fb.authM.signInWithEmailAndPassword(DB.fb.auth,email,pw); }
+    S.authErr=''; render();
+  }
+  catch(e){ if(e.code==='auth/network-request-failed'){ S.authErr='Couldn’t reach the sign-in server. Sign in on the Events (ETACC) tile instead (it signs you in here too), or try another browser/network.'; render(); return; }
+    S.authErr=['auth/invalid-credential','auth/wrong-password','auth/user-not-found','auth/invalid-email'].includes(e.code)?'Incorrect email or password.':`Sign-in failed: ${e.code||e.message}`; render(); }
 }
 async function signOut(){ if(DB.fb) await DB.fb.authM.signOut(DB.fb.auth); else { S.user=null; render(); } }
 
@@ -384,12 +737,14 @@ function compressImage(file){
    ===================================================================== */
 function render(){
   const app=document.getElementById('app');
+  computeStates();
   const keep=captureInputs();
   document.body.classList.toggle('marketer', MARKETER_MODE);
   app.innerHTML = `<div class="wrap">${header()}${MARKETER_MODE?'':tabs()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}`;
   restoreInputs(keep);
   // lazy-load any photos now on screen
   app.querySelectorAll('img[data-photo]').forEach(im=>{ const id=im.dataset.photo; if(ui.photoCache[id]===undefined) getPhoto(id); });
+  drawBarcodes();
 }
 // keep typed text while live updates re-render
 function captureInputs(){ const m={}; document.querySelectorAll('[data-keep]').forEach(el=>{ m[el.dataset.keep]= el.type==='checkbox'?el.checked:el.value; }); const a=document.activeElement; return {m, focus:a&&a.dataset?a.dataset.keep:null}; }
@@ -404,32 +759,42 @@ function header(){
     <div><h1>${MARKETER_MODE?'Event Check-In':'Event Activity Hub'}</h1><div class="asof">${stat}${S.mode==='local'&&!DEMO?` · not saving to the shared database (${esc(S.err)})`:''}</div></div>
     <div class="spacer"></div>${signin}</header>`;
 }
-const SECTIONS={ today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Marketer Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Asset Check-Out'], evals:['📝','Post-Event Evaluations'] };
+const SECTIONS={ today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Marketer Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Asset Inventory & Check-Out'], evals:['📝','Post-Event Evaluations'] };
 function tabs(){
   if(ui.tab==='home' || !SECTIONS[ui.tab]) return '';
   const [ic,l]=SECTIONS[ui.tab];
   return `<div class="crumb"><button class="btn" data-tab="home">◀ Back to Hub</button><b>${ic} ${esc(l)}</b></div>`;
+}
+function needsStaffing(){
+  const t=todayIso(), lim=addDays(t,28);
+  return liveEvents().filter(e=>inOffice(e.office) && (e.end||e.start)>=t && e.start<=lim).map(e=>{ const open=e.days.filter(d=>d.date>=t && !(S.sched.assignments[dayId(e,d)]||[]).length); return { e, open, total:e.days.filter(d=>d.date>=t).length }; })
+    .filter(x=>x.open.length).sort((a,b)=>a.open[0].date.localeCompare(b.open[0].date));
+}
+function staffBanner(){
+  const list=needsStaffing(); if(!list.length) return '';
+  return `<div class="notice" style="margin-bottom:14px"><b>⚠ ${list.length} event${list.length===1?'':'s'} in the next 4 weeks still need${list.length===1?'s':''} marketers.</b> Schedule 3–4 weeks out so marketers can plan.
+    <table style="margin-top:6px"><tbody>${list.slice(0,6).map(x=>`<tr><td><b>${esc(x.e.name)}</b> <span class="small muted">${esc(x.e.office||'')}</span></td><td class="small">${fmtLong(x.e.start)}</td><td class="small" style="color:var(--red);font-weight:600">${x.open.length} of ${x.total} day${x.total===1?'':'s'} unstaffed</td></tr>`).join('')}</tbody></table>
+    ${list.length>6?`<div class="small">…and ${list.length-6} more.</div>`:''}<div style="margin-top:6px"><button class="btn sm primary" data-tab="schedule">Open the schedule</button></div></div>`;
 }
 function tilesView(){
   const t=todayIso(), today=shiftsOn(t).filter(s=>inOffice(s.ev.office)), st=today.map(shiftStatus);
   const late=st.filter(x=>x.k==='late'||x.k==='noout').length, inNow=st.filter(x=>x.k==='in').length;
   const due=evalsDue().filter(e=>!evalDone(e)).length;
   const upcoming=liveEvents().filter(e=>inOffice(e.office)&&(e.end||e.start)>=t&&e.start<=addDays(t,7)).length;
-  const gear=S.assets.filter(a=>!a.retired&&a.kind==='gear'&&inOffice(a.office)).map(gearState);
-  const out=gear.filter(g=>g.out).length, overdue=gear.filter(g=>g.overdue).length;
-  const low=S.assets.filter(a=>!a.retired&&a.kind==='consumable'&&inOffice(a.office)&&a.reorderAt!==''&&a.reorderAt!=null&&consumableOnHand(a)<=num(a.reorderAt)).length;
+  const gear=scopedAssets().filter(isGear).map(stOf);
+  const out=gear.filter(g=>g.status==='out').length, overdue=gear.filter(g=>g.overdue).length, repair=gear.filter(g=>g.status==='repair').length;
+  const low=scopedAssets().filter(isLow).length, staff=needsStaffing().length;
   const tile=(k,desc,stat,cls,flag,flagCls)=>{ const [ic,l]=SECTIONS[k]; return `<div class="tile" data-tab="${k}" role="button" tabindex="0">${flag?`<span class="flag ${flagCls||''}">${flag}</span>`:''}<div class="ic">${ic}</div><h2>${esc(l)}</h2><p>${desc}</p><div class="stat ${cls||''}">${stat}</div></div>`; };
-  return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span>${officePicker()}</div>
+  return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span>${scopePicker()}</div>${staffBanner()}
   <div class="tiles">
     ${tile('today','Who’s scheduled, checked in, late or done, with photos and results.', today.length?`${today.length} shifts · ${inNow} working now${late?` · ${late} late`:''}`:'No shifts today', late?'alert':'', late||'', 'alert')}
     ${tile('events','Track, approve and contract events in ETACC.', `${upcoming} event${upcoming===1?'':'s'} in the next 7 days`)}
-    ${tile('schedule','Weekly marketer schedule and shift assignments.', 'Open the weekly schedule')}
+    ${tile('schedule','Weekly marketer schedule and shift assignments.', staff?`${staff} event${staff===1?'':'s'} need staffing`:'Open the weekly schedule', staff?'warn':'', staff||'')}
     ${tile('checkin','Marketers check in at the booth and check out with results.', 'Start or end a shift')}
-    ${tile('assets','Booth gear checked out and returned; giveaways and print on hand.', `${out} item${out===1?'':'s'} out${overdue?` · ${overdue} not returned`:''}${low?` · ${low} to reorder`:''}`, overdue||low?'warn':'', (overdue+low)||'')}
+    ${tile('assets','Inventory, barcode check-out and returns, transfers and the annual count.', `${gear.length} items · ${out} out${overdue?` · ${overdue} overdue`:''}${repair?` · ${repair} in repair`:''}${low?` · ${low} to reorder`:''}`, overdue||low?'warn':'', (overdue+low)||'')}
     ${tile('evals','Manager post-event evaluations, pre-filled from check-outs.', due?`${due} waiting for evaluation`:'All caught up', due?'warn':'', due||'')}
   </div></div>`;
 }
-function officePicker(){ return `<select data-act="office"><option value="">All offices</option>${offices().map(o=>`<option ${o===ui.office?'selected':''}>${esc(o)}</option>`).join('')}</select>`; }
 function body(){
   if(!S.schedLoaded) return `<div class="card">Loading…</div>`;
   switch(ui.tab){
@@ -454,12 +819,12 @@ function homeView(){
   const cnt=k=>st.filter(x=>x.k===k).length;
   const dayCis=list.map(s=>s.c).filter(Boolean);
   const leads=dayCis.filter(c=>c.status==='out').reduce((t,c)=>t+num(c.leads),0), appts=dayCis.filter(c=>c.status==='out').reduce((t,c)=>t+num(c.appts),0);
-  const gearOut=S.assets.filter(a=>!a.retired&&a.kind==='gear'&&inOffice(a.office)).map(a=>gearState(a)).filter(g=>g.out);
+  const gearOut=scopedAssets().filter(isGear).map(stOf).filter(g=>g.status==='out');
   const due=evalsDue().filter(e=>!evalDone(e)).length;
   const recentIssues=Object.values(S.checkins).filter(c=>inOffice(c.office)&&((c.issues||[]).length||c.issueText)&&c.date>=addDays(todayIso(),-7)).sort((a,b)=>(b.outAt||b.inAt||0)-(a.outAt||a.inAt||0));
   // group by event
   const byEv={}; list.forEach((s,i)=>{ (byEv[s.ev.key]=byEv[s.ev.key]||{ev:s.ev,rows:[]}).rows.push([s,st[i]]); });
-  return `<div class="row" style="margin-bottom:12px"><button class="btn sm" data-act="day" data-n="-1">◀</button><input type="date" value="${date}" data-act="date"><button class="btn sm" data-act="day" data-n="1">▶</button>${date!==todayIso()?'<button class="btn sm" data-act="today">Today</button>':''}<b>${fmtLong(date)}</b><span class="spacer"></span>${officePicker()}</div>
+  return `<div class="row" style="margin-bottom:12px"><button class="btn sm" data-act="day" data-n="-1">◀</button><input type="date" value="${date}" data-act="date"><button class="btn sm" data-act="day" data-n="1">▶</button>${date!==todayIso()?'<button class="btn sm" data-act="today">Today</button>':''}<b>${fmtLong(date)}</b><span class="spacer"></span>${scopePicker()}</div>
   <div class="kpis">
     <div class="kpi"><b>${list.length}</b><span>Scheduled shifts</span></div>
     <div class="kpi"><b>${cnt('in')+cnt('noout')}</b><span>Checked in now</span></div>
@@ -471,21 +836,28 @@ function homeView(){
     <div class="kpi ${due?'warn':''}"><b>${due}</b><span>Evaluations due</span></div>
   </div>
   <div class="card"><h2>Event activity</h2><div class="sub">Every scheduled marketer for ${fmtLong(date)}, with live check-in status. Click a row for photos, location and results.</div>
-  ${Object.values(byEv).length?Object.values(byEv).map(({ev,rows})=>`<h3>${esc(ev.name)} <span class="muted small">· ${esc(ev.office||'')}${ev.venueName?' · '+esc(ev.venueName):''}</span></h3>
+  ${Object.values(byEv).length?Object.values(byEv).map(({ev,rows})=>`<h3 class="row">${esc(ev.name)} <span class="muted small">· ${esc(ev.office||'')}${ev.venueName?' · '+esc(ev.venueName):''}</span><span class="spacer"></span>${linkBtn(ev)}</h3>
     <table><thead><tr><th>Marketer</th><th>Shift</th><th>Status</th><th>Results</th><th>Gear</th></tr></thead><tbody>
     ${rows.map(([s,x])=>`<tr class="click" data-detail="${s.cid}" data-day="${esc(s.dayId)}" data-pid="${esc(s.personId)}"><td>${esc(personName(s.personId))}${s.unscheduled?' <span class="pill p-warn">unscheduled</span>':''}</td><td>${timeRange(s.day)}</td><td><span class="pill ${x.cls}">${esc(x.label)}</span>${s.c&&s.c.inLoc?' <span class="small muted">📍</span>':''}${s.c&&s.c.inPhoto?' <span class="small muted">📷</span>':''}</td><td>${s.c&&s.c.status==='out'?`${num(s.c.leads)} leads · ${num(s.c.appts)} appts · ${round1(hoursOf(s.c))} h`:''}${s.c&&((s.c.issues||[]).length||s.c.issueText)?' <span class="pill p-red">issue</span>':''}</td><td class="small">${s.c?(s.c.assetsOut||[]).map(id=>esc(assetName(id))).join(', '):''}</td></tr>`).join('')}
-    </tbody></table>`).join(''):`<p class="muted">No marketers are scheduled on this day${ui.office?' for '+esc(ui.office):''}.</p>`}
+    </tbody></table>`).join(''):`<p class="muted">No marketers are scheduled on this day${(ui.scope||[]).length?' for '+esc(scopeLabel()):''}.</p>`}
   </div>
   <div class="card"><h2>Issues reported (last 7 days)</h2>${recentIssues.length?`<table><tbody>${recentIssues.slice(0,25).map(c=>`<tr class="click" data-detail="${c.id}"><td style="width:90px">${fmtMD(c.date)}</td><td>${esc(c.personName)}<div class="small muted">${esc(c.eventName)}</div></td><td>${(c.issues||[]).map(i=>`<span class="pill p-red">${esc(i)}</span>`).join(' ')} ${esc(c.issueText||'')}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">None reported.</p>'}</div>`;
 }
-function assetName(id){ const a=S.assets.find(x=>x.id===id); return a ? a.name+(a.tag?` #${a.tag}`:'') : 'Removed item'; }
-
+function linkBtn(e){ return `<button class="btn sm" data-act="copyLink" data-ev="${esc(e.key)}">🔗 Copy check-in link</button>`; }
+function upcomingLinks(){
+  const t=todayIso(), list=liveEvents().filter(e=>inOffice(e.office)&&(e.end||e.start)>=t&&e.start<=addDays(t,14)).sort((a,b)=>a.start.localeCompare(b.start)||a.name.localeCompare(b.name));
+  return `<div class="card"><h2>Check-in links (next 14 days)</h2><div class="sub">Text or email each event’s link to the marketers working it. They tap their name, then Check in.</div>
+  ${list.length?`<table><tbody>${list.map(e=>`<tr><td>${esc(e.name)}<div class="small muted">${esc(e.office||'')}${e.venueName?' · '+esc(e.venueName):''}</div></td><td class="small">${fmtMD(e.start)}${e.end&&e.end!==e.start?'–'+fmtMD(e.end):''}</td><td style="text-align:right">${linkBtn(e)}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">No approved events in the next 14 days.</p>'}</div>`;
+}
 /* ---------------- CHECK IN / OUT (marketer) ---------------- */
 function checkinView(){
+  const LE=linkedEvent();
+  if(EVENT_LINK && !LE) return `<div class="card"><h2>Check-in link not found</h2><p class="muted">This event may have been renamed or rescheduled. Ask your manager for a new link, or <a href="?m=1">check in from your schedule</a>.</p></div>`;
+  if(LE) return eventLinkView(LE);
   const roster=rosterSorted();
   const me=person(ui.me);
   const pick=`<div class="card"><div class="field"><label>Who are you?</label><select data-act="me" style="font-size:16px;padding:10px"><option value="">Choose your name…</option>${offices().map(o=>{ const ppl=roster.filter(r=>r.office===o); return ppl.length?`<optgroup label="${esc(o)}">${ppl.map(r=>`<option value="${r.id}" ${r.id===ui.me?'selected':''}>${esc(r.name)}</option>`).join('')}</optgroup>`:''; }).join('')}${roster.filter(r=>!r.office).length?`<optgroup label="No office">${roster.filter(r=>!r.office).map(r=>`<option value="${r.id}" ${r.id===ui.me?'selected':''}>${esc(r.name)}</option>`).join('')}</optgroup>`:''}</select></div></div>`;
-  if(!me) return pick;
+  if(!me) return pick+(MARKETER_MODE?'':upcomingLinks());
   const today=todayIso();
   const mine=[addDays(today,-1),today,addDays(today,1)].flatMap(d=>shiftsOn(d).filter(s=>s.personId===me.id));
   // also any open check-in older than yesterday
@@ -498,8 +870,23 @@ function checkinView(){
       <div class="small muted" style="margin:6px 0">Pick the event you’re working today. Your manager will see this as an unscheduled shift.</div>
       ${otherToday.length?otherToday.map(e=>{ const d=e.days.find(x=>x.date===today); return `<div class="row" style="margin-bottom:6px"><button class="btn sm" data-act="unsched" data-ev="${esc(e.key)}">Check in here</button><span>${esc(e.name)} <span class="muted small">· ${esc(e.office)} · ${timeRange(d)}</span></span></div>`; }).join(''):'<p class="muted small">No events in your office today.</p>'}
       ${ui.showOtherShift!=='all'?'<button class="btn sm" data-act="otherAll">Show events in all offices</button>':''}
-    </details></div>`;
+    </details></div>`+(MARKETER_MODE?'':upcomingLinks());
 }
+function eventLinkView(e){
+  const today=todayIso(), day=e.days.find(d=>d.date===today);
+  const addr=[e.venueName,e.venueAddress].filter(Boolean).join(', ');
+  const head=`<div class="card"><h2>${esc(e.name)}</h2><div class="muted">${esc(e.office||'')} · ${fmtLong(e.start)}${e.end&&e.end!==e.start?' – '+fmtLong(e.end):''}</div>${addr?`<div class="small"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}" target="_blank" rel="noopener">${esc(addr)}</a></div>`:''}</div>`;
+  if(!day) return head+`<div class="card"><p class="muted">${today<e.start?`Check-in opens ${fmtLong(e.start)}.`:'This event is over. Thanks for your work!'}</p>${openCheckinsFor(e)}</div>`;
+  const shifts=shiftsOn(today).filter(s=>s.ev.key===e.key);
+  const me=person(ui.me), mine=me?shifts.filter(s=>s.personId===me.id):[];
+  if(me && mine.length) return head+`<div class="card"><div class="row" style="margin-bottom:8px"><b>${esc(me.name)}</b><span class="spacer"></span><button class="btn sm" data-act="notMe">Not you?</button></div>${mine.map(shiftCard).join('')}</div>`;
+  const names=[...new Map(shifts.map(s=>[s.personId,personName(s.personId)])).entries()].sort((a,b)=>a[1].localeCompare(b[1]));
+  return head+`<div class="card"><h2>Tap your name</h2><div class="sub">${fmtLong(today)} · ${timeRange(day)}</div>
+    <div class="grid">${names.map(([id,n])=>`<button class="btn big" data-act="pickMe" data-pid="${esc(id)}">${esc(n)}</button>`).join('')||'<p class="muted">No one is scheduled for this event today.</p>'}</div>
+    <details style="margin-top:12px"><summary class="small" style="cursor:pointer">My name isn’t listed</summary><div class="small muted" style="margin:6px 0">Choose your name. Your manager will see this as an unscheduled shift.</div>
+      <select data-act="pickOther" style="font-size:16px;padding:10px;width:100%"><option value="">Choose your name…</option>${rosterSorted().filter(r=>!names.some(([id])=>id===r.id)).map(r=>`<option value="${r.id}">${esc(r.name)}${r.office?' ('+esc(r.office)+')':''}</option>`).join('')}</select></details></div>`;
+}
+function openCheckinsFor(e){ const open=Object.values(S.checkins).filter(c=>c.eventKey===e.key&&c.status==='in'); return open.length?`<p>Still need to check out?</p>${open.map(c=>`<button class="btn big primary" style="margin-bottom:8px" data-act="openOut" data-cid="${c.id}">✅ Check out ${esc(c.personName)} (${fmtMD(c.date)})</button>`).join('')}`:''; }
 function shiftCard(s){
   const st=shiftStatus(s), c=s.c, today=todayIso(), det=S.sched.details[s.ev.key]||{};
   const canIn=!c && s.day.date===today, canOut=c && c.status==='in';
@@ -517,12 +904,13 @@ function findShift(dId,pid){
 }
 function checkInPanel(p){
   const s=p.shift, me=person(p.pid)||{};
-  const gear=activeAssets('gear', s.ev.office);
+  const gear=S.assets.filter(a=>!a.retired && isGear(a) && !kitOf(a.id) && (!(stOf(a).office) || stOf(a).office===s.ev.office || p.gear.includes(a.id) || (stOf(a).holder||{}).personId===p.pid)).sort((a,b)=>(b.kind==='kit')-(a.kind==='kit')||a.name.localeCompare(b.name));
   return `<div class="panel"><h2>Check in · ${esc(s.ev.name)}</h2><div class="sub">${fmtLong(s.day.date)} · ${timeRange(s.day)} · ${esc(me.name||'')}</div>
     <div class="grid">
       <div><div class="lbl">1. Location</div>${p.loc?`<div class="small">📍 Location captured (±${p.loc.acc} m). <a href="${mapLink(p.loc)}" target="_blank" rel="noopener">View</a></div>`:p.locNote?`<div class="small" style="color:var(--warn)">${esc(p.locNote)} You can still check in.</div> <button class="btn sm" data-act="getLoc">Try again</button>`:'<div class="small muted">Getting your location…</div>'}</div>
       <div><div class="lbl">2. Booth setup photo <span style="color:var(--red)">*</span></div><input type="file" accept="image/*" capture="environment" data-act="photo" data-slot="in">${p.photo?`<img class="preview" src="${p.photo}" alt="Booth photo">`:''}</div>
-      <div><div class="lbl">3. Booth gear you’re taking</div>${gear.length?gear.map(a=>{ const g=gearState(a); const mine=g.out&&g.c.personId===p.pid; return `<label class="chk"><input type="checkbox" data-gear="${a.id}" ${p.gear.includes(a.id)?'checked':''} ${g.out&&!mine?'disabled':''}> ${esc(a.name)}${a.tag?` <span class="muted">#${esc(a.tag)}</span>`:''}${g.out?` <span class="small muted">${mine?'(you already have this)':'(out with '+esc(g.c.personName)+')'}</span>`:''}</label>`; }).join(''):'<div class="small muted">No booth gear set up for this office yet.</div>'}</div>
+      <div><div class="lbl">3. Booth gear & kits you’re taking</div>${scanBox('checkin','Scan an item or kit barcode')}${ui.scanMsg?`<div class="small" style="color:${ui.scanMsg.kind==='ok'?'var(--accent)':'var(--red)'};margin:4px 0">${esc(ui.scanMsg.text)}</div>`:''}
+        ${gear.length?gear.map(a=>{ const g=stOf(a), mine=g.holder&&g.holder.personId===p.pid, blocked=(g.status==='out'&&!mine)||g.status==='lost'; return `<label class="chk"><input type="checkbox" data-gear="${a.id}" ${p.gear.includes(a.id)?'checked':''} ${blocked&&!p.gear.includes(a.id)?'disabled':''}> ${a.kind==='kit'?'🧰 ':''}${esc(a.name)} <code class="small muted">${esc(a.code||'')}</code>${a.kind==='kit'?` <span class="small muted">(${(a.contents||[]).length} items)</span>`:''}${g.status==='out'?` <span class="small muted">${mine?'(you have this)':'(with '+esc(g.holder.personName)+')'}</span>`:g.status==='repair'?' <span class="small" style="color:var(--warn)">(needs repair)</span>':g.status==='lost'?' <span class="small muted">(lost)</span>':''}</label>`; }).join(''):'<div class="small muted">No booth gear set up for this office yet.</div>'}</div>
       <div class="field"><label>Note (optional)</label><textarea data-keep="in-note" placeholder="Anything your manager should know at setup">${esc(p.note||'')}</textarea></div>
     </div>
     ${p.err?`<div class="notice err" style="margin-top:10px">${esc(p.err)}</div>`:''}
@@ -530,7 +918,7 @@ function checkInPanel(p){
 }
 function checkOutPanel(p){
   const c=S.checkins[p.cid]; if(!c) return '';
-  const cons=activeAssets('consumable', c.office);
+  const cons=S.assets.filter(a=>!a.retired && a.kind==='consumable' && (!stOf(a).office || stOf(a).office===c.office)).sort((a,b)=>a.name.localeCompare(b.name));
   const hrs=round1((Date.now()-c.inAt)/36e5);
   return `<div class="panel"><h2>Check out · ${esc(c.eventName)}</h2><div class="sub">${esc(c.personName)} · checked in ${fmtStamp(c.inAt)} · about ${hrs} h so far</div>
     <div class="fields">
@@ -539,7 +927,7 @@ function checkOutPanel(p){
       <div class="field"><label>Foot traffic</label><select data-keep="out-traffic"><option value="">Select…</option>${['Low','Medium','High'].map(x=>`<option ${p.traffic===x?'selected':''}>${x}</option>`).join('')}</select></div>
     </div>
     ${cons.length?`<h3>Giveaways & print used</h3><div class="fields">${cons.map(a=>`<div class="field"><label class="small">${esc(a.name)}</label><input type="number" min="0" inputmode="numeric" data-keep="use-${a.id}" placeholder="0"></div>`).join('')}</div>`:''}
-    ${(c.assetsOut||[]).length?`<h3>Booth gear returned</h3><div class="small muted">Uncheck anything you still have or left at the venue.</div>${c.assetsOut.map(id=>`<label class="chk"><input type="checkbox" data-keep="ret-${id}" checked> ${esc(assetName(id))}</label>`).join('')}`:''}
+    ${(c.assetsOut||[]).length?`<h3>Booth gear</h3><div class="small muted">Tell us what came back and what shape it’s in.</div>${c.assetsOut.map(id=>`<div class="row" style="margin:4px 0"><span style="flex:1">${esc(assetName(id))}</span><select data-keep="ret-${id}"><option value="Good">Returned – good</option><option value="Needs repair">Returned – needs repair</option><option value="Damaged">Returned – damaged</option><option value="keep">I still have it</option><option value="Missing">Missing / left at venue</option></select></div>`).join('')}`:''}
     <h3>Any issues?</h3>${ISSUE_TYPES.map((t,i)=>`<label class="chk"><input type="checkbox" data-keep="iss-${i}"> ${esc(t)}</label>`).join('')}
     <div class="field" style="margin-top:6px"><textarea data-keep="out-issue" placeholder="Describe the issue or what you need (optional)"></textarea></div>
     <div class="field" style="margin-top:10px"><label>Shift notes</label><textarea data-keep="out-notes" placeholder="How did it go? Anything for next year?"></textarea></div>
@@ -559,7 +947,8 @@ async function submitIn(){
       status:'in', inAt:Date.now(), inLoc:p.loc||null, inLocNote:p.loc?'':(p.locNote||''), inPhoto:photoId,
       assetsOut:p.gear, inNote:(document.querySelector('[data-keep="in-note"]')||{}).value||''
     }, true);
-    ui.panel=null; ui.notice='You’re checked in. Have a great show!'; ui.noticeKind='ok';
+    try{ await logAsset(p.gear.flatMap(id=>expandKits([id])).map(x=>({ type:'checkout', assetId:x, personId:p.pid, personName:me.name||'', eventKey:s.ev.key, eventName:s.ev.name, cid:p.cid }))); }catch(err){ console.error('asset log',err); }
+    ui.panel=null; ui.scanMsg=null; ui.notice='You’re checked in. Have a great show!'; ui.noticeKind='ok';
   }catch(e){ console.error(e); p.err = e.code==='permission-denied' ? 'The database refused this check-in. It may already exist, or the hub rules aren’t published yet. Tell your manager.' : 'Couldn’t save: '+(e.message||e.code)+'. Check your signal and try again.'; }
   ui.busy=false; render();
 }
@@ -571,57 +960,31 @@ async function submitOut(){
   if(leads==='' || appts===''){ p.err='Enter your leads and appointments (use 0 if none).'; render(); return; }
   ui.busy=true; p.err=''; render();
   try{
-    const cons={}; activeAssets('consumable',c.office).forEach(a=>{ const n=num(v('use-'+a.id)); if(n>0) cons[a.id]=n; });
-    const returned=(c.assetsOut||[]).filter(id=>v('ret-'+id));
+    const cons={}; S.assets.filter(a=>!a.retired && a.kind==='consumable').forEach(a=>{ const n=num(v('use-'+a.id)); if(n>0) cons[a.id]=n; });
+    const retCond={}; (c.assetsOut||[]).forEach(id=>{ retCond[id]=v('ret-'+id)||'Good'; });
+    const returned=(c.assetsOut||[]).filter(id=>retCond[id]!=='keep' && retCond[id]!=='Missing');
+    const aEntries=[];
+    (c.assetsOut||[]).forEach(id=>{ const cond=retCond[id]; if(cond==='keep') return; expandKits([id]).forEach(x=>aEntries.push({ type:'return', assetId:x, condition:cond, personId:c.personId, personName:c.personName, eventKey:c.eventKey, eventName:c.eventName, cid:c.id })); });
+    Object.entries(cons).forEach(([id,n])=>aEntries.push({ type:'use', assetId:id, qty:n, personId:c.personId, personName:c.personName, eventKey:c.eventKey, eventName:c.eventName, cid:c.id }));
     const issues=ISSUE_TYPES.filter((t,i)=>v('iss-'+i));
     let outPhoto=''; if(p.photo) outPhoto=await putPhoto(p.photo,{checkin:p.cid, kind:'out'});
     const loc=await Promise.race([getLocation(), new Promise(r=>setTimeout(()=>r({loc:null}),8000))]);
     await saveCheckin(p.cid,{ status:'out', outAt:Date.now(), outLoc:loc.loc||null, leads:num(leads), appts:num(appts), traffic:p.traffic||'',
-      consumables:cons, assetsReturned:returned, issues, issueText:v('out-issue')||'', notes:v('out-notes')||'', outPhoto }, false);
+      consumables:cons, assetsReturned:returned, assetConditions:retCond, issues, issueText:v('out-issue')||'', notes:v('out-notes')||'', outPhoto }, false);
+    try{ await logAsset(aEntries); }catch(err){ console.error('asset log',err); }
     ui.panel=null; ui.notice='Checked out. Thanks for your work today!'; ui.noticeKind='ok';
   }catch(e){ console.error(e); p.err='Couldn’t save: '+(e.message||e.code)+'. Check your signal and try again.'; }
   ui.busy=false; render();
 }
 
 /* ---------------- ASSETS ---------------- */
-function assetsView(){
-  const mgr=!!S.user;
-  const gear=S.assets.filter(a=>a.kind==='gear'&&!a.retired&&inOffice(a.office)).sort((a,b)=>(a.office||'').localeCompare(b.office||'')||a.name.localeCompare(b.name));
-  const cons=S.assets.filter(a=>a.kind==='consumable'&&!a.retired&&inOffice(a.office)).sort((a,b)=>(a.office||'').localeCompare(b.office||'')||a.name.localeCompare(b.name));
-  const moves=[]; Object.values(S.checkins).forEach(c=>{ if(!inOffice(c.office)) return;
-    (c.assetsOut||[]).forEach(id=>moves.push({t:c.inAt,what:assetName(id),who:c.personName,ev:c.eventName,act:'Checked out'}));
-    if(c.status==='out') (c.assetsReturned||[]).forEach(id=>moves.push({t:c.outAt,what:assetName(id),who:c.personName,ev:c.eventName,act:'Returned'}));
-    (c.mgrReturned||[]).forEach(id=>moves.push({t:(c.mgrReturnedAt||{})[id]||c.updatedAt,what:assetName(id),who:c.personName,ev:c.eventName,act:'Marked returned by manager'}));
-    Object.entries(c.consumables||{}).forEach(([id,n])=>moves.push({t:c.outAt,what:assetName(id),who:c.personName,ev:c.eventName,act:`Used ${n}`}));
-  }); moves.sort((a,b)=>(b.t||0)-(a.t||0));
-  return `<div class="row" style="margin-bottom:12px"><span class="spacer"></span>${officePicker()}${mgr?'<button class="btn primary" data-act="addAsset">+ Add item</button>':''}</div>
-  ${mgr?'':'<div class="notice">Sign in (top right) to add or edit items, recount stock, or mark gear returned.</div>'}
-  <div class="card"><h2>Booth gear</h2><div class="sub">Marketers check gear out when they check in and return it when they check out.</div>
-  ${gear.length?`<table><thead><tr><th>Item</th><th>Office</th><th>Status</th><th></th></tr></thead><tbody>${gear.map(a=>{ const g=gearState(a); return `<tr><td>${esc(a.name)}${a.tag?` <span class="muted">#${esc(a.tag)}</span>`:''}${a.notes?`<div class="small muted">${esc(a.notes)}</div>`:''}</td><td>${esc(a.office||'Any')}</td><td>${g.out?`<span class="pill ${g.overdue?'p-red':'p-blue'}">${g.overdue?'Not returned':'Out'}</span> <span class="small">${esc(g.c.personName)} · ${esc(g.c.eventName)} · ${fmtMD(g.c.date)}</span>`:'<span class="pill p-green">Available</span>'}</td><td style="text-align:right;white-space:nowrap">${mgr&&g.out?`<button class="btn sm" data-act="mgrReturn" data-cid="${g.c.id}" data-aid="${a.id}">Mark returned</button> `:''}${mgr?`<button class="btn sm" data-act="editAsset" data-aid="${a.id}">Edit</button>`:''}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No booth gear added yet.</p>'}</div>
-  <div class="card"><h2>Giveaways & print</h2><div class="sub">On hand = last count minus what marketers reported using at check-out since then.</div>
-  ${cons.length?`<table><thead><tr><th>Item</th><th>Office</th><th>On hand</th><th>Used (30 days)</th><th>Last counted</th><th></th></tr></thead><tbody>${cons.map(a=>{ const oh=consumableOnHand(a), low=a.reorderAt!==''&&a.reorderAt!=null&&oh<=num(a.reorderAt); return `<tr><td>${esc(a.name)}${a.notes?`<div class="small muted">${esc(a.notes)}</div>`:''}</td><td>${esc(a.office||'Any')}</td><td><b>${oh}</b> ${low?'<span class="pill p-red">Reorder</span>':''}</td><td>${usedLast(a,30)}</td><td class="small">${a.countedAt?fmtStamp(a.countedAt):'—'}</td><td style="text-align:right;white-space:nowrap">${mgr?`<button class="btn sm" data-act="recount" data-aid="${a.id}">Recount</button> <button class="btn sm" data-act="editAsset" data-aid="${a.id}">Edit</button>`:''}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No giveaway or print items added yet.</p>'}</div>
-  <div class="card"><h2>Recent activity</h2>${moves.length?`<table><tbody>${moves.slice(0,40).map(m=>`<tr><td class="small" style="width:130px">${fmtStamp(m.t)}</td><td>${esc(m.act)}: <b>${esc(m.what)}</b></td><td class="small">${esc(m.who)} · ${esc(m.ev)}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">No asset activity yet.</p>'}</div>`;
-}
-function assetPanel(){
-  const f=ui.assetForm, a=f.id?S.assets.find(x=>x.id===f.id):{kind:'gear',office:ui.office};
-  return `<div class="panel"><h2>${f.id?'Edit item':'Add item'}</h2><form data-form="asset"><div class="fields">
-    <div class="field"><label>Type</label><select name="kind" ${f.id?'disabled':''}><option value="gear" ${a.kind==='gear'?'selected':''}>Booth gear (checked out & returned)</option><option value="consumable" ${a.kind==='consumable'?'selected':''}>Giveaway / print (used up)</option></select></div>
-    <div class="field"><label>Name</label><input type="text" name="name" required value="${esc(a.name||'')}" placeholder="10x10 tent, Banner, Brochures…"></div>
-    <div class="field"><label>Tag / ID # (gear)</label><input type="text" name="tag" value="${esc(a.tag||'')}" placeholder="e.g. 2"></div>
-    <div class="field"><label>Office</label><input type="text" name="office" list="officeList" value="${esc(a.office||'')}" placeholder="Leave blank for any office"><datalist id="officeList">${offices().map(o=>`<option value="${esc(o)}">`).join('')}</datalist></div>
-    <div class="field"><label>Quantity on hand (giveaway/print)</label><input type="number" name="qty" min="0" value="${esc(a.qty??'')}"></div>
-    <div class="field"><label>Reorder when at or below</label><input type="number" name="reorderAt" min="0" value="${esc(a.reorderAt??'')}"></div>
-  </div><div class="field" style="margin-top:10px"><label>Notes</label><input type="text" name="notes" value="${esc(a.notes||'')}"></div>
-  <div class="foot">${f.id?'<button type="button" class="btn danger" data-act="retireAsset">Retire item</button><span class="spacer"></span>':''}<button type="button" class="btn" data-act="closePanel">Cancel</button><button class="btn primary">Save</button></div></form></div>`;
-}
-
 /* ---------------- EVALUATIONS ---------------- */
 function evalsView(){
   if(ui.evalKey){ const e=S.sched.events.find(x=>x.key===ui.evalKey); if(e) return evalForm(e); ui.evalKey=null; }
   const list=evalsDue().sort((a,b)=>(b.end||b.start).localeCompare(a.end||a.start));
   const todo=list.filter(e=>!evalDone(e)), done=list.filter(e=>evalDone(e));
   const row=e=>{ const r=rollup(e); return `<tr class="click" data-eval="${esc(e.key)}"><td>${esc(e.name)}<div class="small muted">${esc(e.venueName||'')}</div></td><td>${esc(e.office||'')}</td><td>${fmtMD(e.start)}${e.end&&e.end!==e.start?'–'+fmtMD(e.end):''}</td><td>${r.cs.length} check-in${r.cs.length===1?'':'s'}</td><td>${r.leads} leads · ${r.appts} appts</td><td>${evalDone(e)?'<span class="pill p-green">Evaluated</span>':'<span class="pill p-warn">Needs evaluation</span>'}</td></tr>`; };
-  return `<div class="row" style="margin-bottom:12px"><span class="spacer"></span>${officePicker()}</div>
+  return `<div class="row" style="margin-bottom:12px"><span class="spacer"></span>${scopePicker()}</div>
   ${S.user?'':'<div class="notice">Sign in (top right) to complete evaluations.</div>'}
   ${S.user&&S.etaccErr?`<div class="notice">Couldn’t read ETACC events (${esc(S.etaccErr)}). Evaluations will save in the hub only.</div>`:''}
   <div class="card"><h2>Needs evaluation (${todo.length})</h2><div class="sub">Events that ended in the last 45 days. Results from marketer check-outs are filled in for you.</div>
@@ -666,9 +1029,9 @@ function photoImg(id){ const src=ui.photoCache[id]; return src?`<img src="${src}
 /* ---------------- overlays ---------------- */
 function overlay(){
   if(ui.lightbox) return `<div class="overlay lightbox" data-act="closeLight"><img src="${ui.photoCache[ui.lightbox]||''}" alt="Photo"></div>`;
-  if(ui.detail) return `<div class="overlay" data-act="bg">${detailPanel()}</div>`;
-  if(!ui.panel && !ui.assetForm) return '';
-  const inner = ui.assetForm ? assetPanel() : ui.panel.type==='in' ? checkInPanel(ui.panel) : checkOutPanel(ui.panel);
+  if(ui.detail && !ui.item && !ui.assetForm) return `<div class="overlay" data-act="bg">${detailPanel()}</div>`;
+  if(!ui.panel && !ui.assetForm && !ui.item) return '';
+  const inner = ui.assetForm ? assetPanel() : ui.item ? itemPanel() : ui.panel.type==='in' ? checkInPanel(ui.panel) : checkOutPanel(ui.panel);
   return `<div class="overlay" data-act="bg">${inner}</div>`;
 }
 function detailPanel(){
@@ -681,7 +1044,7 @@ function detailPanel(){
       <tr><th>Checked in</th><td>${fmtStamp(c.inAt)} ${c.inLoc?`· <a href="${mapLink(c.inLoc)}" target="_blank" rel="noopener">location (±${c.inLoc.acc} m)</a>`:`<span class="muted">${esc(c.inLocNote||'no location')}</span>`}${c.inNote?`<div class="small">${esc(c.inNote)}</div>`:''}</td></tr>
       <tr><th>Checked out</th><td>${c.outAt?fmtStamp(c.outAt)+(c.outLoc?` · <a href="${mapLink(c.outLoc)}" target="_blank" rel="noopener">location</a>`:'')+` · ${round1(hoursOf(c))} h`:'<span class="muted">Not yet</span>'}</td></tr>
       ${c.status==='out'?`<tr><th>Results</th><td>${num(c.leads)} leads · ${num(c.appts)} appointments${c.traffic?' · '+esc(c.traffic)+' traffic':''}</td></tr>`:''}
-      ${(c.assetsOut||[]).length?`<tr><th>Gear</th><td>${c.assetsOut.map(id=>esc(assetName(id))+((c.assetsReturned||[]).includes(id)||(c.mgrReturned||[]).includes(id)?' ✓ returned':c.status==='out'?' <span style="color:var(--red)">not returned</span>':'')).join('<br>')}</td></tr>`:''}
+      ${(c.assetsOut||[]).length?`<tr><th>Gear</th><td>${c.assetsOut.map(id=>{ const k=(c.assetConditions||{})[id]; return esc(assetName(id))+(c.status!=='out'?'':k==='keep'?' <span style="color:var(--warn)">still with marketer</span>':k==='Missing'?' <span style="color:var(--red)">missing</span>':(c.assetsReturned||[]).includes(id)?` ✓ returned${k&&k!=='Good'?' – '+esc(k.toLowerCase()):''}`:''); }).join('<br>')}</td></tr>`:''}
       ${Object.keys(c.consumables||{}).length?`<tr><th>Used</th><td>${Object.entries(c.consumables).map(([id,n])=>`${n} × ${esc(assetName(id))}`).join('<br>')}</td></tr>`:''}
       ${(c.issues||[]).length||c.issueText?`<tr><th>Issues</th><td style="color:var(--red)">${esc([...(c.issues||[]),c.issueText].filter(Boolean).join('; '))}</td></tr>`:''}
       ${c.notes?`<tr><th>Notes</th><td>${esc(c.notes)}</td></tr>`:''}
@@ -694,19 +1057,26 @@ function detailPanel(){
    EVENTS
    ===================================================================== */
 document.addEventListener('click', async ev=>{
-  const t=ev.target.closest('[data-act],[data-tab],[data-detail],[data-eval],[data-zoom]'); if(!t) return;
+  if(ev.target.matches && ev.target.matches('input[data-sel]')) return;
+  if(ui.scopeOpen && !ev.target.closest('.scopewrap')){ ui.scopeOpen=false; render(); }
+  const t=ev.target.closest('[data-act],[data-tab],[data-detail],[data-eval],[data-zoom],[data-item],[data-audit]'); if(!t) return;
+  if(t.dataset.item && !t.dataset.act){ ev.preventDefault(); ui.item=t.dataset.item; render(); return; }
+  if(t.dataset.audit && !t.dataset.act){ ui.audit=t.dataset.audit; ui.scanMsg=null; render(); return; }
   if(t.dataset.zoom){ ui.lightbox=t.dataset.zoom; render(); return; }
-  if(t.dataset.tab){ ui.tab=t.dataset.tab; ui.evalKey=null; ui.evalDraft=null; history.pushState(null,'',ui.tab==='home'?location.pathname+location.search:'#'+ui.tab); render(); window.scrollTo(0,0); return; }
+  if(t.dataset.tab){ ui.tab=t.dataset.tab; ui.evalKey=null; ui.evalDraft=null; ui.scanMsg=null; ui.audit=null; stopCamera(); history.pushState(null,'',ui.tab==='home'?location.pathname+location.search:'#'+ui.tab); render(); window.scrollTo(0,0); return; }
   if(t.dataset.detail && !t.dataset.act){ ui.detail={cid:t.dataset.detail, dayId:t.dataset.day||'', pid:t.dataset.pid||''}; render(); return; }
   if(t.dataset.eval && !t.dataset.act){ ui.evalKey=t.dataset.eval; ui.evalDraft=null; render(); window.scrollTo(0,0); return; }
   const a=t.dataset.act;
-  if(a==='bg'){ if(ev.target===t){ ui.panel=null; ui.assetForm=null; ui.detail=null; render(); } return; }
+  if(a==='bg'){ if(ev.target===t){ ui.panel=null; ui.assetForm=null; ui.detail=null; ui.item=null; ui.scanMsg=null; render(); } return; }
   if(a==='closeLight'){ ui.lightbox=null; render(); return; }
-  if(a==='closePanel'){ ui.panel=null; ui.assetForm=null; ui.detail=null; render(); return; }
+  if(a==='closePanel'){ ui.panel=null; ui.assetForm=null; ui.detail=null; ui.item=null; ui.scanMsg=null; render(); return; }
   if(a==='clearNotice'){ ui.notice=''; render(); return; }
   if(a==='signOut'){ signOut(); return; }
   if(a==='day'){ ui.date=addDays(ui.date,+t.dataset.n); render(); return; }
   if(a==='today'){ ui.date=todayIso(); render(); return; }
+  if(a==='copyLink'){ const e=S.sched.events.find(x=>x.key===t.dataset.ev); const link=checkinLink(e); let ok=false; try{ await navigator.clipboard.writeText(link); ok=true; }catch(err){} ui.notice= ok ? `Check-in link for ${e.name} copied. Paste it into a text or email to the marketers.` : `Copy this check-in link for ${e.name}: ${link}`; ui.noticeKind='ok'; render(); window.scrollTo(0,0); return; }
+  if(a==='pickMe'){ ui.me=t.dataset.pid; lsSet('peHub.me',ui.me); render(); return; }
+  if(a==='notMe'){ ui.me=''; lsSet('peHub.me',null); render(); return; }
   if(a==='otherAll'){ ui.showOtherShift='all'; render(); return; }
   if(a==='openIn'||a==='unsched'){
     let shift;
@@ -720,11 +1090,38 @@ document.addEventListener('click', async ev=>{
   if(a==='openOut'){ ui.panel={type:'out', cid:t.dataset.cid, photo:''}; render(); return; }
   if(a==='submitIn'){ ui.panel.note=(document.querySelector('[data-keep="in-note"]')||{}).value; submitIn(); return; }
   if(a==='submitOut'){ submitOut(); return; }
-  if(a==='addAsset'){ ui.assetForm={}; render(); return; }
-  if(a==='editAsset'){ ui.assetForm={id:t.dataset.aid}; render(); return; }
-  if(a==='retireAsset'){ if(!confirm('Retire this item? It will disappear from lists but stay in past records.')) return; const list=S.assets.map(x=>x.id===ui.assetForm.id?Object.assign({},x,{retired:true}):x); await guard(()=>saveAssets(list)); ui.assetForm=null; render(); return; }
-  if(a==='recount'){ const it=S.assets.find(x=>x.id===t.dataset.aid); const v=prompt(`How many ${it.name} are on hand right now?`, consumableOnHand(it)); if(v===null||v==='') return; const list=S.assets.map(x=>x.id===it.id?Object.assign({},x,{qty:num(v),countedAt:Date.now()}):x); await guard(()=>saveAssets(list)); return; }
-  if(a==='mgrReturn'){ const c=S.checkins[t.dataset.cid]; const id=t.dataset.aid; await guard(()=>saveCheckin(c.id,{ mgrReturned:[...new Set([...(c.mgrReturned||[]),id])], mgrReturnedAt:Object.assign({},c.mgrReturnedAt||{},{[id]:Date.now()}) },false)); return; }
+  if(a==='scopeToggle'){ ui.scopeOpen=!ui.scopeOpen; render(); return; }
+  if(a==='scopeClear'){ ui.scope=[]; lsSet('peHub.scope','[]'); render(); return; }
+  if(a==='camera'){ startCamera(t.dataset.target); return; }
+  if(a==='camStop'){ stopCamera(); return; }
+  if(a==='clearScan'){ ui.scanMsg=null; render(); return; }
+  if(a==='av'){ ui.av=t.dataset.v; ui.audit=null; ui.scanMsg=null; render(); return; }
+  if(a==='addAsset'){ ui.item=null; ui.scanMsg=null; ui.assetForm={ code:t.dataset.code||'' }; render(); return; }
+  if(a==='editAsset'){ ui.assetForm={id:t.dataset.aid}; ui.item=null; render(); return; }
+  if(a==='retireAsset'){ if(!confirm('Retire this item? It disappears from lists but stays in past records.')) return; const id=ui.assetForm.id; const list=S.assets.map(x=>x.id===id?Object.assign({},x,{retired:true}):x).map(x=>x.kind==='kit'?Object.assign({},x,{contents:(x.contents||[]).filter(c=>c!==id)}):x); await guard(()=>saveAssets(list)); ui.assetForm=null; render(); return; }
+  if(a==='labels'){ printLabels(ui.labelSel||[]); return; }
+  if(a==='labelsAll'){ printLabels([...document.querySelectorAll('input[data-sel]')].map(x=>x.dataset.sel)); return; }
+  if(a==='labelOne'){ printLabels([t.dataset.aid]); return; }
+  if(a==='selNone'){ ui.labelSel=[]; render(); return; }
+  if(a==='itemStatus'){ const st=t.dataset.st; const note=st==='repair'?prompt('What needs repair? (optional)',''):''; if(note===null) return; await guard(()=>logAsset([{ type:'status', assetId:t.dataset.aid, status:st, note:note||'' }])); return; }
+  if(a==='itemReturn'){ const c=prompt('Condition on return? Type Good, Fair, Needs repair or Damaged.','Good'); if(c===null) return; const cond=CONDITIONS.find(x=>x.toLowerCase()===c.trim().toLowerCase())||'Good'; await guard(()=>logAsset(expandKits([t.dataset.aid]).map(x=>({ type:'return', assetId:x, condition:cond })))); return; }
+  if(a==='itemOut'){ ui.av='station'; ui.station={ mode:'checkout', items:[t.dataset.aid], qty:{}, cond:{}, personId:'', eventKey:'', due:'', toOffice:'' }; ui.item=null; ui.tab='assets'; render(); return; }
+  if(a==='itemTransfer'){ ui.av='station'; ui.station={ mode:'transfer', items:[t.dataset.aid], qty:{}, cond:{}, personId:'', eventKey:'', due:'', toOffice:'' }; ui.item=null; ui.tab='assets'; render(); return; }
+  if(a==='itemRestock'){ const v=prompt('How many were added?',''); if(v===null||!num(v)) return; await guard(()=>logAsset([{ type:'restock', assetId:t.dataset.aid, qty:num(v) }])); return; }
+  if(a==='itemCount'){ const it=assetById(t.dataset.aid); const v=prompt(`How many ${it.name} are on hand right now?`, stOf(it).qty); if(v===null||v==='') return; await guard(()=>logAsset([{ type:'count', assetId:it.id, qty:num(v) }])); return; }
+  if(a==='smode'){ ui.station.mode=t.dataset.v; ui.station.items=[]; render(); return; }
+  if(a==='unstation'){ ui.station.items=ui.station.items.filter(x=>x!==t.dataset.aid); render(); return; }
+  if(a==='sclear'){ ui.station.items=[]; render(); return; }
+  if(a==='sconfirm'){ stationConfirm(); return; }
+  if(a==='auditStart'){ const nm=((document.querySelector('[data-keep="auditName"]')||{}).value||'').trim()||`${new Date().getFullYear()} Annual Inventory`; const id='au_'+uid(); const offs=(ui.scope||[]).length?offices().filter(inOffice):[];
+    await guard(()=>saveAudit(id,{ name:nm, offices:offs, startedAt:Date.now(), startedBy:(S.user&&S.user.email)||'' })); ui.audit=id; render(); return; }
+  if(a==='auditBack'){ ui.audit=null; ui.scanMsg=null; render(); return; }
+  if(a==='auditMark'){ auditFound([t.dataset.aid]); return; }
+  if(a==='auditCount'){ const el=document.querySelector(`[data-keep="ac-${t.dataset.aid}"]`); if(!el||el.value==='') return; await guard(()=>logAsset([{ type:'audit', auditId:ui.audit, assetId:t.dataset.aid, qty:num(el.value), office:ui.auditOffice||'' }])); el.dataset.fresh=1; ui.auditFocus=null; return; }
+  if(a==='auditCsv'){ auditCsv(Object.assign({ id:ui.audit }, S.audits[ui.audit])); return; }
+  if(a==='auditClose'){ const au=Object.assign({ id:ui.audit }, S.audits[ui.audit]); const lost=(document.querySelector('[data-keep="auditLost"]')||{}).checked; const miss=auditItems(au).filter(isGear).filter(x=>!stOf(x).audits[ui.audit]);
+    if(!confirm(`Close “${au.name}”?${lost&&miss.length?` ${miss.length} item(s) will be marked Lost.`:''}`)) return;
+    await guard(async()=>{ if(lost) await logAsset(miss.map(x=>({ type:'status', assetId:x.id, status:'lost', note:`Not found in ${au.name}` }))); await saveAudit(ui.audit,{ closedAt:Date.now(), closedBy:(S.user&&S.user.email)||'' }); }); return; }
   if(a==='deleteCheckin'){ if(!confirm('Delete this check-in? The marketer can then check in again.')) return; const id=ui.detail.cid; await guard(async()=>{ if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.deleteDoc(fsM.doc(db,'peHubCheckins',id)); } else { delete S.checkins[id]; localSave(); } }); ui.detail=null; render(); return; }
   if(a==='evalBack'){ ui.evalKey=null; ui.evalDraft=null; render(); return; }
   if(a==='saveEval'){ const e=S.sched.events.find(x=>x.key===ui.evalKey); readEvalDraft(); ui.busy=true; render();
@@ -735,15 +1132,31 @@ document.addEventListener('click', async ev=>{
 async function guard(fn){ try{ await fn(); }catch(e){ console.error(e); ui.notice='Couldn’t save: '+(e.code==='permission-denied'?'permission denied. Check that you’re signed in and the hub rules are published.':(e.message||e.code)); ui.noticeKind='err'; } render(); }
 async function fetchLoc(){ const p=ui.panel; const r=await getLocation(); if(ui.panel!==p) return; p.loc=r.loc; p.locNote=r.note||''; render(); }
 function readEvalDraft(){ document.querySelectorAll('[data-ef]').forEach(el=>{ ui.evalDraft[el.dataset.ef]=el.value; }); }
-document.addEventListener('input', ev=>{ const el=ev.target; if(el.dataset.ef && ui.evalDraft) ui.evalDraft[el.dataset.ef]=el.value; });
+document.addEventListener('input', ev=>{ const el=ev.target; if(el.dataset.ef && ui.evalDraft) ui.evalDraft[el.dataset.ef]=el.value; if(el.dataset.act==='aq'){ ui.aq=el.value; render(); } });
 document.addEventListener('change', async ev=>{
   const el=ev.target;
   if(el.dataset.ef && ui.evalDraft){ ui.evalDraft[el.dataset.ef]=el.value; return; }
   if(el.dataset.gear){ const p=ui.panel; p.note=(document.querySelector('[data-keep="in-note"]')||{}).value; p.gear = el.checked ? [...p.gear, el.dataset.gear] : p.gear.filter(x=>x!==el.dataset.gear); return; }
   const a=el.dataset.act;
-  if(a==='office'){ ui.office=el.value; lsSet('peHub.office', el.value||null); render(); }
+  if(el.dataset.scope){ const tok=el.dataset.scope; ui.scope = el.checked ? [...new Set([...(ui.scope||[]), tok])] : (ui.scope||[]).filter(x=>x!==tok); lsSet('peHub.scope', JSON.stringify(ui.scope)); render(); return; }
+  if(el.dataset.sel){ ui.labelSel = el.checked ? [...new Set([...(ui.labelSel||[]), el.dataset.sel])] : (ui.labelSel||[]).filter(x=>x!==el.dataset.sel); render(); return; }
+  if(el.dataset.sqty){ ui.station.qty[el.dataset.sqty]=el.value; return; }
+  if(el.dataset.scond){ ui.station.cond[el.dataset.scond]=el.value; return; }
+  if(a==='acat'){ ui.acat=el.value; render(); }
+  if(a==='ast'){ ui.ast=el.value; render(); }
+  if(a==='sperson'){ ui.station.personId=el.value; render(); }
+  if(a==='sevent'){ ui.station.eventKey=el.value; render(); }
+  if(a==='sdue'){ ui.station.due=el.value; }
+  if(a==='sto'){ ui.station.toOffice=el.value; render(); }
+  if(a==='spick' && el.value){ ui.station.items.push(el.value); render(); }
+  if(a==='aoff'){ ui.auditOffice=el.value; render(); }
+  if(a==='acond'){ ui.auditCond=el.value; }
+  if(a==='akind'){ ui.assetForm.kind=el.value; render(); }
   if(a==='date' && el.value){ ui.date=el.value; render(); }
   if(a==='me'){ ui.me=el.value; lsSet('peHub.me', el.value||null); render(); }
+  if(a==='pickOther' && el.value){ const e=linkedEvent(), d=e&&e.days.find(x=>x.date===todayIso()); if(!d) return; ui.me=el.value; lsSet('peHub.me',ui.me);
+    const id=dayId(e,d), cid=checkinId(id,ui.me); if(S.checkins[cid]){ render(); return; }
+    ui.panel={type:'in', shift:{ev:e,day:d,dayId:id,personId:ui.me,cid}, cid, pid:ui.me, unscheduled:true, gear:[], loc:null, locNote:'', photo:''}; render(); fetchLoc(); }
   if(a==='photo' && el.files && el.files[0]){
     const p=ui.panel; if(p.type==='in') p.note=(document.querySelector('[data-keep="in-note"]')||{}).value;
     try{ p.photo=await compressImage(el.files[0]); p.err=''; }catch(e){ p.err=e.message; }
@@ -753,19 +1166,13 @@ document.addEventListener('change', async ev=>{
 document.addEventListener('submit', async ev=>{
   const f=ev.target; ev.preventDefault();
   if(f.dataset.form==='signin'){ signIn(f.email.value.trim(), f.pw.value); return; }
-  if(f.dataset.form==='asset'){
-    const g=n=>f.elements[n].value.trim(), id=ui.assetForm.id;
-    const kind = id ? S.assets.find(x=>x.id===id).kind : g('kind');
-    const rec={ name:g('name'), tag:g('tag'), office:g('office'), notes:g('notes'), reorderAt:g('reorderAt')===''?'':num(g('reorderAt')) };
-    let list;
-    if(id) list=S.assets.map(x=>{ if(x.id!==id) return x; const y=Object.assign({},x,rec); if(kind==='consumable' && g('qty')!=='' && num(g('qty'))!==consumableOnHand(x)){ y.qty=num(g('qty')); y.countedAt=Date.now(); } return y; });
-    else list=[...S.assets, Object.assign({ id:'a_'+uid(), kind, qty: kind==='consumable'?num(g('qty')):'', countedAt: kind==='consumable'?Date.now():0, retired:false }, rec)];
-    await guard(()=>saveAssets(list)); ui.assetForm=null; render();
-  }
+  if(f.dataset.form==='asset'){ await saveAssetForm(f); }
+
 });
 window.addEventListener('popstate', ()=>{ if(MARKETER_MODE) return; const h=location.hash.replace('#',''); ui.tab=SECTIONS[h]?h:'home'; ui.evalKey=null; ui.evalDraft=null; render(); });
-document.addEventListener('keydown', e=>{ if(e.key==='Enter' && e.target.classList && e.target.classList.contains('tile')){ e.target.click(); return; } if(e.key==='Escape' && (ui.panel||ui.assetForm||ui.detail||ui.lightbox) && !ui.busy){ ui.panel=null; ui.assetForm=null; ui.detail=null; ui.lightbox=null; render(); } });
-setInterval(()=>{ if(!ui.panel && !ui.assetForm && !document.activeElement.matches('input,textarea,select')) render(); }, 60000); // keep "Late" status current
+document.addEventListener('keydown', e=>{ if(e.key==='Enter' && e.target.dataset && e.target.dataset.scan){ e.preventDefault(); const tg=e.target.dataset.scan, v=e.target.value; e.target.value=''; onScan(tg, v); setTimeout(()=>{ const n=document.querySelector(`[data-scan="${tg}"]`); n&&n.focus(); },0); return; }
+  if(e.key==='Enter' && e.target.classList && e.target.classList.contains('tile')){ e.target.click(); return; } if(e.key==='Escape' && (ui.panel||ui.assetForm||ui.detail||ui.lightbox||ui.item) && !ui.busy){ ui.panel=null; ui.assetForm=null; ui.detail=null; ui.item=null; ui.scanMsg=null; ui.lightbox=null; render(); } });
+setInterval(()=>{ if(!ui.panel && !ui.assetForm && !ui.item && !document.activeElement.matches('input,textarea,select')) render(); }, 60000); // keep "Late" status current
 
 /* ---------------- demo data (only with ?demo) ---------------- */
 function seedDemo(){
@@ -778,8 +1185,19 @@ function seedDemo(){
   const A={}; const as=(e,i,p)=>{ A[dayId(e,e.days[i])]=p; };
   as(E[0],0,['p1','p2']); as(E[0],1,['p1','p2']); as(E[1],0,['p3','p4']); as(E[2],0,['p1']); as(E[2],1,['p2']);
   S.sched={ events:E, roster:R, assignments:A, details:{} };
-  S.assets=[ {id:'a1',kind:'gear',name:'10x10 Tent',tag:'1',office:'DAL - Dallas'},{id:'a2',kind:'gear',name:'Retractable banner',tag:'3',office:'DAL - Dallas'},{id:'a3',kind:'gear',name:'Sample screen panel',tag:'',office:'HOU - Houston'},
-             {id:'a4',kind:'consumable',name:'Brochures',office:'DAL - Dallas',qty:500,reorderAt:150,countedAt:Date.now()-20*864e5},{id:'a5',kind:'consumable',name:'Koozies',office:'',qty:200,reorderAt:50,countedAt:Date.now()-20*864e5} ];
+  S.assets=[ {id:'a1',kind:'gear',code:'PE-00001',name:'10x10 Tent',category:'Tent',office:'DAL - Dallas',cost:420,purchaseDate:'2025-03-02',vendor:'ShowStar',serial:'TS-88812'},
+             {id:'a2',kind:'gear',code:'PE-00002',name:'Retractable banner',category:'Banner / sign',office:'DAL - Dallas',cost:180},
+             {id:'a6',kind:'gear',code:'PE-00006',name:'Folding table 6ft',category:'Table',office:'DAL - Dallas',cost:90},
+             {id:'a7',kind:'kit',code:'PE-00007',name:'Event Kit A',category:'Kit',office:'DAL - Dallas',contents:['a6','a8']},
+             {id:'a8',kind:'gear',code:'PE-00008',name:'Table cover (logo)',category:'Banner / sign',office:'DAL - Dallas',cost:65},
+             {id:'a3',kind:'gear',code:'PE-00003',name:'Sample screen panel',category:'Display / sample',office:'HOU - Houston',cost:950},
+             {id:'a4',kind:'consumable',code:'PE-00004',name:'Brochures',category:'Print',office:'DAL - Dallas',reorderAt:150,unit:'each',cost:0.4},
+             {id:'a5',kind:'consumable',code:'PE-00005',name:'Koozies',category:'Giveaway',office:'',reorderAt:50,cost:1.1} ];
+  const T=Date.now(); S.alog=[ {id:'l1',type:'count',assetId:'a4',qty:500,at:T-20*864e5},{id:'l2',type:'count',assetId:'a5',qty:200,at:T-20*864e5},
+    {id:'l3',type:'checkout',assetId:'a1',personId:'p1',personName:'Paul Gaiptman',eventName:'Red Oak Founder’s Day',at:T-3*864e5},{id:'l4',type:'return',assetId:'a1',condition:'Good',at:T-2.7*864e5},
+    {id:'l5',type:'use',assetId:'a4',qty:340,personName:'Paul Gaiptman',at:T-2*864e5},{id:'l6',type:'use',assetId:'a5',qty:25,personName:'Kimberly Freeman',at:T-2*864e5},
+    {id:'l7',type:'checkout',assetId:'a2',personId:'p1',personName:'Paul Gaiptman',eventName:'Fall Home & Garden Show',at:T-1.2*864e5},
+    {id:'l8',type:'status',assetId:'a3',status:'repair',note:'Torn screen',at:T-5*864e5} ];
   const mk=(e,i,pid,o)=>{ const id=dayId(e,e.days[i]), cid=checkinId(id,pid), d=e.days[i], base=parseIso(d.date).getTime();
     S.checkins[cid]=Object.assign({ id:cid, dayId:id, eventKey:e.key, eventName:e.name, office:e.office, date:d.date, shiftStart:d.start, shiftStop:d.stop, personId:pid, personName:R.find(r=>r.id===pid).name, status:'in', inAt:base+(toMin(d.start)-5)*6e4, inLoc:{lat:32.78,lng:-96.8,acc:12}, assetsOut:[] }, o); };
   mk(E[2],0,'p1',{status:'out',outAt:parseIso(d3).getTime()+16*36e5,leads:9,appts:3,traffic:'Medium',assetsOut:['a1'],assetsReturned:['a1'],consumables:{a4:60},notes:'Good crowd after noon.'});

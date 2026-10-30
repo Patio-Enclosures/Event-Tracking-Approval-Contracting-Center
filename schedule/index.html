@@ -49,6 +49,11 @@ label.chk{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px}
 .staffwarn td{padding:4px 6px;border-top:1px solid #f3e1c4;vertical-align:top}
 .emailprev{border:1px solid var(--line);border-radius:8px;padding:12px;max-height:340px;overflow:auto;background:#fff}
 .rlist .r input.em{width:200px}
+.trow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:3px 6px;align-items:center;margin-bottom:9px;max-width:300px}
+.trow>span:first-child{grid-column:1/-1;font-weight:600;font-size:12.5px}
+.trow>span:last-child{grid-column:1/-1}
+.trow>span:last-child:empty{display:none}
+.trow select{width:100%;min-width:0;padding:5px 4px;font-size:13px}
 .tag{display:inline-block;font-size:10.5px;font-weight:700;border-radius:8px;padding:1px 6px;background:var(--tent-soft);color:var(--tent);margin-left:4px;vertical-align:middle}
 /* assign strip */
 .days7{display:grid;grid-template-columns:repeat(7,minmax(150px,1fr));gap:8px;overflow-x:auto}
@@ -339,7 +344,14 @@ function parseTime(txt){
   let h=+m[1]; if(m[3]){ const pm=/p/i.test(m[3]); if(h===12) h=pm?12:0; else if(pm) h+=12; }
   return `${pad(h)}:${m[2]}`;
 }
-function fmtTime(t){ const x=toMin(t); if(x===null) return ''; const h=Math.floor(x/60), m=x%60; return `${((h+11)%12)+1}${m?':'+pad(m):''}${h>=12?'p':'a'}`; }
+function fmtTime(t){ const x=toMin(t); if(x===null) return ''; const h=Math.floor(x/60)%24, m=x%60; return `${((h+11)%12)+1}${m?':'+pad(m):''}${h>=12?'p':'a'}`; }
+// Show-hour choices: 7:00 AM to 12:00 midnight in 30-minute steps.
+const SHOW_TIMES = (()=>{ const a=[]; for(let m=7*60; m<=24*60; m+=30) a.push(`${pad(Math.floor(m/60))}:${pad(m%60)}`); return a; })();
+function timeLabel(v){ const x=toMin(v); if(x===null) return ''; if(x===1440) return 'Midnight'; const h=Math.floor(x/60), m=x%60; return `${((h+11)%12)+1}:${pad(m)} ${h>=12?'PM':'AM'}`; }
+function timeSelect(date, part, val){
+  const opts = SHOW_TIMES.includes(val)||!val ? SHOW_TIMES : [val, ...SHOW_TIMES];
+  return `<select data-tdate="${esc(date)}" data-tpart="${part}" aria-label="${part==='start'?'Start':'End'} time"><option value="">${part==='start'?'Start…':'End…'}</option>${opts.map(o=>`<option value="${o}" ${o===val?'selected':''}>${timeLabel(o)}</option>`).join('')}</select>`;
+}
 function timeRange(s){ return (s.start||s.stop) ? `${fmtTime(s.start)||'?'}–${fmtTime(s.stop)||'?'}` : 'Times TBD'; }
 function shiftHours(s){ const a=toMin(s.start), b=toMin(s.stop); return (a!==null&&b!==null&&b>a)?(b-a)/60:0; }
 function overlaps(a,b){ const a1=toMin(a.start),a2=toMin(a.stop),b1=toMin(b.start),b2=toMin(b.stop); if([a1,a2,b1,b2].some(x=>x===null)) return true; return a1<b2 && b1<a2; }
@@ -783,7 +795,7 @@ function detailCard(e,days){
     <dl>
       ${editing
         ? `<dt>Show hours</dt><dd>${e.days.map(d=>{ const o=(draft.times||{})[d.date]||{}; const sv=('start' in o)?o.start:(d.mgrTime?d.start:''), tv=('stop' in o)?o.stop:(d.mgrTime?d.stop:'');
-            return `<div class="trow" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px;"><span style="min-width:92px;">${esc(fmtLong(d.date))}</span><input type="time" data-tdate="${esc(d.date)}" data-tpart="start" value="${esc(sv)}" aria-label="Start time"> – <input type="time" data-tdate="${esc(d.date)}" data-tpart="stop" value="${esc(tv)}" aria-label="End time">${d._s||d._t?`<span class="hint">ETACC: ${esc(timeRange({start:d._s,stop:d._t}))}</span>`:''}</div>`; }).join('')}<div class="hint">Leave blank to use ETACC’s hours.</div></dd>`
+            return `<div class="trow"><span>${esc(fmtLong(d.date))}</span>${timeSelect(d.date,'start',sv)}<span>to</span>${timeSelect(d.date,'stop',tv)}${d._s||d._t?`<span class="hint">ETACC: ${esc(timeRange({start:d._s,stop:d._t}))}</span>`:'<span></span>'}</div>`; }).join('')}<div class="hint">Leave blank to use ETACC’s hours.</div></dd>`
         : row('Days', inWeek.map(d=>`${esc(fmtLong(d.date))} ${(d.start||d.stop)?esc(timeRange(d)):'<span style="color:var(--warn);font-weight:600;">Times TBD</span>'}${d.mgrTime?' <span class="hint">(set by manager)</span>':''}`).join('<br>'))}
       ${row('Venue', esc(e.venueName))}
       ${row('Address', addr ? `${esc(addr)}${mapUrl?` <a class="no-print" href="${mapUrl}" target="_blank" rel="noopener">Map</a>`:''}` : '')}

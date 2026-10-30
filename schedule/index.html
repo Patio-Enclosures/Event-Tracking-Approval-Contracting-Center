@@ -41,6 +41,14 @@ label.chk{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px}
 .hint{color:var(--ink-soft);font-size:12.5px}
 .notice{background:var(--accent-soft);border:1px solid #c3dacb;color:var(--accent);border-radius:8px;padding:8px 12px;margin-bottom:14px;font-size:13px}
 .need{font-size:11.5px;color:var(--red);font-weight:600}
+.loan{display:inline-block;font-size:10.5px;font-weight:700;border-radius:8px;padding:1px 6px;background:#e6eef8;color:#2f5f9e;margin-left:4px}
+.cellshift.loaned{opacity:.75;border-left:3px solid #2f5f9e;padding-left:5px}
+.staffwarn{background:var(--warn-soft);border:1px solid #f0d3a6;border-radius:10px;padding:12px 14px;margin-bottom:14px}
+.staffwarn h2{font-size:15px;margin:0 0 6px;color:var(--warn)}
+.staffwarn table{border-collapse:collapse;width:100%;font-size:13px}
+.staffwarn td{padding:4px 6px;border-top:1px solid #f3e1c4;vertical-align:top}
+.emailprev{border:1px solid var(--line);border-radius:8px;padding:12px;max-height:340px;overflow:auto;background:#fff}
+.rlist .r input.em{width:200px}
 .tag{display:inline-block;font-size:10.5px;font-weight:700;border-radius:8px;padding:1px 6px;background:var(--tent-soft);color:var(--tent);margin-left:4px;vertical-align:middle}
 /* assign strip */
 .days7{display:grid;grid-template-columns:repeat(7,minmax(150px,1fr));gap:8px;overflow-x:auto}
@@ -175,16 +183,16 @@ const ROSTER_SEED_ASOF = '2026-10-22';
 const ROSTER_SEED = [["Amerson, Colton", "Event Marketer", "04/22/2025"], ["Baker, Heidi Elizabeth", "Event Marketer", "09/29/2025"], ["Balika, Viliam", "Event Marketer", "09/07/2026"], ["Barnes, Chance Nelson", "Event Marketer", "09/04/2026"], ["Barnes, Malachi", "Event Marketer", "07/18/2026"], ["Bohannan, Thomas Harrison", "Event Marketer", "09/30/2026"], ["Boragina, Ivan", "Event Marketer", "02/26/2026"], ["Borden, Kaden", "Event Marketer", "01/12/2026"], ["Branch, Jarrett", "Senior Event Marketing Manager", "10/05/2026"], ["Brown, Kortnee", "Regional Event Marketing Manager", "11/17/2025"], ["Brown, Tyson", "Event Marketer", "01/02/2026"], ["Brown, Yvonne", "Event Marketer", "08/05/2026"], ["Bustamante, Vicente", "Event Marketer", "08/15/2026"], ["Bustamante-Ripper, Jessica", "Senior Event Marketing Manager", "06/08/2026"], ["Caine, Matt", "Event Marketer", "09/07/2025"], ["Coker, Jonathan", "Event Marketer", "07/17/2026"], ["Critz, Angelique Christina", "Regional Event Marketing Manager", "01/13/2023"], ["Deal, Jessica", "Event Marketer", "01/19/2026"], ["Dinoto, Daniel", "Event Marketer", "01/22/2026"], ["Ford, Christopher Joseph", "Event Marketer", "10/29/2025"], ["Freeman, Kimberly", "Event Marketer", "02/17/2025"], ["Gaines, Yari", "Event Marketer", "01/08/2026"], ["Gaiptman, Paul", "Event Marketer", "01/20/2025"], ["Gibson, Mackenzie", "Event Marketer", "07/17/2025"], ["Glynn, Gloria", "Event Marketer", "01/20/2026"], ["Gonzales, Manuel", "Event Marketer", "12/11/2023"], ["Goodman, Vernon", "Event Marketer", "07/11/2025"], ["Gray Jr, William Franklin Gray Jr", "Event Marketer", "09/15/2026"], ["Grosse, Fred", "Event Marketer", "01/30/2026"], ["Grosse, Timothy", "Event Marketer", "03/03/2025"], ["Haddad, Donna T.", "Event Marketer", "04/28/2025"], ["Hall, Hyndusi Ruby", "Event Marketer", "01/30/2025"], ["Harty, Carl", "Event Marketer", "10/12/2026"], ["Hemming, Jeana", "Event Marketer", "12/22/2025"], ["Hickey, Eileen", "Event Marketer", "04/07/2026"], ["Hicks, Antoine", "Event Marketer", "03/20/2025"], ["Hicks, Kayleigh C", "Event Marketer", "03/09/2026"], ["Hilton, Angela", "Event Marketer", "02/27/2026"], ["Host, Katie Marie", "Event Marketer", "08/05/2026"], ["Hostetter, James", "Event Marketer", "02/16/2026"], ["Jevicky, Christina Lyn", "Event Marketer", "08/19/2026"], ["Jones, Melissa Kay", "Event Marketer", "09/25/2026"], ["Lopresti, Cheryl", "Event Marketer", "08/24/2026"], ["Majocka, Misha A", "Event Marketer", "03/27/2019"], ["Mathuku, Eric", "Event Marketer", "09/18/2026"], ["Montgomery, David", "Event Marketer", "09/07/2026"], ["Moore, Jackson Tate", "Event Marketer", "08/20/2026"], ["Morrison, Riley", "Event Marketer", "09/04/2026"], ["Morrissey, Trevor", "Regional Event Marketing Manager", "12/19/2024"], ["Mynes, Jaxon Leonard Killian", "Event Marketer", "09/16/2026"], ["Novak, Stephen", "Senior Event Marketing Manager", "08/14/2025"], ["Oliver, Sara Kathryn", "Event Marketer", "07/15/2026"], ["Pagan, Matthew", "Event Marketer", "03/16/2026"], ["Pagano, Richard", "Event Marketer", "01/11/2025"], ["Patterson, Andreea", "Event Marketer", "07/27/2026"], ["Pires, Andrew", "Event Marketer", "01/17/2026"], ["Poyser, Andrew", "Event Marketer", "05/05/2025"], ["Raimo, Monica LaNay", "Event Marketer", "09/24/2026"], ["Reynolds, Allie Marae", "Event Marketer", "02/19/2025"], ["Riddle, Matthew", "Event Marketer", "09/04/2026"], ["Riggins, Kristy", "Senior Event Marketing Manager", "09/21/2026"], ["Sales, Sha'Nautica", "Marketing and Event Coordinator", "04/14/2025"], ["Sandhu, Vaneep", "Event Marketer", "04/08/2026"], ["Schmitt, George William", "Event Marketer", "07/01/2025"], ["Scott, Dianna", "Event Marketer", "01/19/2026"], ["Sczepanik, Debra", "Event Marketer", "02/02/2026"], ["Stratton, Amanda", "Event Marketer", "07/27/2026"], ["Thomas, Isabella", "Event Marketer", "09/09/2026"], ["Tucker, Jeffrey", "Event Marketer", "01/02/2025"], ["Vaillancourt, Alexander D", "Event Marketer", "05/12/2026"], ["Van Oster, Jessi", "Event Marketer", "01/12/2026"], ["Vanoster, Shawn", "Event Marketer", "06/05/2025"], ["Voss, Crystal Lynn", "Event Marketer", "08/17/2026"], ["Walker, Sara Emma Elizabeth", "Event Marketer", "03/27/2026"], ["Wilson, Eddie", "Event Marketing Manager", "03/18/2025"], ["Wilson, Skye", "Event Marketer", "05/12/2026"], ["Wing, Michael", "Regional Event Marketing Manager", "11/17/2025"], ["Winston, Chris", "Senior Regional Event Marketing Manager", "06/16/2025"], ["Wozniak, Ronald", "Event Marketer", "03/05/2026"]];
 
 let data = { events:[], roster:[], assignments:{}, details:{}, importedAt:null, dataAsOf:null, sourceFile:'', rosterAsOf:null, hpiAsOf:null };
-let ui = { weekStart: sundayOf(todayIso()), office:'', showAllRoster:false, modal:null, notice:'', person:'', buildOpen:false, editDet:null, detDraft:null };
+let ui = { weekStart: sundayOf(todayIso()), office:'', region:'', showAllRoster:false, modal:null, notice:'', person:'', buildOpen:false, editDet:null, detDraft:null };
 
 /* ---------- storage ---------- */
 function load(){
   try{ const raw = localStorage.getItem(STORE_KEY); if(raw) data = Object.assign(data, JSON.parse(raw)); }catch(e){}
-  try{ const u = JSON.parse(localStorage.getItem(STORE_KEY+'-ui')||'{}'); if(u.office!==undefined) ui.office=u.office; if(u.person) ui.person=u.person; }catch(e){}
+  try{ const u = JSON.parse(localStorage.getItem(STORE_KEY+'-ui')||'{}'); if(u.office!==undefined) ui.office=u.office; if(u.region) ui.region=u.region; if(u.person) ui.person=u.person; }catch(e){}
 }
 function saveLocal(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(data)); }catch(e){ if(cloud.status!=='live') ui.notice = 'Could not save in this browser (storage is blocked or full). Use Backup to keep a copy.'; }
-  try{ localStorage.setItem(STORE_KEY+'-ui', JSON.stringify({office:ui.office, person:ui.person||''})); }catch(e){}
+  try{ localStorage.setItem(STORE_KEY+'-ui', JSON.stringify({office:ui.office, region:ui.region||'', person:ui.person||''})); }catch(e){}
 }
 // When signed in, changes are a draft until the manager clicks "Save schedule".
 function save(){ saveLocal(); if(cloud.status==='live' && cloud.user){ cloud.dirty = unsavedDocs().length>0; } }
@@ -226,10 +234,10 @@ const cloud = { status:'connecting', user:null, fb:null, loaded:{}, pushed:{}, r
 function canEdit(){ return cloud.status!=='live' || !!cloud.user; }
 function clean(o){ return JSON.parse(JSON.stringify(o)); }
 function cloudPayload(name){
-  if(name==='events') return clean({ list:data.events, dataAsOf:data.dataAsOf||null, sourceFile:data.sourceFile||'', importedAt:data.importedAt||null });
+  if(name==='events') return clean({ list:data.events.map(e=>Object.assign({}, e, { days:e.days.map(d=>({ date:d.date, start:('_s' in d)?d._s:d.start, stop:('_t' in d)?d._t:d.stop })) })), dataAsOf:data.dataAsOf||null, sourceFile:data.sourceFile||'', importedAt:data.importedAt||null });
   if(name==='roster') return clean({ list:data.roster, rosterAsOf:data.rosterAsOf||null, hpiAsOf:data.hpiAsOf||null });
   // Booth location / setup notes typed on event cards, kept apart from the ETACC import so re-imports keep them.
-  if(name==='details') return { list: Object.entries(data.details||{}).filter(([k,v])=>v && (v.booth||v.setup)).map(([key,v])=>({ key, booth:v.booth||'', setup:v.setup||'' })) };
+  if(name==='details') return { list: Object.entries(data.details||{}).filter(([k,v])=>v && (v.booth||v.setup||Object.keys(v.times||{}).length)).map(([key,v])=>({ key, booth:v.booth||'', setup:v.setup||'', times:Object.entries(v.times||{}).map(([date,t])=>({ date, start:t.start||'', stop:t.stop||'' })) })) };
   // Firestore can't store an array inside an array, so each assignment is an object.
   return { list: Object.entries(data.assignments).filter(([k,v])=>v && v.length).map(([id,people])=>({ id, people })) };
 }
@@ -264,7 +272,7 @@ function applyCloud(name, d, force){
     if(name==='events'){ data.events = d.list||[]; data.dataAsOf = d.dataAsOf||null; data.sourceFile = d.sourceFile||''; data.importedAt = d.importedAt||null; }
     if(name==='roster'){ data.roster = d.list||[]; data.rosterAsOf = d.rosterAsOf||null; data.hpiAsOf = d.hpiAsOf||null; }
     if(name==='assignments'){ data.assignments = Object.fromEntries((d.list||[]).map(x=>[x.id, x.people||[]]).filter(x=>x[0] && Array.isArray(x[1]))); }
-    if(name==='details'){ data.details = Object.fromEntries((d.list||[]).filter(x=>x.key).map(x=>[x.key, { booth:x.booth||'', setup:x.setup||'' }])); }
+    if(name==='details'){ data.details = Object.fromEntries((d.list||[]).filter(x=>x.key).map(x=>[x.key, { booth:x.booth||'', setup:x.setup||'', times:Object.fromEntries((x.times||[]).filter(t=>t.date).map(t=>[t.date,{start:t.start||'',stop:t.stop||''}])) }])); }
     cloud.pushed[name] = JSON.stringify(cloudPayload(name));
   } else if(force){
     if(name==='events'){ data.events=[]; data.dataAsOf=null; data.sourceFile=''; data.importedAt=null; }
@@ -453,9 +461,9 @@ function mergeRoster(list){
     if(hit){
       if(p.office && hit.office!==p.office){ hit.office=p.office; moved++; }
       if('mgr' in p) hit.mgr=!!p.mgr;
-      if(p.title) hit.title=p.title; if(p.hire) hit.hire=p.hire;
+      if(p.title) hit.title=p.title; if(p.hire) hit.hire=p.hire; if(p.email) hit.email=p.email;
       if(Object.keys(stats).length){ Object.assign(hit, stats); updated++; }
-    } else { data.roster.push(Object.assign({ id:uid(), name:p.name, office:p.office||'', mgr:!!p.mgr }, p.title?{title:p.title}:{}, p.hire?{hire:p.hire}:{}, stats)); added++; }
+    } else { data.roster.push(Object.assign({ id:uid(), name:p.name, office:p.office||'', mgr:!!p.mgr }, p.email?{email:p.email}:{}, p.title?{title:p.title}:{}, p.hire?{hire:p.hire}:{}, stats)); added++; }
   });
   return {added, moved, updated};
 }
@@ -469,7 +477,7 @@ function importRosterCSV(text, file){
   const like = re=>head.findIndex(h=>re.test(h));
   const iName = exact('name','employee','employee name','marketer','full name');
   const iFirst = exact('first name','first'), iLast = exact('last name','last');
-  const iOffice = like(/^(office|region|market|location|branch)/);
+  const iOffice = like(/^(office|region|market|location|branch)/), iEmail = like(/e-?mail/);
   let iMgr = like(/job title|^title$|^role$/); if(iMgr<0) iMgr = like(/primary position|^position$|manager|mgr/);
   const iStatus = like(/employee status|^status$/), iHire = like(/hire date/);
   const iHpi = like(/hrs\s*\/\s*issued|hours\s*(\/|per)\s*issued|hrs\s*per\s*issued/);
@@ -483,7 +491,7 @@ function importRosterCSV(text, file){
     const name = cleanName(iName>=0 ? get(iName) : [get(iFirst),get(iLast)].filter(Boolean).join(' '));
     if(!name || /^count of|^report total/i.test(name)) return;
     if(iStatus>=0 && get(iStatus) && !/^active/i.test(get(iStatus))) return;
-    const p = { name, office:get(iOffice) };
+    const p = { name, office:get(iOffice) }; if(iEmail>=0 && /@/.test(get(iEmail))) p.email = get(iEmail);
     if(iMgr>=0){ const m=get(iMgr); p.mgr = /^(y|yes|true|1|x)$/i.test(m) || isMgrTitle(m); if(/[a-z]{3}/i.test(m)) p.title = m.replace(/^[A-Z]+-/,''); }
     if(iHire>=0 && normDate(get(iHire))) p.hire = normDate(get(iHire));
     if(!p.mgr && (iHpi>=0 || iHrs>=0)){
@@ -517,7 +525,22 @@ function offices(){
   const s = new Set(); data.events.forEach(e=>e.office&&s.add(e.office)); data.roster.forEach(r=>r.office&&s.add(r.office));
   return [...s].sort((a,b)=>a.localeCompare(b));
 }
-function visibleEvents(){ return data.events.filter(e=>(!ui.office || e.office===ui.office) && INCLUDE_STATUSES.includes(e.status)); }
+// Region of an office comes from the ETACC Region column on that office's events.
+function regionMap(){ const c={}; data.events.forEach(e=>{ if(e.office&&e.region){ c[e.office]=c[e.office]||{}; c[e.office][e.region]=(c[e.office][e.region]||0)+1; } });
+  const m={}; Object.entries(c).forEach(([o,r])=>{ m[o]=Object.entries(r).sort((a,b)=>b[1]-a[1])[0][0]; }); return m; }
+function regionOf(o){ return regionMap()[o]||''; }
+function regions(){ return [...new Set(Object.values(regionMap()))].sort(); }
+function inView(o){ if(ui.office) return o===ui.office; if(ui.region) return regionOf(o)===ui.region; return true; }
+function viewLabel(){ return ui.office || (ui.region ? ui.region+' region' : 'All offices'); }
+function visibleEvents(){ return data.events.filter(e=>inView(e.office) && INCLUDE_STATUSES.includes(e.status)); }
+// Events starting in the next 4 weeks that still have days nobody is assigned to.
+function needsStaffing(){
+  const t=todayIso(), lim=addDays(t,28);
+  return visibleEvents().filter(e=>(e.end||e.start)>=t && e.start<=lim).map(e=>{
+    const open=e.days.filter(d=>d.date>=t && !assigned(dayId(e,d)).length);
+    return { e, open, total:e.days.filter(d=>d.date>=t).length };
+  }).filter(x=>x.open.length).sort((a,b)=>a.open[0].date.localeCompare(b.open[0].date));
+}
 function shiftsOn(date){
   const out=[];
   visibleEvents().forEach(e=>e.days.forEach(d=>{ if(d.date===date) out.push({ ev:e, day:d, id:dayId(e,d) }); }));
@@ -540,9 +563,21 @@ function uid(){ return Math.random().toString(36).slice(2,10); }
 function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 /* ---------- render ---------- */
+// Hours typed by a manager on an event card override ETACC's (often blank) Days & Hours.
+// The ETACC values are kept in d._s / d._t so a save or re-import never loses either one.
+function applyManagerTimes(){
+  (data.events||[]).forEach(e=>{ const t=((data.details||{})[e.key]||{}).times||{};
+    (e.days||[]).forEach(d=>{ if(!('_s' in d)){ d._s=d.start||''; d._t=d.stop||''; }
+      const o=t[d.date]; d.start=(o&&o.start)||d._s; d.stop=(o&&o.stop)||d._t; d.mgrTime=!!(o&&(o.start||o.stop)); }); });
+}
+function readDetDraft(){
+  const bi=document.getElementById('detBooth'), si=document.getElementById('detSetup'); if(!(bi && si)) return null;
+  const times={}; document.querySelectorAll('[data-tdate]').forEach(el=>{ const dt=el.dataset.tdate; times[dt]=times[dt]||{start:'',stop:''}; times[dt][el.dataset.tpart]=el.value; });
+  return { booth:bi.value, setup:si.value, times };
+}
 function render(){
-  if(ui.editDet){ const bi=document.getElementById('detBooth'), si=document.getElementById('detSetup');
-    if(bi && typeof bi.value==='string' && si) ui.detDraft = { booth:bi.value, setup:si.value }; }
+  if(ui.editDet){ const dd=readDetDraft(); if(dd) ui.detDraft = dd; }
+  applyManagerTimes();
   const days = weekDays();
   const weekShifts = days.map(shiftsOn);
   const weekEventKeys = new Set(); weekShifts.flat().forEach(s=>weekEventKeys.add(s.ev.key));
@@ -557,19 +592,25 @@ function render(){
     <div class="brand"><b>Patio Enclosures</b><span>Field Marketing</span></div>
     <div>
       <h1>${me ? esc(me.name)+'’s Schedule' : 'Marketer Weekly Schedule'}</h1>
-      <div class="asof"><span class="cstat ${cloud.status}">${cloud.status==='live' ? '● Live' : cloud.status==='connecting' ? '○ Connecting…' : '○ This device only'}</span> · ${data.dataAsOf ? `ETACC data as of ${esc(fmtFull(data.dataAsOf))}` : 'No ETACC data imported yet'}${ui.office?` · ${esc(ui.office)}`:''}</div>
+      <div class="asof"><span class="cstat ${cloud.status}">${cloud.status==='live' ? '● Live' : cloud.status==='connecting' ? '○ Connecting…' : '○ This device only'}</span> · ${data.dataAsOf ? `ETACC data as of ${esc(fmtFull(data.dataAsOf))}` : 'No ETACC data imported yet'}${ui.office||ui.region?` · ${esc(viewLabel())}`:''}</div>
     </div>
     <div class="spacer"></div>
+    <a class="btn primary no-print" href="../hub/?m=1${me?'&p='+encodeURIComponent(me.id):''}" style="text-decoration:none">📍 Check in / out</a>
+    <a class="btn no-print" href="../hub/" style="text-decoration:none">Event Hub</a>
     <div class="print-only" style="font-weight:600;">Week of ${esc(label)}</div>
   </header>
   <div class="toolbar">
     <select data-act="person" aria-label="Show schedule for">
       <option value="">Everyone</option>
-      ${rosterSorted().filter(r=>!ui.office || r.office===ui.office).map(r=>`<option value="${r.id}" ${me&&me.id===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}
+      ${rosterSorted().filter(r=>inView(r.office)).map(r=>`<option value="${r.id}" ${me&&me.id===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}
     </select>
+    ${regions().length ? `<select data-act="region" aria-label="Region">
+      <option value="">All regions</option>
+      ${regions().map(r=>`<option ${r===ui.region?'selected':''}>${esc(r)}</option>`).join('')}
+    </select>` : ''}
     <select data-act="office" aria-label="Office">
-      <option value="">All offices</option>
-      ${offs.map(o=>`<option ${o===ui.office?'selected':''}>${esc(o)}</option>`).join('')}
+      <option value="">${ui.region ? 'All '+esc(ui.region)+' offices' : 'All offices'}</option>
+      ${offs.filter(o=>!ui.region || regionOf(o)===ui.region).map(o=>`<option ${o===ui.office?'selected':''}>${esc(o)}</option>`).join('')}
     </select>
     <div class="weeknav">
       <button class="btn sm" data-act="prev" aria-label="Previous week">◀</button>
@@ -579,9 +620,11 @@ function render(){
       <button class="btn sm ${ui.weekStart===addDays(sundayOf(todayIso()),7)?'on':''}" data-act="nextweek">Next week</button>
     </div>
     <div class="spacer"></div>
+    <button class="btn" data-act="emailsched">✉ Email schedule</button>
     <button class="btn" data-act="print">🖨 Print / PDF</button>
   </div>
   ${ui.notice ? `<div class="notice">${esc(ui.notice)} <button class="btn sm" data-act="dismiss" style="margin-left:6px;">OK</button></div>` : ''}
+  ${!me && (cloud.user || cloud.status==='local') ? staffBanner() : ''}
   <div class="card">
     <h2>${me ? 'My schedule' : 'Schedule'}</h2>
     <div class="sub">Week of ${esc(label)}${me ? '' : ` <label class="chk no-print" style="display:inline-flex;margin-left:8px;"><input type="checkbox" data-act="allroster" ${ui.showAllRoster?'checked':''}> Show everyone on the roster</label>`}</div>
@@ -614,7 +657,15 @@ function render(){
       <tr><td>.13 and below</td><td>Over 7 hours</td><td>Up to 6</td></tr>
     </table>
   </details>
-  ${ui.modal==='roster' ? rosterModal() : ''}`;
+  ${ui.modal==='roster' ? rosterModal() : ''}${ui.modal==='email' ? emailModal(days, label) : ''}`;
+}
+function staffBanner(){
+  const list=needsStaffing(); if(!list.length) return '';
+  return `<div class="staffwarn no-print"><h2>⚠ ${list.length} event${list.length===1?'':'s'} in the next 4 weeks still need${list.length===1?'s':''} marketers</h2>
+    <div class="hint" style="margin-bottom:6px;">Schedule events 3–4 weeks out so marketers can plan. ${esc(viewLabel())}.</div>
+    <table><tbody>${list.slice(0,12).map(x=>`<tr><td><b>${esc(x.e.name)}</b><div class="hint">${esc(x.e.office||'')}</div></td><td>${esc(fmtLong(x.e.start))}${x.e.end&&x.e.end!==x.e.start?' – '+esc(fmtLong(x.e.end)):''}</td>
+      <td><span class="need">${x.open.length} of ${x.total} day${x.total===1?'':'s'} unstaffed</span></td><td style="text-align:right;"><button class="btn sm" data-act="gostaff" data-date="${esc(x.open[0].date)}">Staff it</button></td></tr>`).join('')}</tbody></table>
+    ${list.length>12?`<div class="hint" style="margin-top:4px;">…and ${list.length-12} more.</div>`:''}</div>`;
 }
 function buildHtml(days, weekShifts, weekEvents, label){
   const saveBar = cloud.status==='live' ? `
@@ -655,7 +706,10 @@ function buildHtml(days, weekShifts, weekEvents, label){
 function shiftCard(s){
   const ids = assigned(s.id);
   const pool = rosterSorted().filter(r=>!ids.includes(r.id));
-  const same = pool.filter(r=>r.office===s.ev.office).sort(byHpi), other = pool.filter(r=>r.office!==s.ev.office);
+  const evReg = regionOf(s.ev.office);
+  const same = pool.filter(r=>r.office===s.ev.office).sort(byHpi);
+  const sameReg = pool.filter(r=>r.office!==s.ev.office && evReg && regionOf(r.office)===evReg).sort(byHpi);
+  const other = pool.filter(r=>r.office!==s.ev.office && !(evReg && regionOf(r.office)===evReg));
   const lbl = r => { const m=pbsMax(r), used=weekHoursFor(r.id);
     const cap = m===null ? '' : used>=m ? ` · AT PBS MAX (${+used.toFixed(1)}/${m} hrs)` : ` · ${+(m-used).toFixed(1)} of ${m} hrs left`;
     return `${esc(r.name)}${hpiText(r)?' · '+esc(hpiText(r)):''}${cap}`; };
@@ -665,19 +719,22 @@ function shiftCard(s){
     <div class="v">${esc([s.ev.venueName, s.ev.office].filter(Boolean).join(' · '))}</div>
     <div class="chips">${ids.map(pid=>{ const p=person(pid); if(!p) return ''; const c=hasConflict(pid,s.day.date);
       const mx=pbsMax(p), used=weekHoursFor(pid), over = mx!==null && used > mx;
-      return `<span class="chip ${c||over?'conflict':''}" title="${[c?'Overlaps another shift this day':'', over?`Over PBS limit: ${+used.toFixed(1)} of ${mx} hrs this week`:''].filter(Boolean).join(' · ')}">${c||over?'⚠ ':''}${esc(p.name)}<button data-unassign="${esc(s.id)}" data-pid="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button></span>`; }).join('')}
+      return `<span class="chip ${c||over?'conflict':''}" title="${[c?'Overlaps another shift this day':'', over?`Over PBS limit: ${+used.toFixed(1)} of ${mx} hrs this week`:''].filter(Boolean).join(' · ')}">${c||over?'⚠ ':''}${esc(p.name)}${p.office&&p.office!==s.ev.office?`<span class="loan" title="Borrowed from ${esc(p.office)}">from ${esc(p.office.split(' - ')[0])}</span>`:''}<button data-unassign="${esc(s.id)}" data-pid="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button></span>`; }).join('')}
       ${ids.length?'':'<span class="need">Unstaffed</span>'}</div>
     ${data.roster.length ? `<select data-assign="${esc(s.id)}">
       <option value="">+ Add marketer…</option>
       ${same.length?`<optgroup label="${esc(s.ev.office||'Office')}">${same.map(r=>`<option value="${r.id}">${lbl(r)}</option>`).join('')}</optgroup>`:''}
-      ${other.length?`<optgroup label="Other offices">${other.map(r=>`<option value="${r.id}">${lbl(r)}${r.office?' ('+esc(r.office)+')':''}</option>`).join('')}</optgroup>`:''}
+      ${sameReg.length?`<optgroup label="Borrow from another ${esc(evReg)} office">${sameReg.map(r=>`<option value="${r.id}">${lbl(r)} (${esc(r.office)})</option>`).join('')}</optgroup>`:''}
+      ${other.length?`<optgroup label="Borrow from another region">${other.map(r=>`<option value="${r.id}">${lbl(r)}${r.office?' ('+esc(r.office)+(regionOf(r.office)?', '+esc(regionOf(r.office)):'')+')':' (no office)'}</option>`).join('')}</optgroup>`:''}
     </select>` : ''}
   </div>`;
 }
 function scheduledPeople(days){
   const people = new Map();
   days.forEach(d=>shiftsOn(d).forEach(s=>assigned(s.id).forEach(pid=>{ const p=person(pid); if(p) people.set(pid,p); })));
-  if(ui.showAllRoster) data.roster.filter(r=>!ui.office || r.office===ui.office).forEach(r=>people.set(r.id,r));
+  if(ui.showAllRoster) data.roster.filter(r=>inView(r.office)).forEach(r=>people.set(r.id,r));
+  // Our own people who are on loan to another office this week still show, so their hours add up.
+  if(ui.office||ui.region) data.roster.filter(r=>inView(r.office) && days.some(d=>allShiftsFor(r.id,d).length)).forEach(r=>people.set(r.id,r));
   return [...people.values()].sort((a,b)=>(a.office||'').localeCompare(b.office||'')||a.name.localeCompare(b.name));
 }
 function gridHtml(days, me){
@@ -692,13 +749,13 @@ function gridHtml(days, me){
     <tbody>${list.map(p=>{
       let hrs=0;
       const cells = days.map(d=>{
-        const sh = allShiftsFor(p.id,d).filter(s=>visKeys.has(s.ev.key));
+        const all = allShiftsFor(p.id,d), sh = all.filter(s=>visKeys.has(s.ev.key) || (!me && inView(p.office)));
         if(!sh.length) return `<td class="off">Off</td>`;
         const c = hasConflict(p.id,d);
-        return `<td>${sh.map(s=>{ hrs+=shiftHours(s.day); return `<div class="cellshift ${c?'conflict':''}">
+        return `<td>${sh.map(s=>{ hrs+=shiftHours(s.day); const lent = !visKeys.has(s.ev.key), borrowed = p.office && s.ev.office!==p.office; return `<div class="cellshift ${c?'conflict':''} ${lent?'loaned':''}">
           <div class="t">${c?'⚠ ':''}${esc(timeRange(s.day))}</div>
           <div class="n">${esc(s.ev.name)}</div>
-          <div class="v">${esc(s.ev.venueName||'')}</div></div>`; }).join('')}</td>`;
+          <div class="v">${esc(s.ev.venueName||'')}${borrowed?`<span class="loan">${lent?'loaned to':'at'} ${esc((s.ev.office||'').split(' - ')[0])}</span>`:''}</div></div>`; }).join('')}</td>`;
       }).join('');
       const mx = pbsMax(p), over = mx!==null && hrs > mx;
       return `<tr><th>${esc(p.name)}<span class="off">${esc(p.office||'')}</span>${hpiText(p)?`<span class="hpi ${hpiTier(p)}">${esc(hpiText(p))}</span>`:''}</th>${cells}<td class="hrs ${over?'over':''}"><b>${hrs?+hrs.toFixed(1):'0'}</b>${mx!==null?` / ${mx}`:''}${over?'<span class="d">over PBS</span>':''}${mx===null && !p.mgr?'<span class="d">not rated</span>':''}</td></tr>`;
@@ -724,7 +781,10 @@ function detailCard(e,days){
     <h3>${esc(e.name)}</h3>
     <div class="office">${esc(e.office)}${e.region && e.region!==e.office ? ' ('+esc(e.region)+')' : ''} · ${esc(e.status)}</div>
     <dl>
-      ${row('Days', inWeek.map(d=>`${esc(fmtLong(d.date))} ${esc(timeRange(d))}`).join('<br>'))}
+      ${editing
+        ? `<dt>Show hours</dt><dd>${e.days.map(d=>{ const o=(draft.times||{})[d.date]||{}; const sv=('start' in o)?o.start:(d.mgrTime?d.start:''), tv=('stop' in o)?o.stop:(d.mgrTime?d.stop:'');
+            return `<div class="trow" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px;"><span style="min-width:92px;">${esc(fmtLong(d.date))}</span><input type="time" data-tdate="${esc(d.date)}" data-tpart="start" value="${esc(sv)}" aria-label="Start time"> – <input type="time" data-tdate="${esc(d.date)}" data-tpart="stop" value="${esc(tv)}" aria-label="End time">${d._s||d._t?`<span class="hint">ETACC: ${esc(timeRange({start:d._s,stop:d._t}))}</span>`:''}</div>`; }).join('')}<div class="hint">Leave blank to use ETACC’s hours.</div></dd>`
+        : row('Days', inWeek.map(d=>`${esc(fmtLong(d.date))} ${(d.start||d.stop)?esc(timeRange(d)):'<span style="color:var(--warn);font-weight:600;">Times TBD</span>'}${d.mgrTime?' <span class="hint">(set by manager)</span>':''}`).join('<br>'))}
       ${row('Venue', esc(e.venueName))}
       ${row('Address', addr ? `${esc(addr)}${mapUrl?` <a class="no-print" href="${mapUrl}" target="_blank" rel="noopener">Map</a>`:''}` : '')}
       ${row('Booth #', esc(e.boothNumber))}
@@ -739,8 +799,61 @@ function detailCard(e,days){
       ${row('Staff', [...staff].map(pid=>{ const p=person(pid); return p ? esc(p.name) : ''; }).filter(Boolean).join(', ') || '<span style="color:var(--red)">None yet</span>')}
       ${row('Notes', esc(e.notes))}
     </dl>
-    ${!editing && canEdit() && !(cloud.status==='live' && !cloud.user) ? `<div class="no-print" style="margin-top:8px;"><a href="#" data-act="detedit" data-key="${esc(e.key)}">✎ ${det.booth||det.setup ? 'Edit' : 'Add'} booth location &amp; set up</a></div>` : ''}
+    ${!editing && canEdit() && !(cloud.status==='live' && !cloud.user) ? `<div class="no-print" style="margin-top:8px;"><a href="#" data-act="detedit" data-key="${esc(e.key)}">✎ ${e.days.some(d=>!d.start&&!d.stop) ? 'Add show hours, ' : 'Edit hours, '}booth location &amp; set up</a></div>` : ''}
   </div>`;
+}
+/* ---------- email the schedule (copy into Outlook) ---------- */
+function emailRecipients(){
+  const days=weekDays(), ids=new Set();
+  days.forEach(d=>shiftsOn(d).forEach(s=>assigned(s.id).forEach(pid=>ids.add(pid))));
+  if(ui.emailAll) data.roster.filter(r=>inView(r.office)).forEach(r=>ids.add(r.id));
+  return [...ids].map(person).filter(Boolean).sort((a,b)=>a.name.localeCompare(b.name));
+}
+function emailSubject(){ const d=weekDays(); return `Patio Enclosures event schedule – ${viewLabel()} – week of ${fmtFull(d[0])}`; }
+function emailHtml(days, label){
+  const td='padding:6px 8px;border:1px solid #d8dfda;font:13px Segoe UI,Arial,sans-serif;vertical-align:top;';
+  const th=td+'background:#24583f;color:#ffffff;font-weight:600;text-align:left;';
+  const evs=visibleEvents().filter(e=>e.days.some(d=>days.includes(d.date))).sort((a,b)=>a.start.localeCompare(b.start)||a.name.localeCompare(b.name));
+  const parts=[`<p style="font:14px Segoe UI,Arial,sans-serif;">Hi team,</p><p style="font:14px Segoe UI,Arial,sans-serif;">Here is the event schedule for <b>${esc(viewLabel())}</b>, week of <b>${esc(label)}</b>. Please check in at the booth when you arrive and check out at the end of your shift using the <b>📍 Check in / out</b> button on the schedule.</p>`];
+  evs.forEach(e=>{
+    const det=(data.details||{})[e.key]||{}, addr=[e.venueName,e.venueAddress,e.zip].filter(Boolean).join(', ');
+    const booth=[e.boothNumber?'Booth #'+e.boothNumber:'', det.booth||e.boothLocation||'', e.boothSize].filter(Boolean).join(' · ');
+    const setup=[det.setup||'', ...(e.setup||[]).map(x=>x.value)].filter(Boolean).join(' / ');
+    const rows=e.days.filter(d=>days.includes(d.date)).map(d=>{ const ppl=assigned(dayId(e,d)).map(person).filter(Boolean).map(p=>esc(p.name)+(p.office&&p.office!==e.office?` <i>(from ${esc(p.office)})</i>`:'')).join(', ');
+      return `<tr><td style="${td}">${esc(fmtLong(d.date))}</td><td style="${td}">${esc(timeRange(d))}</td><td style="${td}">${ppl||'<span style="color:#b42318;font-weight:600;">Unstaffed</span>'}</td></tr>`; }).join('');
+    parts.push(`<h3 style="font:600 16px Segoe UI,Arial,sans-serif;color:#24583f;margin:18px 0 4px;">${esc(e.name)}</h3>
+      <div style="font:13px Segoe UI,Arial,sans-serif;color:#333;margin-bottom:6px;">${esc(e.office||'')}${addr?' · '+(e.venueAddress?`<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}">${esc(addr)}</a>`:esc(addr)):''}${booth?'<br>'+esc(booth):''}${setup?'<br><b>Set up:</b> '+esc(setup):''}${e.contactName||e.contactPhone?'<br><b>Contact:</b> '+esc([e.contactName,e.contactPhone].filter(Boolean).join(' · ')):''}</div>
+      <table style="border-collapse:collapse;"><tr><th style="${th}">Day</th><th style="${th}">Shift</th><th style="${th}">Marketers</th></tr>${rows}</table>`);
+  });
+  if(!evs.length) parts.push('<p style="font:14px Segoe UI,Arial,sans-serif;">No events are scheduled this week.</p>');
+  parts.push(`<p style="font:14px Segoe UI,Arial,sans-serif;margin-top:18px;">Full schedule: <a href="${location.href.split('#')[0]}">${location.href.split('#')[0]}</a></p>`);
+  return parts.join('');
+}
+function emailText(days, label){ const div=document.createElement('div'); div.innerHTML=emailHtml(days,label).replace(/<\/(tr|h3|p|div)>/g,'$&\n').replace(/<\/td>/g,'\t'); return div.textContent.replace(/\n{3,}/g,'\n\n'); }
+async function copyText(txt, msg){ try{ await navigator.clipboard.writeText(txt); ui.copyNote=msg; }catch(e){ ui.copyNote='Copy was blocked. Select the text and press Ctrl+C.'; } render(); }
+async function copySchedule(){
+  const days=weekDays(), label=`${fmtFull(days[0])} – ${fmtFull(days[6])}`, html=emailHtml(days,label);
+  try{ await navigator.clipboard.write([new ClipboardItem({ 'text/html':new Blob([html],{type:'text/html'}), 'text/plain':new Blob([emailText(days,label)],{type:'text/plain'}) })]); ui.copyNote='Schedule copied. Click in the body of a new Outlook email and press Ctrl+V.'; }
+  catch(e){ const el=document.getElementById('emailPrev'); if(el){ const r=document.createRange(); r.selectNodeContents(el); const sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); try{ document.execCommand('copy'); ui.copyNote='Schedule copied. Paste it into a new Outlook email with Ctrl+V.'; }catch(err){ ui.copyNote='Select the schedule below and press Ctrl+C.'; } sel.removeAllRanges(); } }
+  render();
+}
+function emailModal(days, label){
+  const rec=emailRecipients(), withEmail=rec.filter(r=>r.email), missing=rec.filter(r=>!r.email);
+  const mailto=`mailto:${encodeURIComponent(withEmail.map(r=>r.email).join(';'))}?subject=${encodeURIComponent(emailSubject())}`;
+  return `<div class="modal-bg" data-act="closemodal"><div class="modal" role="dialog" aria-modal="true" aria-label="Email schedule" style="max-width:760px;">
+    <h2>Email the ${esc(viewLabel())} schedule</h2>
+    <div class="hint" style="margin-bottom:10px;">Week of ${esc(label)}. Use the Region / Office filters to change who it covers.</div>
+    <ol style="margin:0 0 10px 18px;padding:0;line-height:1.9;">
+      <li><a class="btn sm primary" href="${mailto}" style="text-decoration:none;">Open a new Outlook email</a> <span class="hint">(To: and Subject filled in)</span></li>
+      <li><button class="btn sm primary" data-act="copysched">📋 Copy schedule</button> then click in the email body and press <b>Ctrl+V</b>.</li>
+    </ol>
+    ${ui.copyNote?`<div class="notice" style="margin-bottom:8px;">${esc(ui.copyNote)}</div>`:''}
+    <div class="hint"><b>To:</b> ${withEmail.length} marketer${withEmail.length===1?'':'s'} <button class="btn sm" data-act="copyto">Copy addresses</button> <button class="btn sm" data-act="copysubj">Copy subject</button>
+      <label class="chk" style="display:inline-flex;margin-left:8px;"><input type="checkbox" data-act="emailall" ${ui.emailAll?'checked':''}> Include everyone on the roster for ${esc(viewLabel())}, not just people scheduled</label></div>
+    ${missing.length?`<div class="need" style="margin:4px 0;">No email on file for: ${missing.map(r=>esc(r.name)).join(', ')}. Add emails in 👥 Roster.</div>`:''}
+    <div class="emailprev" id="emailPrev" style="margin-top:8px;">${emailHtml(days,label)}</div>
+    <div class="row" style="margin-top:12px;justify-content:flex-end;"><button class="btn" data-act="closemodal-btn">Done</button></div>
+  </div></div>`;
 }
 function rosterModal(){
   const offs = offices();
@@ -762,6 +875,8 @@ function rosterModal(){
       <span class="nm">${esc(r.name)}${r.mgr?' <span class="tag" style="background:var(--accent-soft);color:var(--accent);">MGR</span>':''}${r.title?`<span class="hint" style="display:block;font-weight:400;">${esc(r.title)}${r.hire?' · hired '+esc(fmtFull(r.hire)):''}</span>`:''}</span>
       ${pbsText(r)?`<span class="hpi ${hpiTier(r)}">${esc(pbsText(r))}</span>`:''}
       ${r.mgr ? '' : `<input type="number" min="0" step="0.1" data-hpiperson="${r.id}" value="${r.hpi??''}" placeholder="Hrs/Iss" title="Hrs/Issued" aria-label="Hrs per issued for ${esc(r.name)}">`}
+      <input type="email" class="em" data-emailperson="${r.id}" value="${esc(r.email||'')}" placeholder="Email (for schedule emails)" aria-label="Email for ${esc(r.name)}">
+      ${regionOf(r.office)?`<span class="hint">${esc(regionOf(r.office))}</span>`:''}
       <select class="of" data-moveperson="${r.id}" aria-label="Office for ${esc(r.name)}">${(r.office ? [] : ['']).concat(offs).map(o=>`<option ${o===(r.office||'')?'selected':''}>${esc(o)}</option>`).join('')}</select>
       <button class="btn sm" data-delperson="${r.id}">Remove</button></div>`).join('') || '<div class="r hint">No marketers yet.</div>'}</div>
     <div class="row" style="margin-top:12px;justify-content:flex-end;"><button class="btn" data-act="closemodal-btn">Done</button></div>
@@ -802,9 +917,12 @@ document.addEventListener('click', e=>{
     case 'detcancel': ui.editDet = null; ui.detDraft = null; render(); break;
     case 'detdone': {
       if(!canEdit()) break;
-      const key=t.dataset.key, booth=document.getElementById('detBooth').value.trim(), setup=document.getElementById('detSetup').value.trim();
+      const key=t.dataset.key, dd=readDetDraft()||{}, booth=(dd.booth||'').trim(), setup=(dd.setup||'').trim();
+      const times={}; Object.entries(dd.times||{}).forEach(([dt,v])=>{ if(v.start||v.stop) times[dt]={start:v.start||'',stop:v.stop||''}; });
+      const bad=Object.entries(times).find(([dt,v])=>v.start&&v.stop&&toMin(v.stop)<=toMin(v.start));
+      if(bad){ alert(`The end time on ${fmtLong(bad[0])} is before the start time. Please fix it, then click Done.`); break; }
       data.details = data.details||{};
-      if(booth || setup) data.details[key] = { booth, setup }; else delete data.details[key];
+      if(booth || setup || Object.keys(times).length) data.details[key] = { booth, setup, times }; else delete data.details[key];
       ui.editDet = null; ui.detDraft = null; save(); render(); break;
     }
     case 'discard': discardChanges(); break;
@@ -834,6 +952,11 @@ document.addEventListener('click', e=>{
     case 'today': ui.weekStart=sundayOf(todayIso()); render(); break;
     case 'nextweek': ui.weekStart=addDays(sundayOf(todayIso()),7); render(); break;
     case 'print': window.print(); break;
+    case 'gostaff': ui.weekStart=sundayOf(t.dataset.date); ui.buildOpen=true; render(); setTimeout(()=>{ const b=document.querySelector('[data-build]'); b && b.scrollIntoView({behavior:'smooth'}); },60); break;
+    case 'emailsched': ui.modal='email'; ui.copyNote=''; render(); break;
+    case 'copyto': copyText(emailRecipients().map(r=>r.email).join('; '), 'Email addresses copied. Paste them into the To: line.'); break;
+    case 'copysched': copySchedule(); break;
+    case 'copysubj': copyText(emailSubject(), 'Subject copied.'); break;
     case 'dismiss': ui.notice=''; render(); break;
     case 'backup': {
       const blob = new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
@@ -847,13 +970,16 @@ document.addEventListener('click', e=>{
 document.addEventListener('change', e=>{
   const t=e.target;
   if(t.dataset.moveperson){ const p=person(t.dataset.moveperson); if(p){ p.office=t.value; save(); render(); } return; }
+  if(t.dataset.emailperson){ const p=person(t.dataset.emailperson); if(p){ p.email=t.value.trim(); save(); } return; }
   if(t.dataset.hpiperson){ const p=person(t.dataset.hpiperson); if(p){ const v=parseFloat(t.value); p.hpi = isNaN(v)||v<=0 ? null : Math.round(v*10)/10; data.hpiAsOf=todayIso(); save(); render(); } return; }
   if(t.dataset.assign){ if(t.value && canEdit()){ const id=t.dataset.assign; data.assignments[id]=[...assigned(id), t.value]; save(); render(); } return; }
   switch(t.dataset.act){
-    case 'office': ui.office=t.value; { const p=person(ui.person); if(p && ui.office && p.office!==ui.office) ui.person=''; } saveLocal(); render(); break;
+    case 'region': ui.region=t.value; if(ui.office && regionOf(ui.office)!==ui.region && ui.region) ui.office=''; { const p=person(ui.person); if(p && !inView(p.office)) ui.person=''; } saveLocal(); render(); break;
+    case 'office': ui.office=t.value; { const p=person(ui.person); if(p && !inView(p.office)) ui.person=''; } saveLocal(); render(); break;
     case 'allroster': ui.showAllRoster=t.checked; render(); break;
     case 'pick': if(t.value){ ui.weekStart=sundayOf(t.value); render(); } break;
     case 'person': ui.person=t.value; saveLocal(); render(); break;
+    case 'emailall': ui.emailAll=t.checked; render(); break;
   }
 });
 function readFile(input, fn){

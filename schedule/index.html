@@ -48,7 +48,7 @@ label.chk{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px}
 .staffwarn table{border-collapse:collapse;width:100%;font-size:13px}
 .staffwarn td{padding:4px 6px;border-top:1px solid #f3e1c4;vertical-align:top}
 .emailprev{border:1px solid var(--line);border-radius:8px;padding:12px;max-height:340px;overflow:auto;background:#fff}
-.rlist .r input.em{width:190px}.rlist .r input.ph{width:120px}.rlist .r input.eid{width:80px}.rlist .r input.rg{width:60px}
+.rlist .r input.em{width:190px}.rlist .r input.ph{width:120px}.rlist .r input.eid{width:80px}.rlist .r input.rg{width:60px}.rlist .r input.cm{width:90px}
 .modal{max-width:1100px}
 .trow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:3px 6px;align-items:center;margin-bottom:9px;max-width:300px}
 .trow>span:first-child{grid-column:1/-1;font-weight:600;font-size:12.5px}
@@ -188,7 +188,44 @@ h3.bh{font-size:14px;margin:18px 0 4px}
    ====================================================================== */
 const STORE_KEY = 'pe-marketer-schedule-v1';
 const INCLUDE_STATUSES = ['Approved','Submitted for Contract'];
-const DOCS = ['events','roster','assignments','details'];
+const DOCS = ['events','roster','assignments','details','practices'];
+// Best practices included in the schedule email. Simple formatting: "## Heading", "- bullet", **bold**.
+const DEFAULT_PRACTICES = `## Our pitch
+- (Add the team’s opening line and pitch here.)
+
+## Booth setup: non-negotiables
+- Use an approved layout: **A** (5 banners), **B** (3 banners with Benefits) or **C** (3 banners with QR code). New banners only, never mixed with legacy banners. Banners are for indoor use only.
+- Table with the branded stretch cover centered in front of the banners, logo and benefit icons facing the aisle.
+- **$100K Sweepstakes** sign in a plexi stand or frame at the front of the booth. Never taped, propped or laid flat.
+- **Current promotion** displayed in its cardboard stand or a plexi stand, at the front, facing the aisle.
+- A completed **pre-consultation checklist** for every appointment set.
+
+## Daily setup checklist
+- Banners straight, secure and unwrinkled. Nothing taped to displays.
+- Brochures, pre-consultation checklists and sweepstakes entry materials stocked, with backups out of sight.
+- Tablecloths clean and wrinkle-free; table surfaces clear.
+- Personal items (bags, coats, food, drinks, phones) out of customer view.
+- Floor swept and trash removed, checked every few hours.
+- Booth staffed at all times. Stand at the front edge facing the aisle, not seated behind the table.
+
+## Appearance
+- Solid polo, button-down or blouse in navy, black, white or gray; khaki, navy, gray or black slacks; clean closed-toe shoes.
+- Name badge on the upper right chest at all times.
+- Clean, pressed clothing; showered, fresh breath, minimal fragrance.`;
+function practicesText(){ return (data.practices && data.practices.trim()) ? data.practices : DEFAULT_PRACTICES; }
+function practicesHtml(txt){
+  const F='font:14px Segoe UI,Arial,sans-serif;';
+  const inl=t=>esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+  let out='', inList=false;
+  String(txt||'').split(/\r?\n/).forEach(line=>{ const l=line.trim();
+    if(/^- /.test(l)){ if(!inList){ out+=`<ul style="${F}margin:4px 0 10px 18px;padding:0">`; inList=true; } out+=`<li style="margin:2px 0">${inl(l.slice(2))}</li>`; return; }
+    if(inList){ out+='</ul>'; inList=false; }
+    if(/^## /.test(l)) out+=`<h4 style="font:600 14px Segoe UI,Arial,sans-serif;color:#24583f;margin:12px 0 4px">${inl(l.slice(3))}</h4>`;
+    else if(l) out+=`<p style="${F}margin:4px 0">${inl(l)}</p>`;
+  });
+  if(inList) out+='</ul>';
+  return out;
+}
 const HPI_NOTE = 'hours worked ÷ issued leads';
 // Starting roster: UKG "My Team Employee Roster" (all active employees), run Oct 22, 2026.
 // [name as in UKG, job title, hire date]. No office in that report -- managers set each person's office
@@ -254,6 +291,7 @@ function cloudPayload(name){
   if(name==='events') return clean({ list:data.events.map(e=>Object.assign({}, e, { days:e.days.map(d=>({ date:d.date, start:('_s' in d)?d._s:d.start, stop:('_t' in d)?d._t:d.stop })) })), dataAsOf:data.dataAsOf||null, sourceFile:data.sourceFile||'', importedAt:data.importedAt||null });
   if(name==='roster') return clean({ list:data.roster, rosterAsOf:data.rosterAsOf||null, hpiAsOf:data.hpiAsOf||null });
   // Booth location / setup notes typed on event cards, kept apart from the ETACC import so re-imports keep them.
+  if(name==='practices') return { text: data.practices||'' };
   if(name==='details') return { list: Object.entries(data.details||{}).filter(([k,v])=>v && (v.booth||v.setup||Object.keys(v.times||{}).length)).map(([key,v])=>({ key, booth:v.booth||'', setup:v.setup||'', times:Object.entries(v.times||{}).map(([date,t])=>({ date, start:t.start||'', stop:t.stop||'' })) })) };
   // Firestore can't store an array inside an array, so each assignment is an object.
   // Partial shifts: hours for one marketer on one event day, kept with that day's assignment.
@@ -290,6 +328,7 @@ function applyCloud(name, d, force){
     if(name==='events'){ data.events = d.list||[]; data.dataAsOf = d.dataAsOf||null; data.sourceFile = d.sourceFile||''; data.importedAt = d.importedAt||null; }
     if(name==='roster'){ data.roster = d.list||[]; data.rosterAsOf = d.rosterAsOf||null; data.hpiAsOf = d.hpiAsOf||null; }
     if(name==='assignments'){ data.assignments = Object.fromEntries((d.list||[]).map(x=>[x.id, x.people||[]]).filter(x=>x[0] && Array.isArray(x[1]))); data.shiftTimes={}; (d.list||[]).forEach(x=>Object.entries(x.times||{}).forEach(([pid,t])=>{ data.shiftTimes[x.id+'::'+pid]={start:t.start||'',stop:t.stop||''}; })); }
+    if(name==='practices'){ data.practices = d.text||''; }
     if(name==='details'){ data.details = Object.fromEntries((d.list||[]).filter(x=>x.key).map(x=>[x.key, { booth:x.booth||'', setup:x.setup||'', times:Object.fromEntries((x.times||[]).filter(t=>t.date).map(t=>[t.date,{start:t.start||'',stop:t.stop||''}])) }])); }
     cloud.pushed[name] = JSON.stringify(cloudPayload(name));
   } else if(force){
@@ -297,6 +336,7 @@ function applyCloud(name, d, force){
     if(name==='roster'){ seedRoster(); }
     if(name==='assignments'){ data.assignments={}; data.shiftTimes={}; }
     if(name==='details'){ data.details={}; }
+    if(name==='practices'){ data.practices=''; }
   }
   saveLocal(); render();
 }
@@ -493,9 +533,9 @@ function mergeRoster(list){
       if(p.office && hit.office!==p.office){ hit.office=p.office; moved++; }
       if('mgr' in p) hit.mgr=!!p.mgr;
       if(p.title) hit.title=p.title; if(p.hire) hit.hire=p.hire; if(p.email) hit.email=p.email;
-      if(p.phone) hit.phone=p.phone; if('region' in p) hit.region=p.region; if(p.empId) hit.empId=p.empId; if(p.name!==hit.name && p.empId && hit.empId===p.empId) hit.name=p.name;
+      if(p.phone) hit.phone=p.phone; if('region' in p) hit.region=p.region; if(p.commuteMiles!=null) hit.commuteMiles=p.commuteMiles; if(p.empId) hit.empId=p.empId; if(p.name!==hit.name && p.empId && hit.empId===p.empId) hit.name=p.name;
       if(Object.keys(stats).length){ Object.assign(hit, stats); updated++; }
-    } else { const nid=uid(); seen.add(nid); data.roster.push(Object.assign({ id:nid, name:p.name, office:p.office||'', mgr:!!p.mgr }, p.email?{email:p.email}:{}, p.phone?{phone:p.phone}:{}, p.region?{region:p.region}:{}, p.empId?{empId:p.empId}:{}, p.title?{title:p.title}:{}, p.hire?{hire:p.hire}:{}, stats)); added++; }
+    } else { const nid=uid(); seen.add(nid); data.roster.push(Object.assign({ id:nid, name:p.name, office:p.office||'', mgr:!!p.mgr }, p.email?{email:p.email}:{}, p.phone?{phone:p.phone}:{}, p.commuteMiles!=null?{commuteMiles:p.commuteMiles}:{}, p.region?{region:p.region}:{}, p.empId?{empId:p.empId}:{}, p.title?{title:p.title}:{}, p.hire?{hire:p.hire}:{}, stats)); added++; }
   });
   return {added, moved, updated, seen};
 }
@@ -510,7 +550,7 @@ function importRosterCSV(text, file){
   const iName = exact('name','employee','employee name','marketer','full name');
   const iFirst = exact('first name','first'), iLast = exact('last name','last');
   let iOffice = like(/branch|office|location/); if(iOffice<0) iOffice = like(/^market/);
-  const iRegion = like(/^region/), iEmail = like(/e-?mail/), iPhone = like(/phone|mobile|cell/), iEmpId = like(/employee\s*(id|#|number|no)|^emp\s*(id|#|no)|^id$|^ee\s*id|badge|^file\s*(#|number)/);
+  const iRegion = like(/^region/), iCommute = like(/commute/), iEmail = like(/e-?mail/), iPhone = like(/phone|mobile|cell/), iEmpId = like(/employee\s*(id|#|number|no)|^emp\s*(id|#|no)|^id$|^ee\s*id|badge|^file\s*(#|number)/);
   const noBranchButRegion = iOffice<0 && iRegion>=0;
   let iMgr = like(/job title|^title$|^role$/); if(iMgr<0) iMgr = like(/primary position|^position$|manager|mgr/);
   const iStatus = like(/employee status|^status$/), iHire = like(/hire date/);
@@ -529,6 +569,7 @@ function importRosterCSV(text, file){
     const p = { name, office: noBranchButRegion ? matchOffice(get(iRegion)) : matchOfficeR(get(iOffice), fileReg) };
     if(iEmail>=0 && /@/.test(get(iEmail))) p.email = get(iEmail);
     if(iPhone>=0 && /\d{3}/.test(get(iPhone))) p.phone = get(iPhone);
+    if(iCommute>=0 && get(iCommute)!=='' && !isNaN(parseFloat(get(iCommute)))) p.commuteMiles = parseFloat(get(iCommute));
     // Region: when the branch matched an ETACC branch, use ETACC's region for it; otherwise keep the file's (as a short code).
     if(fileReg){ p.region = regionOf(p.office) ? '' : regionCode(fileReg); }
     if(iEmpId>=0 && get(iEmpId)) p.empId = get(iEmpId).replace(/\.0+$/,'');
@@ -927,6 +968,8 @@ function emailHtml(days, label){
       <table style="border-collapse:collapse;"><tr><th style="${th}">Day</th><th style="${th}">Shift</th><th style="${th}">Marketers</th></tr>${rows}</table>`);
   });
   if(!evs.length) parts.push('<p style="font:14px Segoe UI,Arial,sans-serif;">No events are scheduled this week.</p>');
+  parts.push(`<div style="margin-top:18px;font:14px Segoe UI,Arial,sans-serif;"><a href="${new URL('../hub/', location.href.split('#')[0]).href}?m=1#training" style="display:inline-block;background:#b5791f;color:#ffffff;text-decoration:none;font-weight:600;padding:8px 14px;border-radius:6px;">📚 Training: our pitch, products &amp; booth setup</a></div>`);
+  if(ui.emailPractices!==false) parts.push(`<div style="border-top:2px solid #24583f;margin-top:20px;padding-top:6px"><h3 style="font:600 16px Segoe UI,Arial,sans-serif;color:#24583f;margin:8px 0 4px;">Best practices</h3>${practicesHtml(practicesText())}</div>`);
   parts.push(`<p style="font:14px Segoe UI,Arial,sans-serif;margin-top:18px;">Full schedule: <a href="${location.href.split('#')[0]}">${location.href.split('#')[0]}</a></p>`);
   return parts.join('');
 }
@@ -951,6 +994,11 @@ function emailModal(days, label){
     ${ui.copyNote?`<div class="notice" style="margin-bottom:8px;">${esc(ui.copyNote)}</div>`:''}
     <div class="hint"><b>To:</b> ${withEmail.length} marketer${withEmail.length===1?'':'s'} <button class="btn sm" data-act="copyto">Copy addresses</button> <button class="btn sm" data-act="copysubj">Copy subject</button>
       <label class="chk" style="display:inline-flex;margin-left:8px;"><input type="checkbox" data-act="emailall" ${ui.emailAll?'checked':''}> Include everyone on the roster for ${esc(viewLabel())}, not just people scheduled</label></div>
+    <div class="hint" style="margin-top:6px;"><label class="chk" style="display:inline-flex;"><input type="checkbox" data-act="emailpractices" ${ui.emailPractices!==false?'checked':''}> Include <b style="margin-left:3px">best practices</b> (pitch, booth setup, appearance)</label>
+      ${canUploadRoster()?` <a href="#" data-act="editpractices">✎ Edit best practices</a>`:''}</div>
+    ${ui.editPractices&&canUploadRoster()?`<div style="margin:6px 0;"><textarea id="practicesTxt" style="width:100%;min-height:260px;font:13px/1.45 Consolas,monospace;">${esc(practicesText())}</textarea>
+      <div class="hint">Use <b>## Heading</b>, <b>- bullet</b> and <b>**bold**</b>. Click Save, then 💾 Save schedule so every manager’s email uses it.</div>
+      <div class="row" style="margin-top:4px;gap:6px;"><button class="btn sm primary" data-act="savepractices">Save</button><button class="btn sm" data-act="cancelpractices">Cancel</button><button class="btn sm" data-act="resetpractices">Reset to standard</button></div></div>`:''}
     ${missing.length?`<div class="need" style="margin:4px 0;">No email on file for: ${missing.map(r=>esc(r.name)).join(', ')}. Add emails in 👥 Roster.</div>`:''}
     <div class="emailprev" id="emailPrev" style="margin-top:8px;">${emailHtml(days,label)}</div>
     <div class="row" style="margin-top:12px;justify-content:flex-end;"><button class="btn" data-act="closemodal-btn">Done</button></div>
@@ -963,7 +1011,7 @@ function rosterModal(){
     <div class="hint" style="margin-bottom:10px;">${data.rosterAsOf ? `Last roster upload ${esc(fmtFull(data.rosterAsOf))}. ` : ''}${data.hpiAsOf ? `Hrs/Issued as of ${esc(fmtFull(data.hpiAsOf))} (${esc(HPI_NOTE)}). ` : ''}
       ${canUploadRoster() ? `<button class="btn sm" data-act="rosterfile">Upload roster (Excel or CSV)…</button>` : `<span class="hint">Roster uploads are limited to the national events manager.</span>`}
       <button class="btn sm" data-act="rosterdl">⬇ Download roster CSV</button>
-      <span class="hint">Columns read: Employee ID, Name (or First/Last), Branch, Region, Email, Phone, Title, Hire Date, Status, Hrs/Issued. People are matched by Employee ID, then name. Tip: download the roster, fill it in with Excel, save as CSV and upload it back.</span></div>
+      <span class="hint">Columns read: Employee ID, Name (or First/Last), Branch, Region, Email, Phone, Commute Miles, Title, Hire Date, Status, Hrs/Issued. People are matched by Employee ID, then name. Tip: download the roster, fill it in with Excel, save as CSV and upload it back.</span></div>
     <div class="hint" style="margin-bottom:8px;">Or paste one name per line, type or pick their office, and click Add.</div>
     <textarea id="rosterNames" placeholder="Jane Smith&#10;Carlos Rivera"></textarea>
     <div class="row" style="margin-top:8px;">
@@ -980,6 +1028,7 @@ function rosterModal(){
       ${r.mgr ? '' : `<input type="number" min="0" step="0.1" data-hpiperson="${r.id}" value="${r.hpi??''}" placeholder="Hrs/Iss" title="Hrs/Issued" aria-label="Hrs per issued for ${esc(r.name)}">`}
       <input type="email" class="em" data-emailperson="${r.id}" value="${esc(r.email||'')}" placeholder="Email" aria-label="Email for ${esc(r.name)}">
       <input type="tel" class="ph" data-phoneperson="${r.id}" value="${esc(r.phone||'')}" placeholder="Phone" aria-label="Phone for ${esc(r.name)}">
+      <input type="number" class="cm" data-commuteperson="${r.id}" value="${esc(r.commuteMiles??'')}" placeholder="Commute mi" title="Round-trip commute, home ↔ branch (miles), for expense reports" aria-label="Round-trip commute miles for ${esc(r.name)}">
       <input type="text" class="eid" data-empperson="${r.id}" value="${esc(r.empId||'')}" placeholder="Emp ID" aria-label="Employee ID for ${esc(r.name)}">
       <input type="text" class="rg" data-regionperson="${r.id}" value="${esc(r.region||'')}" placeholder="${esc(regionOf(r.office)||'Region')}" list="regionList" title="Region (blank = from branch's ETACC events)" aria-label="Region for ${esc(r.name)}">
       <select class="of" data-moveperson="${r.id}" aria-label="Office for ${esc(r.name)}">${(r.office ? [] : ['']).concat(offs).map(o=>`<option ${o===(r.office||'')?'selected':''}>${esc(o)}</option>`).join('')}</select>
@@ -1057,8 +1106,8 @@ document.addEventListener('click', e=>{
     case 'import': document.getElementById('csvFile').click(); break;
     case 'rosterfile': if(!canUploadRoster()){ alert('Only the national events manager can upload a roster file.'); break; } document.getElementById('rosterFile').click(); break;
     case 'rosterdl': {
-      const head=['Employee ID','Name','Branch','Region','Email','Phone','Title','Hire Date','Manager','Hrs/Issued'];
-      const rows=rosterSorted().map(r=>[r.empId||'', r.name, r.office||'', personRegion(r), r.email||'', r.phone||'', r.title||'', r.hire||'', r.mgr?'Yes':'', r.hpi??'']);
+      const head=['Employee ID','Name','Branch','Region','Email','Phone','Commute Miles','Title','Hire Date','Manager','Hrs/Issued'];
+      const rows=rosterSorted().map(r=>[r.empId||'', r.name, r.office||'', personRegion(r), r.email||'', r.phone||'', r.commuteMiles??'', r.title||'', r.hire||'', r.mgr?'Yes':'', r.hpi??'']);
       const csv=[head,...rows].map(r=>r.map(x=>{ const v=String(x??''); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(',')).join('\r\n');
       const url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'})), a=document.createElement('a');
       a.href=url; a.download=`patio-enclosures-roster_${todayIso()}.csv`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); break;
@@ -1084,6 +1133,10 @@ document.addEventListener('click', e=>{
     case 'emailsched': ui.modal='email'; ui.copyNote=''; render(); break;
     case 'copyto': copyText(emailRecipients().map(r=>r.email).join('; '), 'Email addresses copied. Paste them into the To: line.'); break;
     case 'copysched': copySchedule(); break;
+    case 'editpractices': e.preventDefault(); ui.editPractices=true; render(); break;
+    case 'cancelpractices': ui.editPractices=false; render(); break;
+    case 'savepractices': { if(!canUploadRoster()) break; data.practices=document.getElementById('practicesTxt').value; ui.editPractices=false; save(); render(); break; }
+    case 'resetpractices': { if(!canUploadRoster()) break; if(!confirm('Replace the best practices with the standard text?')) break; data.practices=''; ui.editPractices=false; save(); render(); break; }
     case 'copysubj': copyText(emailSubject(), 'Subject copied.'); break;
     case 'dismiss': ui.notice=''; render(); break;
     case 'backup': {
@@ -1100,6 +1153,7 @@ document.addEventListener('change', e=>{
   if(t.dataset.moveperson){ const p=person(t.dataset.moveperson); if(p){ p.office=t.value; save(); render(); } return; }
   if(t.dataset.emailperson){ const p=person(t.dataset.emailperson); if(p){ p.email=t.value.trim(); save(); } return; }
   if(t.dataset.phoneperson){ const p=person(t.dataset.phoneperson); if(p){ p.phone=t.value.trim(); save(); } return; }
+  if(t.dataset.commuteperson){ const p=person(t.dataset.commuteperson); if(p){ const v=parseFloat(t.value); p.commuteMiles=isNaN(v)?null:v; save(); } return; }
   if(t.dataset.empperson){ const p=person(t.dataset.empperson); if(p){ p.empId=t.value.trim(); save(); } return; }
   if(t.dataset.regionperson){ const p=person(t.dataset.regionperson); if(p){ p.region=t.value.trim(); save(); render(); } return; }
   if(t.dataset.hpiperson){ const p=person(t.dataset.hpiperson); if(p){ const v=parseFloat(t.value); p.hpi = isNaN(v)||v<=0 ? null : Math.round(v*10)/10; data.hpiAsOf=todayIso(); save(); render(); } return; }
@@ -1112,6 +1166,7 @@ document.addEventListener('change', e=>{
     case 'person': ui.person=t.value; saveLocal(); render(); break;
     case 'weeks': ui.weeks=+t.value||1; saveLocal(); render(); break;
     case 'emailall': ui.emailAll=t.checked; render(); break;
+    case 'emailpractices': ui.emailPractices=t.checked; render(); break;
   }
 });
 function readFile(input, fn){

@@ -1059,11 +1059,14 @@ function weekDates(start){ return Array.from({length:7},(_,i)=>addDays(start,i))
 function workWeekDates(start){ return weekDates(start).filter(isWorkDay); }
 // Days off right before a work day (within the week) whose day-specific tasks roll onto it.
 function rolledFrom(date){ const out=[], ws=workWeekStart(date); let d=addDays(date,-1); while(d>=ws && !isWorkDay(d)){ out.push(d); d=addDays(d,-1); } return out; }
+// Firestore can't store arrays inside arrays, so task links are saved as {label,url} objects.
+function mgrToFs(d){ const o=JSON.parse(JSON.stringify(d)); if(Array.isArray(o.tasks)) o.tasks=o.tasks.map(x=>Array.isArray(x.links)?Object.assign({},x,{links:x.links.map(l=>Array.isArray(l)?{label:l[0]||'',url:l[1]||''}:l)}):x); return o; }
+function mgrFromFs(d){ const o=Object.assign({}, d); if(Array.isArray(o.tasks)) o.tasks=o.tasks.map(x=>Array.isArray(x.links)?Object.assign({},x,{links:x.links.map(l=>Array.isArray(l)?l:[l.label||'',l.url||''])}):x); return o; }
 async function saveMgr(patch){
   const k=mgrKey(); if(!k) return;
   const doc=Object.assign({}, mgrDoc(), patch, { email:S.user.email, updatedAt:Date.now() });
   S.mgr[k]=JSON.parse(JSON.stringify(doc));
-  if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubMgr',k), S.mgr[k]); } else localSave();
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubMgr',k), mgrToFs(S.mgr[k])); } else localSave();
   render();
 }
 // Live counts from the hub (respects the region/office filter).
@@ -1423,7 +1426,7 @@ async function initDB(){
       S.user=u; unsubs.forEach(f=>f()); unsubs=[]; S.etacc=null; S.etaccErr=''; S.evals={};
       if(u){
         unsubs.push(F.onSnapshot(F.collection(db,'dashboardEvents'), snap=>{ const a=[]; snap.forEach(d=>a.push(Object.assign({id:d.id},d.data()))); S.etacc=a; render(); }, err=>{ S.etaccErr=err.code||err.message; render(); }));
-        { const mk=String(u.email||'').toLowerCase().replace(/[^a-z0-9]+/g,'_'); unsubs.push(F.onSnapshot(F.doc(db,'peHubMgr',mk), snap=>{ if(snap.exists()){ S.mgr[mk]=snap.data(); render(); } }, err=>console.warn('mgr',err))); }
+        { const mk=String(u.email||'').toLowerCase().replace(/[^a-z0-9]+/g,'_'); unsubs.push(F.onSnapshot(F.doc(db,'peHubMgr',mk), snap=>{ if(snap.exists()){ S.mgr[mk]=mgrFromFs(snap.data()); render(); } }, err=>console.warn('mgr',err))); }
         unsubs.push(F.onSnapshot(F.collection(db,'peHubExpenses'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=Object.assign({id:d.id},d.data())); S.expenses=m; render(); }, err=>console.warn('expenses',err)));
         unsubs.push(F.onSnapshot(F.collection(db,'peHubEvals'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.evals=m; render(); }, err=>console.warn('evals',err)));
       }

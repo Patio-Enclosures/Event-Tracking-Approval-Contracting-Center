@@ -73,6 +73,10 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .practices{border-top:1px solid var(--line-soft);margin-top:8px;padding-top:4px}
 @media (max-width:900px){.banners{grid-template-columns:1fr}}
 .guide ol{margin:4px 0 12px 20px;padding:0}.guide li{margin:4px 0;line-height:1.45}.guide h3{color:var(--accent)}
+.alrow{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line-soft)}.alrow.seen{opacity:.6}.alic{font-size:20px;line-height:1.2}
+.albanner{border-color:#c2410c;background:#fff7ed}.bell{position:relative}.bdot{position:absolute;top:-6px;right:-6px;background:#c2410c;color:#fff;border-radius:9px;font-size:10.5px;padding:1px 5px;font-weight:700}
+.orgchart{margin-top:10px}.orgchart summary{cursor:pointer;font-weight:600}.orggrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:8px}.orgdiv ul{margin:4px 0 0 16px;padding:0}.orgdiv li{margin:2px 0}
+.scopediv{border-top:1px solid var(--line-soft);padding-top:6px;margin-top:6px}.divbox{font-weight:600}
 .crumb{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--line)}
 .crumb b{font-size:17px}
 @media (max-width:520px){.tiles{grid-template-columns:1fr 1fr;gap:10px}.tile{padding:12px}.tile .ic{width:40px;height:40px;font-size:21px;margin-bottom:8px}.tile h2{font-size:15px}.tile p{display:none}}
@@ -214,12 +218,15 @@ const LEADERSHIP = [
   { name:'Angelique Critz', title:'Regional Event Marketing Manager', email:'angelique.critz@greatdayimprovements.com', alt:['Angelique Kritz'] },
   { name:'Chris Winston', title:'Senior Regional Event Marketing Manager', email:'chris.winston@greatdayimprovements.com' },
 ];
+function orgChartHtml(){
+  return `<details class="orgchart"><summary>🗂️ Org chart: divisions & regions</summary><div class="orggrid">${ORG.map(d=>`<div class="orgdiv"><b>${esc(d.division)} Division</b><div class="small muted">${esc(d.leader.name)}</div><ul>${Object.entries(d.regions).map(([r,x])=>`<li>${esc(REGION_NAMES[r]||r)}: <a href="mailto:${esc(x.email)}">${esc(x.name)}</a></li>`).join('')}</ul></div>`).join('')}</div></details>`;
+}
 function leaderCard(){
   const find=l=>S.sched.roster.find(r=>[l.name,...(l.alt||[])].some(n=>normName(n)===normName(r.name)));
   const tel=p=>String(p||'').replace(/[^\d+]/g,'');
   return `<div class="card leaders"><h2>📞 Event marketing leadership</h2><div class="leadgrid">${LEADERSHIP.map(l=>{ const r=find(l)||{}; const ph=r.phone||l.phone||''; const title=r.title||l.title;
     return `<div class="lead"><div class="lav">${esc(l.name.split(' ').map(w=>w[0]).join(''))}</div><div><b>${esc(l.name)}</b><div class="small muted">${esc(title)}</div>
-      <div class="small"><a href="mailto:${esc(r.email||l.email)}">${esc(r.email||l.email)}</a></div>${ph?`<div class="small"><a href="tel:${esc(tel(ph))}">${esc(ph)}</a></div>`:''}</div></div>`; }).join('')}</div></div>`;
+      <div class="small"><a href="mailto:${esc(r.email||l.email)}">${esc(r.email||l.email)}</a></div>${ph?`<div class="small"><a href="tel:${esc(tel(ph))}">${esc(ph)}</a></div>`:''}</div></div>`; }).join('')}</div>${orgChartHtml()}</div>`;
 }
 const TEAMS_HUB_URL = 'https://teams.microsoft.com/l/channel/19%3AhJ3v0SgRtUtuyqi5le9H55OLzeAo5DGdO0iSlKrS7x41%40thread.tacv2/Team%20Resource%20Hub?groupId=05ce58df-1a0a-486e-9825-6befb1c3c3dd&tenantId=213e780f-443e-4b07-98ea-c177eb740ffd';
 // ADP Mobile Solutions app (official store listings, per ADP's "Getting Started" guide)
@@ -304,8 +311,17 @@ function offices(){ const s=new Set(); S.sched.events.forEach(e=>e.office&&s.add
 function regionMap(){ const c={}; S.sched.events.forEach(e=>{ if(e.office&&e.region){ c[e.office]=c[e.office]||{}; c[e.office][e.region]=(c[e.office][e.region]||0)+1; } });
   const m={}; Object.entries(c).forEach(([o,r])=>{ m[o]=Object.entries(r).sort((a,b)=>b[1]-a[1])[0][0]; }); return m; }
 function regionOf(o){ return regionMap()[o]||''; }
-function inOffice(o){ const sc=ui.scope||[]; if(!sc.length) return true; return sc.includes('o:'+o) || (!!regionOf(o) && sc.includes('r:'+regionOf(o))); }
-function scopeLabel(){ const sc=ui.scope||[]; if(!sc.length) return 'All regions & offices'; const names=sc.map(x=>x.startsWith('r:')?x.slice(2)+' region':x.slice(2)); return names.length>3 ? names.slice(0,3).join(', ')+` +${names.length-3} more` : names.join(', '); }
+// Org chart: divisions → regions → regional manager. Emails are work emails (first.last@greatdayimprovements.com).
+const REGION_NAMES = { SA:'South Atlantic', 'SA-2':'South Atlantic 2', NE:'Northeast', MAN:'Mid-Atlantic North', MAS:'Mid-Atlantic South', MW:'Midwest', UPL:'Upper Plains', 'MW-2':'Midwest 2', OV:'Ohio Valley', SC:'South Central', 'SC-2':'South Central 2', SW:'Southwest', PNW:'Pacific Northwest', SE:'Southeast' };
+const ORG = [
+  { division:'East', leader:{ name:'Trevor Morrissey', email:'trevor.morrissey@greatdayimprovements.com' }, regions:{ SA:{ name:'Trevor Morrissey', email:'trevor.morrissey@greatdayimprovements.com' }, 'SA-2':{ name:'Jessica Bustamante-Ripper', email:'jessica.bustamante-ripper@greatdayimprovements.com' }, NE:{ name:'Mike Wing', email:'michael.wing@greatdayimprovements.com' }, MAN:{ name:'Jarrett Branch', email:'jarrett.branch@greatdayimprovements.com' }, MAS:{ name:'Jarrett Branch', email:'jarrett.branch@greatdayimprovements.com' }, SE:{ name:'Kristy Riggins', email:'kristy.riggins@greatdayimprovements.com' } } },
+  { division:'Central', leader:{ name:'Angelique Critz', email:'angelique.critz@greatdayimprovements.com' }, regions:{ MW:{ name:'Angelique Critz', email:'angelique.critz@greatdayimprovements.com' }, UPL:{ name:'Angelique Critz', email:'angelique.critz@greatdayimprovements.com' }, 'MW-2':{ name:'Eddie Wilson', email:'eddie.wilson@greatdayimprovements.com' }, OV:{ name:'Kortnee Brown', email:'kortnee.brown@greatdayimprovements.com' } } },
+  { division:'West', leader:{ name:'Chris Winston', email:'chris.winston@greatdayimprovements.com' }, regions:{ SC:{ name:'Chris Winston', email:'chris.winston@greatdayimprovements.com' }, 'SC-2':{ name:'Stephen Novak', email:'stephen.novak@greatdayimprovements.com' }, SW:{ name:'Chris Winston', email:'chris.winston@greatdayimprovements.com' }, PNW:{ name:'Chris Winston', email:'chris.winston@greatdayimprovements.com' } } },
+];
+function regionName(r){ return REGION_NAMES[r] ? `${REGION_NAMES[r]} (${r})` : r; }
+function divisionOf(r){ return ORG.find(d=>d.regions[r]) || null; }
+function inOffice(o){ const sc=ui.scope||[]; if(!sc.length) return true; const r=regionOf(o), d=divisionOf(r); return sc.includes('o:'+o) || (!!r && sc.includes('r:'+r)) || (!!d && sc.includes('d:'+d.division)); }
+function scopeLabel(){ const sc=ui.scope||[]; if(!sc.length) return 'All regions & offices'; const names=sc.map(x=>x.startsWith('d:')?x.slice(2)+' Division':x.startsWith('r:')?(REGION_NAMES[x.slice(2)]||x.slice(2))+' region':x.slice(2)); return names.length>3 ? names.slice(0,3).join(', ')+` +${names.length-3} more` : names.join(', '); }
 function scopePicker(){
   const rm=regionMap(), regs=[...new Set(Object.values(rm))].sort(), sc=ui.scope||[];
   const offsFor=r=>offices().filter(o=>(rm[o]||'')===r);
@@ -313,7 +329,9 @@ function scopePicker(){
   const box=(tok,label,cls='')=>`<label class="chk ${cls}"><input type="checkbox" data-scope="${esc(tok)}" ${sc.includes(tok)?'checked':''}> ${esc(label)}</label>`;
   return `<div class="scopewrap"><button class="btn" data-act="scopeToggle">📍 ${esc(scopeLabel())} ▾</button>
     ${ui.scopeOpen?`<div class="scopepanel"><div class="row" style="margin-bottom:6px"><b>Show regions & offices</b><span class="spacer"></span><button class="btn sm" data-act="scopeClear">All</button><button class="btn sm primary" data-act="scopeToggle">Done</button></div>
-      ${regs.map(r=>`<div class="scopereg">${box('r:'+r, r+' region (all offices)')}<div class="scopeoffs">${offsFor(r).map(o=>box('o:'+o,o)).join('')}</div></div>`).join('')}
+      ${(()=>{ const reg=r=>`<div class="scopereg">${box('r:'+r, regionName(r)+' region (all offices)')}<div class="scopeoffs">${offsFor(r).map(o=>box('o:'+o,o)).join('')}</div></div>`;
+        const inOrg=new Set(ORG.flatMap(d=>Object.keys(d.regions)));
+        return ORG.map(d=>{ const rs=Object.keys(d.regions).filter(r=>regs.includes(r)); return `<div class="scopediv">${box('d:'+d.division, d.division+' Division ('+d.leader.name+')','divbox')}${rs.map(reg).join('')}</div>`; }).join('') + regs.filter(r=>!inOrg.has(r)).map(reg).join(''); })()}
       ${noReg.length?`<div class="scopereg"><div class="small muted">No region</div><div class="scopeoffs">${noReg.map(o=>box('o:'+o,o)).join('')}</div></div>`:''}</div>`:''}</div>`;
 }
 function rosterSorted(){ return S.sched.roster.slice().sort((a,b)=>a.name.localeCompare(b.name)); }
@@ -1409,14 +1427,17 @@ const LEADS = ['paula.shoemaker@greatdayimprovements.com','trevor.morrissey@grea
 const SUMMARY_SEND = { dow:1, hour:8 };   // Mondays, 8:00 am (the first manager to open the hub after that sends it)
 const PHOTO_KEEP_DAYS = 365;               // booth photos are deleted after 12 months (receipts and training files are kept)
 function isLeadUser(){ return !!(S.user && LEADS.includes(String(S.user.email||'').toLowerCase())) || (DEMO && !!S.user); }
-function alertCfg(){ return S.alertCfg || { regions:{}, offices:{}, allowed:[] }; }
+function defaultRegionMgrs(){ const m={}; ORG.forEach(d=>Object.entries(d.regions).forEach(([r,x])=>{ m[r]=x.email; })); return m; }
+function alertCfg(){ const c=S.alertCfg || { offices:{}, allowed:[] }; return Object.assign({ ccDivision:true }, c, { regions:Object.assign(defaultRegionMgrs(), c.regions||{}), offices:c.offices||{} }); }
 function cleanList(a){ return [...new Set(a.map(x=>String(x||'').trim().toLowerCase()).filter(x=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)))]; }
 function splitEmails(v){ return cleanList(String(v||'').split(/[;,\s]+/)); }
 // Who gets an alert about an office: its supervisor (To), copy Paula and the region's manager.
 function alertRecipients(office){
   const c=alertCfg(), sup=splitEmails(c.offices[office]), rm=splitEmails(c.regions[regionOf(office)]);
+  const d=divisionOf(regionOf(office)), dl=(c.ccDivision!==false && d)?[d.leader.email]:[];
+  const teams=splitEmails((c.teams||{})[d?d.division:'']).concat(splitEmails((c.teams||{}).__all));
   const to=sup.length?sup:(rm.length?rm:[PAULA]);
-  const cc=cleanList([PAULA, ...rm]).filter(x=>!to.includes(x));
+  const cc=cleanList([PAULA, ...rm, ...dl, ...teams]).filter(x=>!to.includes(x));
   return { to, cc };
 }
 function mailShell(title, bodyHtml){
@@ -1426,11 +1447,17 @@ function mailShell(title, bodyHtml){
     <p style="margin-top:16px"><a href="${SITE}hub/" style="background:#24583f;color:#fff;text-decoration:none;padding:7px 12px;border-radius:6px;font-weight:600">Open the Event Hub</a></p>
     <p style="color:#5a6760;font-size:12px">Automatic alert from the Event Activity Hub.</p></div></div>`;
 }
-async function queueMail(id, mail){
-  mail={ to:cleanList(mail.to||[]), cc:cleanList(mail.cc||[]), message:{ subject:mail.subject, html:mail.html }, kind:mail.kind||'', createdAt:Date.now() };
+const ALERT_TAB = { late:'today', noshow:'today', noout:'today', issue:'today', expense:'expenses', summary:'summary', newmgr:'alerts', test:'alerts' };
+const ALERT_ICON = { late:'⏰', noshow:'🚫', noout:'⌛', issue:'⚠️', expense:'🧾', summary:'📊', newmgr:'👋', test:'🔔' };
+function htmlText(h){ const m=String(h||'').match(/<p>([\s\S]*?)<\/p>/); const d=document.createElement('div'); d.innerHTML=m?m[1]:''; return (d.textContent||'').trim().slice(0,300); }
+async function queueMail(id, src){
+  const mail={ to:cleanList(src.to||[]), cc:cleanList(src.cc||[]), message:{ subject:src.subject, html:src.html }, kind:src.kind||'', createdAt:Date.now() };
   if(!mail.to.length) return false;
-  if(S.mode!=='live'){ S.mailLog=S.mailLog||{}; if(S.mailLog[id]) return false; S.mailLog[id]=mail; return true; }
+  // In-hub alert (shows on the manager's page when they sign in), plus the email.
+  const alert={ to:mail.to, cc:mail.cc, kind:mail.kind, subject:src.subject, text:src.text||htmlText(src.html), office:src.office||'', tab:ALERT_TAB[mail.kind]||'', createdAt:mail.createdAt };
+  if(S.mode!=='live'){ S.mailLog=S.mailLog||{}; if(S.mailLog[id]) return false; S.mailLog[id]=mail; S.alerts=Object.assign({}, S.alerts||{}, { [id]:Object.assign({id},alert) }); localSave(); return true; }
   const {fsM,db}=DB.fb;
+  try{ await withSignal(fsM.setDoc(fsM.doc(db,'peHubAlerts',id), alert)); }catch(e){ if(e.code==='permission-denied') return false; console.warn('alert',id,e); }
   try{ await withSignal(fsM.setDoc(fsM.doc(db,'mail',id), mail)); return true; }
   catch(e){ if(e.code!=='permission-denied') console.warn('mail',id,e); return false; }   // permission-denied = already sent
 }
@@ -1444,7 +1471,7 @@ async function alertLateCheckin(c){
   const st=toMin(c.shiftStart); if(st===null) return;
   const d=new Date(c.inAt), mins=d.getHours()*60+d.getMinutes()-st; if(c.date!==todayIso() || mins<=LATE_MIN) return;
   const r=alertRecipients(c.office);
-  await queueMail('late-'+c.id, { ...r, kind:'late', subject:`Late check-in: ${c.personName} at ${c.eventName} (${mins} min)`,
+  await queueMail('late-'+c.id, { ...r, office:c.office, kind:'late', subject:`Late check-in: ${c.personName} at ${c.eventName} (${mins} min)`,
     html:mailShell('Late check-in', `<p>${esc(c.personName)} checked in <b>${mins} minutes late</b> at ${fmtClock(c.inAt)}.</p>`+shiftTable(c)) });
 }
 async function alertCheckout(c){
@@ -1452,18 +1479,18 @@ async function alertCheckout(c){
   const iss=[...(c.issues||[]), c.issueText].filter(Boolean);
   if(!iss.length && !bad.length) return;
   const r=alertRecipients(c.office);
-  await queueMail('issue-'+c.id, { ...r, kind:'issue', subject:`Issue reported: ${c.eventName} (${c.personName})`,
+  await queueMail('issue-'+c.id, { ...r, office:c.office, kind:'issue', subject:`Issue reported: ${c.eventName} (${c.personName})`,
     html:mailShell('Issue reported at check-out', shiftTable(c, row2('Issues',iss.map(esc).join('<br>'))+row2('Booth gear',bad.join('<br>'))+row2('Equipment tonight',esc(EQUIP_WHERE[c.equipWhere]||'')+(c.equipNote?' – '+esc(c.equipNote):''))+row2('Leads / appts',`${num(c.leads)} / ${num(c.appts)}`))) });
 }
 async function alertExpenseSubmitted(x){
   const r=alertRecipients(x.office||(person(x.personId)||{}).office||'');
-  await queueMail(`exp-${x.id}-${x.submittedAt||Date.now()}`, { ...r, kind:'expense', subject:`Expense report to approve: ${x.personName} – week of ${fmtMD(x.weekStart)}`,
+  await queueMail(`exp-${x.id}-${x.submittedAt||Date.now()}`, { ...r, office:x.office||'', kind:'expense', subject:`Expense report to approve: ${x.personName} – week of ${fmtMD(x.weekStart)}`,
     html:mailShell('Expense report waiting for approval', `<p>${esc(x.personName)} submitted an expense report for the week of <b>${fmtLong(x.weekStart)}</b>: <b>${money2(expCalc(x).total)}</b>.</p><p>Open the hub → Expense Reports to approve or return it.</p>`) });
 }
 async function alertExpenseReturned(x, note){
   const p=person(x.personId)||{}, r=alertRecipients(x.office||p.office||'');
   if(!p.email) return;
-  await queueMail(`expret-${x.id}-${Date.now()}`, { to:[p.email], cc:r.to, kind:'expense', subject:`Your expense report needs changes – week of ${fmtMD(x.weekStart)}`,
+  await queueMail(`expret-${x.id}-${Date.now()}`, { to:[p.email], cc:r.to, office:x.office||p.office||'', kind:'expense', subject:`Your expense report needs changes – week of ${fmtMD(x.weekStart)}`,
     html:mailShell('Expense report returned', `<p>Hi ${esc((p.name||'').split(' ')[0]||'')},</p><p>Your expense report for the week of <b>${fmtLong(x.weekStart)}</b> was returned for changes:</p><blockquote style="border-left:3px solid #b5791f;margin:8px 0;padding:4px 10px">${esc(note||'')}</blockquote><p>Open the check-in page, tap your name, and open the report under Expense reports to fix and resubmit it.</p>`) });
 }
 
@@ -1476,12 +1503,12 @@ async function sweepAlerts(){
     const c=s.c || { id:s.cid, personName:personName(s.personId), eventName:ev.name, office:ev.office, venueName:ev.venueName, date:s.day.date, shiftStart:s.day.start, shiftStop:s.day.stop };
     if(k==='late' && toMin(s.day.start)!==null && nowMin()>toMin(s.day.start)+30){
       const r=alertRecipients(ev.office);
-      await queueMail('noshow-'+s.cid, { ...r, kind:'noshow', subject:`Not checked in: ${c.personName} at ${ev.name}`,
+      await queueMail('noshow-'+s.cid, { ...r, office:ev.office, kind:'noshow', subject:`Not checked in: ${c.personName} at ${ev.name}`,
         html:mailShell('Marketer hasn’t checked in', `<p>${esc(c.personName)} was scheduled to start at <b>${esc(fmt12(s.day.start))}</b> and hasn’t checked in yet.</p>`+shiftTable(c)) });
     }
     if(k==='noout'){
       const r=alertRecipients(ev.office);
-      await queueMail('noout-'+s.cid, { ...r, kind:'noout', subject:`No check-out: ${c.personName} at ${ev.name}`,
+      await queueMail('noout-'+s.cid, { ...r, office:ev.office, kind:'noout', subject:`No check-out: ${c.personName} at ${ev.name}`,
         html:mailShell('Shift ended without a check-out', `<p>${esc(c.personName)} checked in at ${fmtClock(c.inAt)} but hasn’t checked out, and the shift ended at <b>${esc(fmt12(s.day.stop))}</b>. Results and equipment status are missing.</p>`+shiftTable(c)) });
     }
   }
@@ -1489,7 +1516,7 @@ async function sweepAlerts(){
   const now=new Date();
   if(now.getDay()===SUMMARY_SEND.dow && now.getHours()>=SUMMARY_SEND.hour && S.etacc!==null && S.evalsLoaded){
     const mon=mondayOf(t), from=addDays(mon,-7), to=addDays(mon,-1), keep=ui.scope; ui.scope=[];
-    try{ await queueMail('summary-'+mon, { to:SUMMARY_TO, kind:'summary', subject:summarySubject(from,to), html:summaryHtml(from,to,true) }); } finally { ui.scope=keep; }
+    try{ await queueMail('summary-'+mon, { to:SUMMARY_TO, kind:'summary', subject:summarySubject(from,to), html:summaryHtml(from,to,true), text:'Last week’s event activation summary and cost per lead are ready.' }); } finally { ui.scope=keep; }
   }
 }
 // Delete booth photos older than 12 months (receipts and training files are kept).
@@ -1524,14 +1551,45 @@ function setupBanner(){
     <div class="row" style="margin-top:8px"><a class="btn primary" href="mailto:${PAULA}?subject=${sub}&body=${body}">✉️ Email Paula</a>${(LEADERSHIP.find(x=>/shoemaker/i.test(x.email))||{}).phone?`<a class="btn" href="tel:${LEADERSHIP.find(x=>/shoemaker/i.test(x.email)).phone}">📞 Call Paula</a>`:''}</div></div>`;
 }
 
+// --- in-hub alerts: shown to managers when they sign in ---
+function myAlerts(){
+  const me=String((S.user&&S.user.email)||'').toLowerCase(), lead=isLeadUser(), since=Date.now()-14*864e5;
+  return Object.values(S.alerts||{}).filter(a=>(a.createdAt||0)>=since && (lead || (a.to||[]).includes(me) || (a.cc||[]).includes(me)) && (!a.office || inOffice(a.office)))
+    .sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+}
+function alertSeen(a){ return !!((mgrDoc().alertsSeen||{})[a.id]); }
+function unreadAlerts(){ return S.user ? myAlerts().filter(a=>!alertSeen(a)) : []; }
+async function markAlertsRead(ids){
+  const seen=Object.assign({}, mgrDoc().alertsSeen||{}), cutoff=Date.now()-30*864e5;
+  Object.keys(seen).forEach(k=>{ if(seen[k]<cutoff) delete seen[k]; });
+  ids.forEach(id=>{ seen[id]=Date.now(); });
+  await saveMgr({ alertsSeen:seen });
+}
+function alertRow(a, compact){
+  return `<div class="alrow ${alertSeen(a)?'seen':''}"><span class="alic">${ALERT_ICON[a.kind]||'🔔'}</span><div style="flex:1;min-width:0"><b>${esc(a.subject||'')}</b>${a.text&&!compact?`<div class="small">${esc(a.text)}</div>`:''}<div class="small muted">${fmtStamp(a.createdAt)}${a.office?' · '+esc(a.office):''}</div></div>
+    <span class="acts">${a.tab?`<button class="btn sm" data-act="alOpen" data-id="${esc(a.id)}">Open</button>`:''}${alertSeen(a)?'':`<button class="btn sm" data-act="alRead" data-id="${esc(a.id)}" title="Mark as read">✓</button>`}</span></div>`;
+}
+function alertsBanner(){
+  const un=unreadAlerts(); if(!un.length) return '';
+  return `<div class="card albanner"><div class="row"><h2 style="margin:0;flex:1">🔔 ${un.length} new alert${un.length===1?'':'s'}</h2><button class="btn sm" data-act="alReadAll">Mark all read</button><button class="btn sm" data-tab="alerts">See all</button></div>
+    ${un.slice(0,5).map(a=>alertRow(a,true)).join('')}${un.length>5?`<div class="small muted">…and ${un.length-5} more.</div>`:''}</div>`;
+}
+function myAlertsCard(){
+  const list=myAlerts(), un=list.filter(a=>!alertSeen(a)).length;
+  return `<div class="card"><div class="row"><h2 style="margin:0;flex:1">🔔 My alerts <span class="small muted">(last 14 days${(ui.scope||[]).length?', '+esc(scopeLabel()):''})</span></h2>${un?'<button class="btn sm" data-act="alReadAll">Mark all read</button>':''}</div>
+    ${list.length?list.slice(0,60).map(a=>alertRow(a)).join(''):'<p class="muted">No alerts. You’ll see late check-ins, no-shows, missing check-outs, reported issues and expense reports here.</p>'}</div>`;
+}
 // --- alert settings page (Paula and Trevor edit) ---
 function alertsView(){
   const c=alertCfg(), ed=isLeadUser(), rm=regionMap(), regs=[...new Set(Object.values(rm))].filter(Boolean).sort(), offs=offices();
   const f=(kind,key,val)=>ed?`<input type="text" data-alert="${kind}" data-key="${esc(key)}" value="${esc(val||'')}" placeholder="name@greatdayimprovements.com" style="width:100%">`:`<span>${esc(val||'—')}</span>`;
   const log=Object.entries(S.mailLog||{}).sort((a,b)=>(b[1].createdAt||0)-(a[1].createdAt||0)).slice(0,25);
-  return `<div class="card"><h2>🔔 Who gets alerts</h2><div class="sub">Each alert goes <b>to</b> the office’s supervisor, with a <b>copy</b> to Paula and the region’s manager. If an office has no supervisor, it goes to the region’s manager. Separate more than one email with commas.</div>
+  return `${S.user?myAlertsCard():''}<div class="card"><h2>🔔 Who gets alerts</h2><div class="sub">Each alert goes <b>to</b> the office’s supervisor, with a <b>copy</b> to Paula, the region’s manager and (if ticked below) the division leader. If an office has no supervisor, it goes to the region’s manager. Regional managers are filled in from the org chart; check the emails. Separate more than one email with commas.</div>
     ${ed?'':'<div class="notice">Only Paula and Trevor can change these.</div>'}
-    <h3>Regional managers</h3><table><thead><tr><th style="width:30%">Region</th><th>Regional manager email</th></tr></thead><tbody>${regs.map(r=>`<tr><td><b>${esc(r)}</b></td><td>${f('region',r,c.regions[r])}</td></tr>`).join('')||'<tr><td colspan="2" class="muted">No regions found on the schedule yet.</td></tr>'}</tbody></table>
+    ${ed?`<label class="chk" style="margin:6px 0"><input type="checkbox" data-alertcc ${c.ccDivision!==false?'checked':''}> Also copy the division leader (Trevor, Angelique or Chris)</label>`:''}
+    <h3>Regional managers</h3><table><thead><tr><th style="width:18%">Division</th><th style="width:28%">Region</th><th>Regional manager email</th></tr></thead><tbody>${(()=>{ const all=[...new Set([...ORG.flatMap(d=>Object.keys(d.regions)), ...regs])]; return all.map(r=>{ const d=divisionOf(r); return `<tr><td class="small">${d?esc(d.division)+'<div class="muted">'+esc(d.leader.name)+'</div>':'<span style="color:var(--warn)">Not in org chart</span>'}</td><td><b>${esc(regionName(r))}</b>${d&&d.regions[r]?`<div class="small muted">${esc(d.regions[r].name)}</div>`:''}</td><td>${f('region',r,c.regions[r])}</td></tr>`; }).join(''); })()}</tbody></table>
+    <h3>Teams channels <span class="small muted">(optional)</span></h3><div class="small muted" style="margin-bottom:4px">Paste a Teams channel’s email address to post alerts in that channel too. In Teams: channel ⋯ → <b>Get email address</b>. Alerts for a division post in its channel; “All alerts” posts everything.</div>
+    <table><tbody>${[['__all','All alerts'],...ORG.map(d=>[d.division,d.division+' Division'])].map(([k,l])=>`<tr><td style="width:30%"><b>${esc(l)}</b></td><td>${ed?`<input type="text" data-alert="teams" data-key="${esc(k)}" value="${esc((c.teams||{})[k]||'')}" placeholder="channel@….teams.ms" style="width:100%">`:esc((c.teams||{})[k]||'—')}</td></tr>`).join('')}</tbody></table>
     <h3>Office supervisors</h3><table><thead><tr><th style="width:30%">Office</th><th>Region</th><th>Supervisor email</th></tr></thead><tbody>${offs.map(o=>`<tr><td><b>${esc(o)}</b></td><td class="small">${esc(regionOf(o)||'—')}</td><td>${f('office',o,c.offices[o])}</td></tr>`).join('')}</tbody></table>
     ${ed?`<div class="row" style="margin-top:10px"><button class="btn primary" data-act="alertSave" ${ui.busy?'disabled':''}>${ui.busy?'Saving…':'Save'}</button><button class="btn" data-act="alertTest">Send me a test alert</button>${ui.alertMsg?`<span class="small">${esc(ui.alertMsg)}</span>`:''}</div>`:''}</div>
   <div class="card"><h2>What sends automatically</h2><table><tbody>
@@ -1548,8 +1606,9 @@ function alertsView(){
 }
 async function saveAlertCfg(vals){
   const c=JSON.parse(JSON.stringify(alertCfg())); c.regions=c.regions||{}; c.offices=c.offices||{};
-  (vals||[]).forEach(el=>{ const v=splitEmails(el.value).join(', '); const m=el.kind==='region'?c.regions:c.offices; if(v) m[el.key]=v; else delete m[el.key]; });
-  c.allowed=cleanList([...LEADS, ...SUMMARY_TO, ...Object.values(c.regions).flatMap(splitEmails), ...Object.values(c.offices).flatMap(splitEmails)]);
+  (vals||[]).forEach(el=>{ const v=splitEmails(el.value).join(', '); c.teams=c.teams||{}; const m=el.kind==='region'?c.regions:el.kind==='teams'?c.teams:c.offices; if(v) m[el.key]=v; else delete m[el.key]; });
+  if(vals && vals.ccDivision!==undefined) c.ccDivision=vals.ccDivision;
+  c.allowed=cleanList([...LEADS, ...SUMMARY_TO, ...ORG.map(d=>d.leader.email), ...Object.values(c.regions).flatMap(splitEmails), ...Object.values(c.offices).flatMap(splitEmails), ...Object.values(c.teams||{}).flatMap(splitEmails)]);
   c.updatedAt=Date.now(); c.updatedBy=(S.user&&S.user.email)||'';
   if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubSettings','alerts'), c); }
   S.alertCfg=c; if(S.mode!=='live') localSave();
@@ -1835,7 +1894,7 @@ function mergeMgrTimes(){
 const DB = { fb:null };
 const LOCAL_KEY='peHub.local';
 function localLoad(){ try{ return JSON.parse(lsGet(LOCAL_KEY)||'{}'); }catch(e){ return {}; } }
-function localSave(){ lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, alertCfg:S.alertCfg, rates:S.rates, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
+function localSave(){ lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, alertCfg:S.alertCfg, rates:S.rates, alerts:S.alerts, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
 setInterval(()=>{ sweepAlerts(); }, 5*60000);
 async function initDB(){
   if(DEMO){ goLocal('demo'); return; }
@@ -1879,6 +1938,7 @@ async function initDB(){
         { const mk=String(u.email||'').toLowerCase().replace(/[^a-z0-9]+/g,'_'); unsubs.push(F.onSnapshot(F.doc(db,'peHubMgr',mk), snap=>{ if(snap.exists()){ S.mgr[mk]=mgrFromFs(snap.data()); render(); } }, err=>console.warn('mgr',err))); }
         unsubs.push(F.onSnapshot(F.collection(db,'peHubExpenses'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=Object.assign({id:d.id},d.data())); S.expenses=m; render(); }, err=>console.warn('expenses',err)));
         if(LEADS.includes(String(u.email||'').toLowerCase())) unsubs.push(F.onSnapshot(F.query(F.collection(db,'mail'), F.orderBy('createdAt','desc'), F.limit(25)), snap=>{ const a=[]; snap.forEach(d=>a.push(d.data())); S.mailRecent=a; render(); }, err=>console.warn('mail log',err)));
+        unsubs.push(F.onSnapshot(F.query(F.collection(db,'peHubAlerts'), F.where('createdAt','>=',Date.now()-14*864e5)), snap=>{ const m={}; snap.forEach(d=>m[d.id]=Object.assign({id:d.id},d.data())); S.alerts=m; render(); }, err=>console.warn('alerts',err)));
         unsubs.push(F.onSnapshot(F.doc(db,'peHubRates','main'), snap=>{ S.rates=snap.exists()?snap.data():null; render(); }, err=>console.warn('rates',err)));
         unsubs.push(F.onSnapshot(F.collection(db,'peHubEvals'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.evals=m; S.evalsLoaded=true; render(); }, err=>console.warn('evals',err)));
       }
@@ -1891,7 +1951,7 @@ function goLocal(why){
   const L=localLoad();
   if(DEMO && !L.sched) seedDemo(); else {
     if(L.sched) S.sched=L.sched;
-    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; S.mgr=L.mgr||{}; S.training=L.training||null; S.alertCfg=L.alertCfg||null; S.rates=L.rates||null; ui.localPhotos=L.photos||{};
+    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; S.mgr=L.mgr||{}; S.training=L.training||null; S.alertCfg=L.alertCfg||null; S.rates=L.rates||null; S.alerts=L.alerts||{}; ui.localPhotos=L.photos||{};
   }
   if(DEMO){ S.user={email:'demo.manager@patio'}; }
   S.schedLoaded=true; render();
@@ -1996,7 +2056,7 @@ function restoreInputs(k){ document.querySelectorAll('[data-keep]').forEach(el=>
 function header(){
   const stat = S.mode==='live'?'<span class="cstat live">● Live</span>':S.mode==='connecting'?'<span class="cstat">○ Connecting…</span>':`<span class="cstat local">○ ${DEMO?'Demo data':'This device only'}</span>`;
   const signin = MARKETER_MODE ? `<a class="small" href="${location.pathname}">Manager view</a>` :
-    S.user ? `<div class="signin small"><span class="muted">${esc(S.user.email)}</span><button class="btn sm" data-act="signOut">Sign out</button></div>` :
+    S.user ? `<div class="signin small">${(()=>{ const n=unreadAlerts().length; return `<button class="btn sm bell" data-tab="alerts" title="Alerts">🔔${n?`<span class="bdot">${n}</span>`:''}</button>`; })()}<span class="muted">${esc(S.user.email)}</span><button class="btn sm" data-act="signOut">Sign out</button></div>` :
     `<form class="signin" data-form="signin"><input type="email" name="email" placeholder="Manager email" data-keep="si-email" autocomplete="username" style="width:170px"><input type="password" name="pw" placeholder="Password" data-keep="si-pw" autocomplete="current-password" style="width:120px"><button class="btn sm primary">Sign in</button>${S.authErr?`<span class="small" style="color:var(--red)">${esc(S.authErr)}</span>`:''}</form>`;
   return `<header class="top"><div class="brand"><b>Patio Enclosures</b><span>Field Marketing</span></div>
     <div><h1>${MARKETER_MODE?'Event Check-In':'Event Activity Hub'}</h1><div class="asof">${stat}${S.mode==='local'&&!DEMO?` · not saving to the shared database (${esc(S.err)})`:''}</div></div>
@@ -2030,7 +2090,7 @@ function tilesView(){
   const TC={ today:['#2f5f9e','#e6eef8'], events:['#2f7a78','#dcebea'], schedule:['#6b4fbb','#efeafb'], checkin:['#24583f','#e6f0ea'], assets:['#b5791f','#f6e9d2'], evals:['#b0425e','#f8e4ea'], expenses:['#5b6b1f','#eef2dc'], travel:['#1f6f8b','#dff0f6'], adp:['#9a3412','#fbe9df'], costs:['#0f766e','#ddf3ef'] };
   const tile=(k,desc,stat,cls,flag,flagCls)=>{ const [ic,l]=SECTIONS[k], [c,soft]=TC[k]||['#24583f','#e6f0ea']; return `<div class="tile" data-tab="${k}" role="button" tabindex="0" style="--tc:${c};--tcs:${soft}">${flag?`<span class="flag ${flagCls||''}">${flag}</span>`:''}<div class="ic">${ic}</div><h2>${esc(l)}</h2><p>${desc}</p><div class="stat ${cls||''}">${stat}</div></div>`; };
   return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span>${scopePicker()}</div>${staffBanner()}
-  <div class="banners"><a class="teamsbanner" href="${TEAMS_HUB_URL}" target="_blank" rel="noopener"><div class="ic">👥</div><div style="flex:1"><h2>Team Resource Hub</h2><p>Guides, forms, standards and announcements in Microsoft Teams.</p></div><span class="go">Open in Teams ↗</span></a>
+  ${alertsBanner()}<div class="banners"><a class="teamsbanner" href="${TEAMS_HUB_URL}" target="_blank" rel="noopener"><div class="ic">👥</div><div style="flex:1"><h2>Team Resource Hub</h2><p>Guides, forms, standards and announcements in Microsoft Teams.</p></div><span class="go">Open in Teams ↗</span></a>
   <a class="teamsbanner trainbanner" href="#training" data-tab="training"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products, booth setup and standards.</p></div><span class="go">Open ↗</span></a></div>
   <div class="row" style="margin:-6px 0 14px"><button class="btn" data-tab="guide">📖 How-to guides</button><button class="btn" data-tab="alerts">🔔 Alert settings</button></div>
   ${mgrBar()}
@@ -2412,6 +2472,9 @@ document.addEventListener('click', async ev=>{
   if(a==='expEmail'){ emailExpense(S.expenses[ui.expView]); return; }
   if(a==='expApprove'){ const x=S.expenses[ui.expView]; if(!confirm(`Approve ${x.personName}’s report for ${money2((x.totals||expCalc(x)).total)}?`)) return; await guard(()=>expAction(x,'approved')); ui.notice='Approved. Save it as a PDF and email it to Accounts Payable using the steps on the report.'; ui.noticeKind='ok'; render(); return; }
   if(a==='expReturn'){ const x=S.expenses[ui.expView]; const note=prompt('What needs to change? (the marketer will see this)',''); if(note===null) return; await guard(()=>expAction(x,'returned',note)); alertExpenseReturned(x, note); ui.expView=null; render(); return; }
+  if(a==='alRead'){ await guard(()=>markAlertsRead([t.dataset.id])); return; }
+  if(a==='alReadAll'){ await guard(()=>markAlertsRead(unreadAlerts().map(x=>x.id))); return; }
+  if(a==='alOpen'){ const al=(S.alerts||{})[t.dataset.id]; if(!al) return; markAlertsRead([al.id]).catch(()=>{}); ui.tab=al.tab||'home'; history.pushState(null,'','#'+ui.tab); render(); window.scrollTo(0,0); return; }
   if(a==='costRange'){ ui.costRange={ from:t.dataset.f, to:t.dataset.t, label:t.dataset.l }; render(); return; }
   if(a==='costCsv'){ costCsv(); return; }
   if(a==='ratesFile'){ ui.ratesOpen=true; document.getElementById('ratesFile').click(); return; }
@@ -2425,7 +2488,7 @@ document.addEventListener('click', async ev=>{
     return; }
   if(a==='qDel'){ const sc=t.dataset.scope, key=t.dataset.key, coll=sc==='day'?'days':'weeks', m=mgrDoc(), all=Object.assign({}, m[coll]||{}), rec=Object.assign({}, all[key]||{}); rec.extra=(rec.extra||[]).filter(x=>x.id!==t.dataset.id); all[key]=rec; await guard(()=>saveMgr({ [coll]:all })); return; }
   if(a==='hideShortcut'){ lsSet('peHub.shortcutHidden','1'); render(); return; }
-  if(a==='alertSave'){ const vals=[...document.querySelectorAll('[data-alert]')].map(el=>({ kind:el.dataset.alert, key:el.dataset.key, value:el.value })); ui.busy=true; render(); try{ await saveAlertCfg(vals); ui.alertMsg='Saved.'; }catch(e){ ui.alertMsg='Couldn’t save: '+(e.code||e.message); } ui.busy=false; render(); return; }
+  if(a==='alertSave'){ const vals=[...document.querySelectorAll('[data-alert]')].map(el=>({ kind:el.dataset.alert, key:el.dataset.key, value:el.value })); const ccEl=document.querySelector('[data-alertcc]'); if(ccEl) vals.ccDivision=ccEl.checked; ui.busy=true; render(); try{ await saveAlertCfg(vals); ui.alertMsg='Saved.'; }catch(e){ ui.alertMsg='Couldn’t save: '+(e.code||e.message); } ui.busy=false; render(); return; }
   if(a==='alertTest'){ const ok=await queueMail('test-'+Date.now(), { to:[(S.user&&S.user.email)||PAULA], kind:'test', subject:'Event Hub test alert', html:mailShell('Test alert','<p>If you’re reading this, automatic alerts are working.</p>') }); ui.alertMsg=ok?'Test queued: check your inbox in a minute.':'Couldn’t queue the test email.'; render(); return; }
   if(a==='backCheckin'){ ui.tab='checkin'; history.replaceState(null,'',location.pathname+location.search); render(); return; }
   if(a==='tAdd'){ ui.tForm={}; render(); return; }

@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Patio Enclosures Event Hub</title>
+<meta name="theme-color" content="#24583f"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Event Check-In">
+<link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png">
 <style>
 :root{
   --bg:#f5f6f4; --surface:#fff; --ink:#18221c; --ink-soft:#5a6760; --line:#d8dfda; --line-soft:#ecf0ed;
@@ -70,6 +72,7 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .tcard{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--line-soft);padding:9px 0}
 .practices{border-top:1px solid var(--line-soft);margin-top:8px;padding-top:4px}
 @media (max-width:900px){.banners{grid-template-columns:1fr}}
+.guide ol{margin:4px 0 12px 20px;padding:0}.guide li{margin:4px 0;line-height:1.45}.guide h3{color:var(--accent)}
 .crumb{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--line)}
 .crumb b{font-size:17px}
 @media (max-width:520px){.tiles{grid-template-columns:1fr 1fr;gap:10px}.tile{padding:12px}.tile .ic{width:40px;height:40px;font-size:21px;margin-bottom:8px}.tile h2{font-size:15px}.tile p{display:none}}
@@ -89,6 +92,7 @@ textarea{width:100%;min-height:64px;resize:vertical}
 .grid{display:grid;gap:10px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
 .kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi.warn{border-color:var(--warn);background:#fdf6ec}
 .kpi b{display:block;font-size:24px;font-weight:650}.kpi span{color:var(--ink-soft);font-size:12.5px}
 .kpi.alert b{color:var(--red)}.kpi.warn b{color:var(--warn)}
 table{border-collapse:collapse;width:100%}
@@ -258,7 +262,7 @@ const S = {
   etacc:null, etaccErr:'',
 };
 const ui = {
-  tab: MARKETER_MODE ? (location.hash==='#training'?'training':'checkin') : (location.hash.replace('#','') || 'home'),
+  tab: MARKETER_MODE ? (['#training','#guide'].includes(location.hash)?location.hash.slice(1):'checkin') : (location.hash.replace('#','') || 'home'),
   scope: (()=>{ try{ return JSON.parse(lsGet('peHub.scope')||'[]'); }catch(e){ return []; } })(), scopeOpen:false, date: todayIso(),
   me: params.get('p') || lsGet('peHub.me') || '',
   panel:null, notice:'', noticeKind:'', busy:false, evalKey:null, evalDraft:null, detail:null,
@@ -764,7 +768,8 @@ function newExpense(pid){
 }
 function venueText(e){ return [e.venueName, e.venueAddress].filter(Boolean).join(', '); }
 // Commute days = days the marketer went to the office first (equipment pickup); home→venue days get full mileage.
-function syncCommuteDays(x){ x.commuteDays=String(new Set((x.trips||[]).filter(t=>t.officeFirst && t.date).map(t=>t.date)).size); }
+// Policy: deduct the round-trip home↔office commute on every event day, whether they went to the office first or drove from home.
+function syncCommuteDays(x){ x.commuteDays=String(new Set((x.trips||[]).filter(t=>t.date).map(t=>t.date)).size); }
 function weekShiftsFor(x){ const out=[]; datesBetween(x.weekStart,x.weekEnd).forEach(d=>shiftsOn(d).filter(s=>s.personId===x.personId).forEach(s=>out.push(s))); return out; }
 function prefillTrips(x){
   if((x.trips||[]).length) return;
@@ -822,7 +827,7 @@ function expenseEditor(){
     <div class="small muted" style="margin:-2px 0 8px">Mileage is from <b>home to the venue</b> and back. If you stopped at the office first to pick up equipment, tick that box: your normal round-trip commute is subtracted for that day.</div>
     <button class="btn" data-act="expAdd" data-list="trips">+ Add a trip</button>
     ${(x.trips||[]).length?`<div class="fields" style="margin-top:10px">
-      <div class="field"><label>Number of commute days</label>${inp('commuteDays',x.commuteDays,'type="number" min="0" step="1" inputmode="numeric"')}<span class="small muted">Days you went to the office first. Filled in from the boxes above.</span></div>
+      <div class="field"><label>Number of commute days</label>${inp('commuteDays',x.commuteDays,'type="number" min="0" step="1" inputmode="numeric"')}<span class="small muted">Every day you drove to an event (from home or the office). Filled in from your trips above.</span></div>
       <div class="field"><label>Your normal round-trip commute (miles)</label>${inp('commuteMiles',x.commuteMiles,'type="number" min="0" step="0.1" inputmode="decimal"')}<span class="small muted">Home ↔ branch, round trip. Filled in from the roster when your manager has added it.</span></div></div>
 `:''}<div id="tot-m">${(x.trips||[]).length?totMileageHtml(x,c):''}</div>
   </div>
@@ -906,7 +911,7 @@ function expenseDoc(x, forPrint){
       <tr><td>Reimbursement</td><td>${x.method==='check'?`Mail check to ${esc([a.street,a.line2,a.city,a.state,a.zip].filter(Boolean).join(', '))}`:x.method==='achsetup'?'ACH – first time / bank changed (banking sent separately)':'ACH on file'}</td></tr>
     </tbody></table>
     ${(x.trips||[]).length?`<h3>Mileage (GL 73200) · ${money2(x.rate)}/mile</h3><table class="extab"><thead><tr><th>Date</th><th>Event</th><th>Show code</th><th>From → To</th><th>Office first</th><th>Miles</th></tr></thead><tbody>${x.trips.map(t=>`<tr><td>${fmtMD(t.date)}</td><td>${esc(evName(t.eventKey))}</td><td>${esc(t.showCode||'')}</td><td>${esc([t.from,t.to].filter(Boolean).join(' → '))}</td><td>${t.officeFirst?'Yes':''}</td><td>${round1(num(t.miles))}</td></tr>`).join('')}</tbody></table>
-      <table class="extot"><tbody><tr><td>Total miles</td><td>${round1(c.totalMiles)}</td></tr><tr><td>Commute days (office first) × commute miles</td><td>${num(x.commuteDays)} × ${num(x.commuteMiles)} = ${round1(c.nonReimb)}</td></tr><tr><td>Eligible miles</td><td>${round1(c.eligible)}</td></tr><tr><th>Total mileage reimbursement</th><th>${money2(c.mileage)}</th></tr></tbody></table>`:''}
+      <table class="extot"><tbody><tr><td>Total miles</td><td>${round1(c.totalMiles)}</td></tr><tr><td>Commute days × round-trip commute miles</td><td>${num(x.commuteDays)} × ${num(x.commuteMiles)} = ${round1(c.nonReimb)}</td></tr><tr><td>Eligible miles</td><td>${round1(c.eligible)}</td></tr><tr><th>Total mileage reimbursement</th><th>${money2(c.mileage)}</th></tr></tbody></table>`:''}
     ${(x.stays||[]).length?`<h3>Per diem (GL 73300)</h3><table class="extab"><thead><tr><th>Event</th><th>Show code</th><th>Hotel</th><th>Nights</th><th>Meals (B/L/D)</th><th>Receipt</th></tr></thead><tbody>${x.stays.map(s=>{ const ds=datesBetween(s.checkIn,s.checkOut); let b=0,l=0,d=0; ds.forEach(dt=>{ const m=(s.meals||{})[dt]||{}; if(m.b!==false)b++; if(m.l!==false)l++; if(m.d!==false)d++; }); return `<tr><td>${esc(evName(s.eventKey))}</td><td>${esc(s.showCode||'')}</td><td>${fmtMD(s.checkIn)}–${fmtMD(s.checkOut)}</td><td>${Math.max(0,ds.length-1)}</td><td>${b}/${l}/${d}</td><td>${img(s.receipt)}</td></tr>`; }).join('')}</tbody></table>
       <table class="extot"><tbody><tr><td>Meals</td><td>${c.b} × $6 + ${c.l} × $12 + ${c.d} × $25</td></tr><tr><th>Total per diem</th><th>${money2(c.perDiem)}</th></tr></tbody></table>`:''}
     ${(x.misc||[]).length?`<h3>Reimbursable expenses</h3><table class="extab"><thead><tr><th>Date</th><th>Type</th><th>Event</th><th>Show code</th><th>Description</th><th>Amount</th><th>Receipt</th></tr></thead><tbody>${x.misc.map(r=>`<tr><td>${fmtMD(r.date)}</td><td>${esc(r.category)}</td><td>${esc(evName(r.eventKey))}</td><td>${esc(r.showCode||'')}</td><td>${esc(r.desc||'')}</td><td>${money2(r.amount)}</td><td>${NO_RECEIPT_CATS.includes(r.category)?'n/a':img(r.receipt)}</td></tr>`).join('')}</tbody></table>
@@ -968,6 +973,7 @@ function adpView(){
   rows.forEach(r=>{ (byP[r.s.personId]=byP[r.s.personId]||[]).push(r); });
   const flagged=rows.filter(r=>r.flag).length;
   return `<div class="row" style="margin-bottom:12px"><a class="btn primary big" style="width:auto;text-decoration:none" href="${ADP_MANAGER_URL}" target="_blank" rel="noopener">⏱️ Open ADP to approve timecards ↗</a><span class="spacer"></span>${scopePicker()}</div>
+  ${(()=>{ const t=todayIso(), pe=payPeriodEnd(t); return `<div class="notice">Pay period: <b>${fmtLong(addDays(pe,-13))} – ${fmtLong(pe)}</b> · approve timecards by the end of ${pe===t?'<b>today</b>':fmtLong(pe)} · payday ${fmtLong(addDays(pe,5))}</div>`; })()}
   <div class="card"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">Timecard check · week of ${fmtLong(wk)}</h2><span class="spacer"></span>
     <button class="btn sm" data-act="adpWk" data-n="-7">◀ Prev week</button>${wk!==mondayOf(todayIso())?'<button class="btn sm" data-act="adpWk" data-n="0">This week</button>':''}<button class="btn sm" data-act="adpWk" data-n="7">Next week ▶</button></div>
     <div class="sub">Compare each marketer’s ADP timecard with their event check-ins before approving. On equipment-pickup days, paid time starts at the office clock-in. ${flagged?`<b style="color:var(--warn)">${flagged} shift${flagged===1?'':'s'} to double-check.</b>`:''}</div>
@@ -1010,6 +1016,11 @@ function travelView(){
    at zero) + each manager's own recurring tasks. Stored per manager in
    peHubMgr/{email}.
    ===================================================================== */
+// Bi-weekly payroll: pay periods end on Sunday every 2 weeks (anchor: Sun Oct 25, 2026); payday is the following Friday.
+const PAY_ANCHOR = '2026-10-25';
+function daysBetween(a,b){ return Math.round((parseIso(b)-parseIso(a))/864e5); }
+function isPayEnd(d){ return ((daysBetween(PAY_ANCHOR,d)%14)+14)%14===0; }
+function payPeriodEnd(d){ const n=((daysBetween(PAY_ANCHOR,d)%14)+14)%14; return n===0?d:addDays(d,14-n); }
 const DOW_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const DEFAULT_WORKDAYS = [1,4,5,6,0];   // typical: Mon, Thu, Fri, Sat, Sun (Tue/Wed off)
 const WEEK_ORDER = [1,2,3,4,5,6,0];       // weeks run Monday → Sunday
@@ -1026,13 +1037,14 @@ const DEFAULT_MGR_TASKS = [
   // Sunday
   { id:'su1', when:'dow:0', group:'Wrap up the weekend', text:'Complete event evaluations for the weekend', tab:'evals', auto:'a-eval' },
   { id:'su2', when:'dow:0', group:'Wrap up the weekend', text:'Update results with ACTUAL costs in Exhibit Day (expenses + wages from ADP)', links:[['Exhibit Day',LINKS.exhibitDay],['ADP',LINKS.adp]], tab:'expenses' },
-  { id:'su3', when:'dow:0', group:'Wrap up the weekend', text:'Review timesheets for accuracy and approve timecards (bi-weekly)', links:[['ADP',LINKS.adp]], tab:'adp', auto:'a-adp' },
+  { id:'su3', when:'dow:0', cond:'payday', group:'Wrap up the weekend', text:'Pay period ends today: review timesheets for accuracy and approve timecards (payday is Friday)', links:[['ADP',LINKS.adp]], tab:'adp', auto:'a-adp' },
   { id:'su4', when:'dow:0', group:'Wrap up the weekend', text:'Send 0-lead events to your direct manager with an explanation (by Monday 9 am)', tab:'evals', auto:'a-zero' },
-  { id:'su5', when:'dow:0', group:'Wrap up the weekend', text:'Approve expense reports (team submits Sunday night)', tab:'expenses', auto:'a-exp' },
   // Monday
   { id:'mo1', when:'dow:1', group:'Administrative tasks', text:'Review the upcoming schedule of events and confirm your upcoming shows', links:[['Exhibit Day',LINKS.exhibitDay]], tab:'schedule' },
   { id:'mo0', when:'dow:1', group:'Administrative tasks', text:'Send the event activation summary (leads, 0-lead events, events not activated) to leadership', tab:'summary' },
   { id:'mo2', when:'dow:1', group:'Administrative tasks', text:'Confirm previous and new shows are listed correctly on the Master and the booking tool (Master is emailed Mon/Wed/Fri)', links:[['Booking tool',LINKS.booking]] },
+  { id:'mo12', when:'dow:1', group:'Administrative tasks', text:'Review and approve your team’s expense reports (submitted Sunday night)', tab:'expenses', auto:'a-exp' },
+  { id:'mo13', when:'dow:1', group:'Administrative tasks', text:'Submit your own expense report for last week', tab:'expenses' },
   { id:'mo3', when:'dow:1', group:'Administrative tasks', text:'Code credit card transactions', links:[['PaymentNet',LINKS.paymentNet]] },
   { id:'mo4', when:'dow:1', group:'Administrative tasks', text:'Add projected costs for NEW events in Exhibit Day', links:[['Exhibit Day',LINKS.exhibitDay]], tab:'events' },
   { id:'mo5', when:'dow:1', group:'Administrative tasks', text:'Reconcile leads using PCMS & Tableau', links:[['PCMS',LINKS.pcms],['Tableau',LINKS.tableau]] },
@@ -1042,6 +1054,23 @@ const DEFAULT_MGR_TASKS = [
   { id:'mo9', when:'dow:1', group:'Recruiting & hiring', text:'Conduct scheduled phone screenings and/or interviews' },
   { id:'mo10', when:'dow:1', group:'Continuing work flow', text:'Attend the weekly REM meeting' },
   { id:'mo11', when:'dow:1', group:'Continuing work flow', text:'Event planning / research future events', tab:'events' },
+  // Thursday
+  { id:'th1', when:'dow:4', group:'Build the pipeline', text:'Research and add future events', tab:'events' },
+  { id:'th2', when:'dow:4', group:'Build the pipeline', text:'Find and interview candidates: phone screens and interviews for new marketers', links:[['ADP',LINKS.adp]] },
+  // Event weekends (Fri–Sun)
+  { id:'fr1', when:'dow:5', cond:'events', group:'Event weekend', text:'Confirm every shift this weekend is staffed and marketers have their check-in links', tab:'schedule' },
+  { id:'fr2', when:'dow:5', cond:'events', group:'Event weekend', text:'Watch check-ins: follow up on late or missing marketers right away', tab:'today', auto:'a-late' },
+  { id:'fr3', when:'dow:5', cond:'events', group:'Event weekend', text:'Visit or call your booths: setup meets standards and issues are resolved', tab:'today', auto:'a-iss' },
+  { id:'sa1', when:'dow:6', cond:'events', group:'Event weekend', text:'Watch check-ins: follow up on late or missing marketers right away', tab:'today', auto:'a-late' },
+  { id:'sa2', when:'dow:6', cond:'events', group:'Event weekend', text:'Visit or call your booths: setup meets standards and issues are resolved', tab:'today', auto:'a-iss' },
+  { id:'sa3', when:'dow:6', cond:'events', group:'Event weekend', text:'Review check-out results and booth photos as shifts end', tab:'today' },
+  { id:'su6', when:'dow:0', cond:'events', group:'Event weekend', text:'Watch check-ins and booth issues for today’s shifts', tab:'today', auto:'a-late' },
+  // Weekends with no events: pipeline work instead
+  { id:'fr9', when:'dow:5', cond:'noevents', group:'No events this weekend', text:'Research and add future events', tab:'events' },
+  { id:'fr8', when:'dow:5', cond:'noevents', group:'No events this weekend', text:'Find and interview candidates for open marketer spots', links:[['ADP',LINKS.adp]] },
+  { id:'sa9', when:'dow:6', cond:'noevents', group:'No events this weekend', text:'Research and add future events', tab:'events' },
+  { id:'sa8', when:'dow:6', cond:'noevents', group:'No events this weekend', text:'Find and interview candidates for open marketer spots', links:[['ADP',LINKS.adp]] },
+  { id:'su9', when:'dow:0', cond:'noevents', group:'No events this weekend', text:'Research and add future events', tab:'events' },
   // Weekly (any day of the work week)
   { id:'wk1', when:'weekly', group:'This week', text:'Staff events 3–4 weeks out', tab:'schedule', auto:'a-staff' },
   { id:'wk2', when:'weekly', group:'This week', text:'Email the weekend schedule (with check-in links) to your marketers', tab:'schedule' },
@@ -1049,7 +1078,20 @@ const DEFAULT_MGR_TASKS = [
   { id:'wk4', when:'weekly', group:'This week', text:'Order supplies running low (trifolds, brochures, badges, etc.)', tab:'assets', auto:'a-low' },
 ];
 function mgrKey(){ return S.user ? String(S.user.email||'').toLowerCase().replace(/[^a-z0-9]+/g,'_') : ''; }
-function mgrDoc(){ const k=mgrKey(); return (k && S.mgr[k]) || { workDays:DEFAULT_WORKDAYS, tasks:DEFAULT_MGR_TASKS, days:{}, weeks:{}, flex:{} }; }
+function mgrDoc(){ const k=mgrKey(); let d=(k && S.mgr[k]) || { workDays:DEFAULT_WORKDAYS, tasks:DEFAULT_MGR_TASKS, days:{}, weeks:{}, flex:{} };
+  if(d.tasks && d.tasks!==DEFAULT_MGR_TASKS){   // add standard tasks introduced after this list was saved (unless the manager removed them)
+    const RETIRED=['su5'];   // standard tasks that moved or were dropped
+    if(d.tasks.some(x=>RETIRED.includes(x.id))) d=Object.assign({}, d, { tasks:d.tasks.filter(x=>!RETIRED.includes(x.id)) });
+    const have=new Map(d.tasks.map(x=>[x.id,x])), gone=new Set(d.removedTasks||[]);
+    const missing=DEFAULT_MGR_TASKS.filter(x=>!have.has(x.id)&&!gone.has(x.id));
+    const upd=d.tasks.map(x=>{ const def=DEFAULT_MGR_TASKS.find(y=>y.id===x.id); return (def&&def.cond&&!('cond' in x))?Object.assign({},x,{cond:def.cond,text:def.text}):x; });
+    if(missing.length || upd.some((x,i)=>x!==d.tasks[i])) return Object.assign({}, d, { tasks:[...upd, ...missing] });
+  }
+  return d; }
+// Does the Fri–Sun weekend around this date have events (in the manager's region/office filter)?
+function weekendHasEvents(date){ const dow=parseIso(date).getDay(), fri=addDays(date, dow===0?-2:5-dow), days=[fri,addDays(fri,1),addDays(fri,2)];
+  return liveEvents().some(e=>inOffice(e.office) && (e.days||[]).some(x=>days.includes(x.date))); }
+function condOk(x, date){ if(!x.cond) return true; if(x.cond==='payday') return isPayEnd(date); const ev=weekendHasEvents(date); return x.cond==='events'?ev:!ev; }
 function workDays(){ const w=mgrDoc().workDays; return (w&&w.length)?w:DEFAULT_WORKDAYS; }
 // Weeks run Monday–Sunday. A date is a work day if it's a typical work day, unless the manager flexed it.
 function workWeekStart(iso){ return mondayOf(iso||todayIso()); }
@@ -1093,10 +1135,10 @@ function tasksFor(kind, date){
   const tasks=mgrDoc().tasks||[];
   if(kind==='weekly') return tasks.filter(x=>x.when==='weekly');
   const dow=parseIso(date).getDay();
-  const own=tasks.filter(x=>x.when==='daily' || x.when==='dow:'+dow);
+  const own=tasks.filter(x=>(x.when==='daily' || x.when==='dow:'+dow) && condOk(x,date));
   if(!isWorkDay(date)) return own;
   // tasks from flex/regular days off just before this work day move here
-  const rolled=rolledFrom(date).flatMap(d=>tasks.filter(x=>x.when==='dow:'+parseIso(d).getDay()).map(x=>Object.assign({}, x, { group:(x.group||'Tasks')+` (moved from ${DOW_NAMES[parseIso(d).getDay()]})` })));
+  const rolled=rolledFrom(date).flatMap(d=>tasks.filter(x=>x.when==='dow:'+parseIso(d).getDay() && condOk(x,d)).map(x=>Object.assign({}, x, { group:(x.group||'Tasks')+` (moved from ${DOW_NAMES[parseIso(d).getDay()]})` })));
   return [...own, ...rolled];
 }
 function checkRow(item, doneMap, key, AC){
@@ -1104,7 +1146,7 @@ function checkRow(item, doneMap, key, AC){
   const done = (a && a.n===0) || !!doneMap[item.id];
   const links=(item.links||[]).map(([l,u])=>`<a class="btn sm" href="${esc(u)}" target="_blank" rel="noopener">${esc(l)} ↗</a>`).join('');
   return `<div class="mtask ${done?'done':''}"><label class="chk" style="flex:1"><input type="checkbox" data-mtask="${esc(key)}|${esc(item.id)}" ${done?'checked':''} ${a&&a.n===0?'disabled':''}> <span>${esc(item.text)}${a&&a.list&&a.list.length?`<span class="small muted"> (${esc(a.list.slice(0,4).join(', '))}${a.list.length>4?'…':''})</span>`:''}</span></label>
-    <span class="acts">${a?`<span class="pill ${a.n?'p-warn':'p-green'}">${a.n?a.n:'✓ none'}</span>`:''}${links}${item.tab?`<button class="btn sm" data-tab="${item.tab}">Hub ↗</button>`:''}</span></div>`;
+    <span class="acts">${a?`<span class="pill ${a.n?'p-warn':'p-green'}">${a.n?a.n:'✓ none'}</span>`:''}${links}${item.tab?`<button class="btn sm" data-tab="${item.tab}">Hub ↗</button>`:''}${item.oneTime?`<button class="btn sm" data-act="qDel" data-scope="${item.scope}" data-key="${item.key}" data-id="${esc(item.id)}" title="Remove">✕</button>`:''}</span></div>`;
 }
 function groupRows(items, doneMap, key, AC){
   let out='', last=null;
@@ -1115,15 +1157,15 @@ function isDone(x, done, AC){ const a=x.auto&&AC[x.auto]; return (a&&a.n===0) ||
 function dayChecklist(date){
   const m=mgrDoc(), log=(m.days||{})[date]||{}, done=log.done||{}, AC=autoCounts(), isToday=date===todayIso();
   const autos=isToday?DAILY_AUTOS.map(k=>Object.assign({ id:k, auto:k, group:'Daily checks' }, AC[k])):[];
-  const mine=tasksFor('daily',date);
+  const mine=[...tasksFor('daily',date), ...extraTasks('day',date)];
   const all=[...mine, ...autos];
   const n=all.filter(x=>isDone(x,done,AC)).length;
-  return { total:all.length, n, html: all.length ? groupRows(all,done,'d:'+date,AC) : '<p class="muted small">Nothing scheduled.</p>' };
+  return { total:all.length, n, html: (all.length ? groupRows(all,done,'d:'+date,AC) : '<p class="muted small">Nothing scheduled.</p>')+quickAdd('day',date) };
 }
 function weekChecklist(ws){
   const m=mgrDoc(), log=(m.weeks||{})[ws]||{}, done=log.done||{}, AC=autoCounts();
-  const mine=tasksFor('weekly',ws), n=mine.filter(x=>isDone(x,done,AC)).length;
-  return { total:mine.length, n, html: mine.length ? groupRows(mine,done,'w:'+ws,AC) : '<p class="muted small">No weekly tasks.</p>' };
+  const mine=[...tasksFor('weekly',ws), ...extraTasks('week',ws)], n=mine.filter(x=>isDone(x,done,AC)).length;
+  return { total:mine.length, n, html: (mine.length ? groupRows(mine,done,'w:'+ws,AC) : '<p class="muted small">No weekly tasks.</p>')+quickAdd('week',ws) };
 }
 function mgrBar(){
   if(!S.user) return '';
@@ -1167,7 +1209,7 @@ function mgrEditPanel(){
     <h3>Typical work days</h3><div class="row">${WEEK_ORDER.map(i=>`<label class="chk"><input type="checkbox" data-mwd="${i}" ${workDays().includes(i)?'checked':''}> ${DOW_NAMES[i].slice(0,3)}</label>`).join('')}</div>
     <div class="small muted">Weeks run Monday–Sunday. For a one-time change (working a Tuesday event, or taking a day off), use the flex buttons on <b>My week</b>.</div>
     <h3>My recurring tasks</h3><div class="small muted" style="margin-bottom:6px">Automatic items (late check-ins, expenses, evaluations, staffing, hotels, ADP, gear, reorders) are always included.</div>
-    ${tasks.map(x=>`<div class="mtedit"><div class="row"><input type="text" data-mttext="${esc(x.id)}" value="${esc(x.text)}" style="flex:1;min-width:200px">${whenSel(x.id,x.when)}<button class="btn sm danger" data-act="mtDel" data-id="${esc(x.id)}">✕</button></div>
+    ${tasks.map(x=>`<div class="mtedit"><div class="row"><input type="text" data-mttext="${esc(x.id)}" value="${esc(x.text)}" style="flex:1;min-width:200px">${whenSel(x.id,x.when)}<select data-mtcond="${esc(x.id)}"><option value="" ${!x.cond?'selected':''}>Always</option><option value="events" ${x.cond==='events'?'selected':''}>Event weekends only</option><option value="noevents" ${x.cond==='noevents'?'selected':''}>No-event weekends only</option><option value="payday" ${x.cond==='payday'?'selected':''}>Pay-period end only</option></select><button class="btn sm danger" data-act="mtDel" data-id="${esc(x.id)}">✕</button></div>
       <div class="row small"><input type="text" data-mtgroup="${esc(x.id)}" value="${esc(x.group||'')}" placeholder="Group (optional)" style="width:180px"><input type="url" data-mturl="${esc(x.id)}" value="${esc(((x.links||[])[0]||[])[1]||'')}" placeholder="Link (optional) https://…" style="flex:1;min-width:180px"></div></div>`).join('')}
     <div class="row" style="margin:6px 0"><button class="btn" data-act="mtAdd">+ Add a task</button><button class="btn sm" data-act="mtReset">Reset to the team’s standard list</button></div>
     <div class="foot"><button class="btn primary" data-act="closePanel">Done</button></div></div>`;
@@ -1221,6 +1263,7 @@ function summaryHtml(from, to, forEmail){
     ${not.length?tbl(['Event','Office','Dates','Status','Reason','Scheduled shifts'], not.map(x=>`<tr><td style="${td}"><b>${esc(x.e.name)}</b>${x.e.venueName?`<br><span style="color:#5a6760">${esc(x.e.venueName)}</span>`:''}</td><td style="${td}">${esc(x.e.office||'')}</td><td style="${td}">${fmtMD(x.e.start)}${x.e.end&&x.e.end!==x.e.start?'–'+fmtMD(x.e.end):''}</td><td style="${td}">${esc(x.status)}${x.inferred?' <i>(no evaluation yet)</i>':''}</td><td style="${td}${/needed/.test(x.reason)?'color:#b42318;font-weight:600;':''}">${esc(x.reason||'—')}</td><td style="${td}">${x.scheduled}</td></tr>`).join('')):`<p style="${F}color:#5a6760">None.</p>`}
     ${h(`All activated events (${act.length})`)}
     ${act.length?tbl(['Event','Office','Dates','Marketers','Leads','Appts','Hours','Leads/hr'], act.map(x=>`<tr><td style="${td}">${esc(x.e.name)}</td><td style="${td}">${esc(x.e.office||'')}</td><td style="${td}">${fmtMD(x.e.start)}${x.e.end&&x.e.end!==x.e.start?'–'+fmtMD(x.e.end):''}</td><td style="${td}">${x.names.length}</td><td style="${td}${x.leads?'':'color:#b42318;font-weight:600;'}">${x.leads}</td><td style="${td}">${x.appts}</td><td style="${td}">${round1(x.hrs)}</td><td style="${td}">${x.hrs?round1(x.leads/x.hrs):0}</td></tr>`).join('')):`<p style="${F}color:#5a6760">None.</p>`}
+    ${costSummaryHtml(from,to)}
     ${forEmail?`<p style="${F}color:#5a6760">Leads, appointments and hours come from marketer check-outs in the Event Hub; statuses and reasons from post-event evaluations.</p>`:''}
   </div>`;
 }
@@ -1282,7 +1325,7 @@ function practicesHtml(txt){
 }
 
 /* ---------------- TRAINING: pitch, products, booth setup ---------------- */
-const TRAINING_EDITORS = ['paula.shoemaker@greatdayimprovements.com'];
+const TRAINING_EDITORS = ['paula.shoemaker@greatdayimprovements.com','trevor.morrissey@greatdayimprovements.com'];
 const TRAINING_CATS = ['Our pitch','Products','Booth setup & standards','Other'];
 const DEFAULT_TRAINING = [
   { id:'t1', builtin:true, cat:'Our pitch', title:'Event Booth Pitch Guide: the SPACE method (slides)', desc:'Start, Present, Ask, Close, Explain: openers, qualifying questions, closing and booth setup. Easiest to read on a phone.', url:'PE_Booth_Pitch_Guide.pdf' },
@@ -1354,6 +1397,409 @@ async function openTrainingFile(id){
   if(w) w.location.href=url; else location.href=url;
 }
 
+/* =====================================================================
+   ALERTS & AUTOMATIC EMAIL
+   The hub writes each email as a document in the "mail" collection.
+   Firebase's "Trigger Email from Firestore" extension sends them.
+   Each alert has a fixed ID, so it's only ever sent once (the rules
+   allow create, never overwrite).
+   ===================================================================== */
+const PAULA = 'paula.shoemaker@greatdayimprovements.com';
+const LEADS = ['paula.shoemaker@greatdayimprovements.com','trevor.morrissey@greatdayimprovements.com'];
+const SUMMARY_SEND = { dow:1, hour:8 };   // Mondays, 8:00 am (the first manager to open the hub after that sends it)
+const PHOTO_KEEP_DAYS = 365;               // booth photos are deleted after 12 months (receipts and training files are kept)
+function isLeadUser(){ return !!(S.user && LEADS.includes(String(S.user.email||'').toLowerCase())) || (DEMO && !!S.user); }
+function alertCfg(){ return S.alertCfg || { regions:{}, offices:{}, allowed:[] }; }
+function cleanList(a){ return [...new Set(a.map(x=>String(x||'').trim().toLowerCase()).filter(x=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)))]; }
+function splitEmails(v){ return cleanList(String(v||'').split(/[;,\s]+/)); }
+// Who gets an alert about an office: its supervisor (To), copy Paula and the region's manager.
+function alertRecipients(office){
+  const c=alertCfg(), sup=splitEmails(c.offices[office]), rm=splitEmails(c.regions[regionOf(office)]);
+  const to=sup.length?sup:(rm.length?rm:[PAULA]);
+  const cc=cleanList([PAULA, ...rm]).filter(x=>!to.includes(x));
+  return { to, cc };
+}
+function mailShell(title, bodyHtml){
+  const F='font:14px Segoe UI,Arial,sans-serif;color:#1d2a23;';
+  return `<div style="${F}"><div style="background:#24583f;color:#fff;padding:10px 14px;border-radius:6px 6px 0 0;font:600 15px Segoe UI,Arial,sans-serif">Patio Enclosures · Event Activity Hub</div>
+    <div style="border:1px solid #d8dfda;border-top:0;padding:14px;border-radius:0 0 6px 6px"><h2 style="font:600 17px Segoe UI,Arial,sans-serif;margin:0 0 8px;color:#24583f">${title}</h2>${bodyHtml}
+    <p style="margin-top:16px"><a href="${SITE}hub/" style="background:#24583f;color:#fff;text-decoration:none;padding:7px 12px;border-radius:6px;font-weight:600">Open the Event Hub</a></p>
+    <p style="color:#5a6760;font-size:12px">Automatic alert from the Event Activity Hub.</p></div></div>`;
+}
+async function queueMail(id, mail){
+  mail={ to:cleanList(mail.to||[]), cc:cleanList(mail.cc||[]), message:{ subject:mail.subject, html:mail.html }, kind:mail.kind||'', createdAt:Date.now() };
+  if(!mail.to.length) return false;
+  if(S.mode!=='live'){ S.mailLog=S.mailLog||{}; if(S.mailLog[id]) return false; S.mailLog[id]=mail; return true; }
+  const {fsM,db}=DB.fb;
+  try{ await withSignal(fsM.setDoc(fsM.doc(db,'mail',id), mail)); return true; }
+  catch(e){ if(e.code!=='permission-denied') console.warn('mail',id,e); return false; }   // permission-denied = already sent
+}
+const row2=(k,v)=>v?`<tr><td style="padding:3px 10px 3px 0;color:#5a6760;vertical-align:top">${k}</td><td style="padding:3px 0">${v}</td></tr>`:'';
+function shiftTable(c, extra){ return `<table style="font:14px Segoe UI,Arial,sans-serif;border-collapse:collapse">${row2('Marketer',esc(c.personName||''))}${row2('Event',esc(c.eventName||''))}${row2('Office',esc(c.office||''))}${row2('Venue',esc(c.venueName||''))}${row2('Date',fmtLong(c.date))}${row2('Shift',c.shiftStart?esc(fmt12(c.shiftStart)+' – '+fmt12(c.shiftStop)):'')}${extra||''}</table>`; }
+function fmt12(t){ const m=toMin(t); if(m===null) return t||''; const h=Math.floor(m/60)%24, mm=String(m%60).padStart(2,'0'); return `${(h%12)||12}:${mm} ${h<12?'am':'pm'}`; }
+const EQUIP_WHERE = { home:'Kept at my home', office:'Returned to the office', venue:'Left at the venue (multi-day event, secured)', handoff:'Handed to another marketer', none:'I didn’t have any event equipment' };
+
+// --- alerts sent from the marketer's phone ---
+async function alertLateCheckin(c){
+  const st=toMin(c.shiftStart); if(st===null) return;
+  const d=new Date(c.inAt), mins=d.getHours()*60+d.getMinutes()-st; if(c.date!==todayIso() || mins<=LATE_MIN) return;
+  const r=alertRecipients(c.office);
+  await queueMail('late-'+c.id, { ...r, kind:'late', subject:`Late check-in: ${c.personName} at ${c.eventName} (${mins} min)`,
+    html:mailShell('Late check-in', `<p>${esc(c.personName)} checked in <b>${mins} minutes late</b> at ${fmtClock(c.inAt)}.</p>`+shiftTable(c)) });
+}
+async function alertCheckout(c){
+  const bad=Object.entries(c.assetConditions||{}).filter(([id,v])=>/repair|Damag|Missing/i.test(v)).map(([id,v])=>`${esc(assetName(id))}: ${esc(v)}`);
+  const iss=[...(c.issues||[]), c.issueText].filter(Boolean);
+  if(!iss.length && !bad.length) return;
+  const r=alertRecipients(c.office);
+  await queueMail('issue-'+c.id, { ...r, kind:'issue', subject:`Issue reported: ${c.eventName} (${c.personName})`,
+    html:mailShell('Issue reported at check-out', shiftTable(c, row2('Issues',iss.map(esc).join('<br>'))+row2('Booth gear',bad.join('<br>'))+row2('Equipment tonight',esc(EQUIP_WHERE[c.equipWhere]||'')+(c.equipNote?' – '+esc(c.equipNote):''))+row2('Leads / appts',`${num(c.leads)} / ${num(c.appts)}`))) });
+}
+async function alertExpenseSubmitted(x){
+  const r=alertRecipients(x.office||(person(x.personId)||{}).office||'');
+  await queueMail(`exp-${x.id}-${x.submittedAt||Date.now()}`, { ...r, kind:'expense', subject:`Expense report to approve: ${x.personName} – week of ${fmtMD(x.weekStart)}`,
+    html:mailShell('Expense report waiting for approval', `<p>${esc(x.personName)} submitted an expense report for the week of <b>${fmtLong(x.weekStart)}</b>: <b>${money2(expCalc(x).total)}</b>.</p><p>Open the hub → Expense Reports to approve or return it.</p>`) });
+}
+async function alertExpenseReturned(x, note){
+  const p=person(x.personId)||{}, r=alertRecipients(x.office||p.office||'');
+  if(!p.email) return;
+  await queueMail(`expret-${x.id}-${Date.now()}`, { to:[p.email], cc:r.to, kind:'expense', subject:`Your expense report needs changes – week of ${fmtMD(x.weekStart)}`,
+    html:mailShell('Expense report returned', `<p>Hi ${esc((p.name||'').split(' ')[0]||'')},</p><p>Your expense report for the week of <b>${fmtLong(x.weekStart)}</b> was returned for changes:</p><blockquote style="border-left:3px solid #b5791f;margin:8px 0;padding:4px 10px">${esc(note||'')}</blockquote><p>Open the check-in page, tap your name, and open the report under Expense reports to fix and resubmit it.</p>`) });
+}
+
+// --- alerts swept by any manager with the hub open ---
+async function sweepAlerts(){
+  if(S.mode!=='live' || !S.user || !S.isMgr || !S.schedLoaded) return;
+  const t=todayIso();
+  for(const s of shiftsOn(t)){
+    const k=shiftStatus(s).k, ev=s.ev;
+    const c=s.c || { id:s.cid, personName:personName(s.personId), eventName:ev.name, office:ev.office, venueName:ev.venueName, date:s.day.date, shiftStart:s.day.start, shiftStop:s.day.stop };
+    if(k==='late' && toMin(s.day.start)!==null && nowMin()>toMin(s.day.start)+30){
+      const r=alertRecipients(ev.office);
+      await queueMail('noshow-'+s.cid, { ...r, kind:'noshow', subject:`Not checked in: ${c.personName} at ${ev.name}`,
+        html:mailShell('Marketer hasn’t checked in', `<p>${esc(c.personName)} was scheduled to start at <b>${esc(fmt12(s.day.start))}</b> and hasn’t checked in yet.</p>`+shiftTable(c)) });
+    }
+    if(k==='noout'){
+      const r=alertRecipients(ev.office);
+      await queueMail('noout-'+s.cid, { ...r, kind:'noout', subject:`No check-out: ${c.personName} at ${ev.name}`,
+        html:mailShell('Shift ended without a check-out', `<p>${esc(c.personName)} checked in at ${fmtClock(c.inAt)} but hasn’t checked out, and the shift ended at <b>${esc(fmt12(s.day.stop))}</b>. Results and equipment status are missing.</p>`+shiftTable(c)) });
+    }
+  }
+  // Weekly activation summary: Monday 8 am, covering last Monday–Sunday, all regions.
+  const now=new Date();
+  if(now.getDay()===SUMMARY_SEND.dow && now.getHours()>=SUMMARY_SEND.hour && S.etacc!==null && S.evalsLoaded){
+    const mon=mondayOf(t), from=addDays(mon,-7), to=addDays(mon,-1), keep=ui.scope; ui.scope=[];
+    try{ await queueMail('summary-'+mon, { to:SUMMARY_TO, kind:'summary', subject:summarySubject(from,to), html:summaryHtml(from,to,true) }); } finally { ui.scope=keep; }
+  }
+}
+// Delete booth photos older than 12 months (receipts and training files are kept).
+async function cleanupPhotos(){
+  if(S.mode!=='live' || !S.isMgr) return;
+  const stamp='peHub.photoCleanup', last=+(lsGet(stamp)||0); if(Date.now()-last<864e5) return;
+  lsSet(stamp, String(Date.now()));
+  try{
+    const {fsM,db}=DB.fb, cutoff=Date.now()-PHOTO_KEEP_DAYS*864e5;
+    const snap=await fsM.getDocs(fsM.query(fsM.collection(db,'peHubPhotos'), fsM.where('at','<',cutoff), fsM.limit(300)));
+    let n=0; for(const d of snap.docs){ const x=d.data(); if(x.checkin && !x.expense && !x.training){ await fsM.deleteDoc(d.ref); n++; } }
+    if(n) console.info(`Deleted ${n} booth photos older than 12 months.`);
+  }catch(e){ console.warn('photo cleanup',e); }
+}
+// New managers: account signed in but not yet given hub access → ask them to contact Paula, and let Paula know.
+async function checkAccess(u){
+  S.isMgr=false; S.needsSetup=false;
+  if(!u) return;
+  try{ const tok=await u.getIdTokenResult(); S.isMgr = tok.claims.brand==='patio-enclosures'; }catch(e){ S.isMgr=false; }
+  if(!S.isMgr){
+    S.needsSetup=true; render();
+    const k=String(u.email||'').toLowerCase().replace(/[^a-z0-9]+/g,'_');
+    await queueMail('newmgr-'+k, { to:[PAULA], kind:'newmgr', subject:`New manager needs Event Hub access: ${u.email}`,
+      html:mailShell('New manager sign-in', `<p><b>${esc(u.displayName||'')}</b> (${esc(u.email||'')}) signed in to the Event Hub but doesn’t have Patio Enclosures access yet.</p><p>Add the <code>brand: patio-enclosures</code> access flag to their account so they can save.</p>`) });
+  }
+  render();
+}
+function setupBanner(){
+  if(!S.needsSetup) return '';
+  const sub=encodeURIComponent('Event Hub access – new manager'), body=encodeURIComponent(`Hi Paula,\n\nI just signed in to the Event Activity Hub as ${(S.user&&S.user.email)||''}. Please set up my access.\n\nThanks!`);
+  return `<div class="notice warn" style="font-size:15px"><b>👋 Welcome! Your account isn’t set up for the Event Hub yet.</b><br>Please contact <b>Paula Shoemaker</b>, National Events Manager, so she can get you set up. She’s already been notified. Until then you can look around, but nothing you change will save.
+    <div class="row" style="margin-top:8px"><a class="btn primary" href="mailto:${PAULA}?subject=${sub}&body=${body}">✉️ Email Paula</a>${(LEADERSHIP.find(x=>/shoemaker/i.test(x.email))||{}).phone?`<a class="btn" href="tel:${LEADERSHIP.find(x=>/shoemaker/i.test(x.email)).phone}">📞 Call Paula</a>`:''}</div></div>`;
+}
+
+// --- alert settings page (Paula and Trevor edit) ---
+function alertsView(){
+  const c=alertCfg(), ed=isLeadUser(), rm=regionMap(), regs=[...new Set(Object.values(rm))].filter(Boolean).sort(), offs=offices();
+  const f=(kind,key,val)=>ed?`<input type="text" data-alert="${kind}" data-key="${esc(key)}" value="${esc(val||'')}" placeholder="name@greatdayimprovements.com" style="width:100%">`:`<span>${esc(val||'—')}</span>`;
+  const log=Object.entries(S.mailLog||{}).sort((a,b)=>(b[1].createdAt||0)-(a[1].createdAt||0)).slice(0,25);
+  return `<div class="card"><h2>🔔 Who gets alerts</h2><div class="sub">Each alert goes <b>to</b> the office’s supervisor, with a <b>copy</b> to Paula and the region’s manager. If an office has no supervisor, it goes to the region’s manager. Separate more than one email with commas.</div>
+    ${ed?'':'<div class="notice">Only Paula and Trevor can change these.</div>'}
+    <h3>Regional managers</h3><table><thead><tr><th style="width:30%">Region</th><th>Regional manager email</th></tr></thead><tbody>${regs.map(r=>`<tr><td><b>${esc(r)}</b></td><td>${f('region',r,c.regions[r])}</td></tr>`).join('')||'<tr><td colspan="2" class="muted">No regions found on the schedule yet.</td></tr>'}</tbody></table>
+    <h3>Office supervisors</h3><table><thead><tr><th style="width:30%">Office</th><th>Region</th><th>Supervisor email</th></tr></thead><tbody>${offs.map(o=>`<tr><td><b>${esc(o)}</b></td><td class="small">${esc(regionOf(o)||'—')}</td><td>${f('office',o,c.offices[o])}</td></tr>`).join('')}</tbody></table>
+    ${ed?`<div class="row" style="margin-top:10px"><button class="btn primary" data-act="alertSave" ${ui.busy?'disabled':''}>${ui.busy?'Saving…':'Save'}</button><button class="btn" data-act="alertTest">Send me a test alert</button>${ui.alertMsg?`<span class="small">${esc(ui.alertMsg)}</span>`:''}</div>`:''}</div>
+  <div class="card"><h2>What sends automatically</h2><table><tbody>
+    <tr><td><b>Late check-in</b></td><td>Marketer checks in more than ${LATE_MIN} minutes after the shift starts.</td></tr>
+    <tr><td><b>Not checked in</b></td><td>30 minutes after the shift starts with no check-in.</td></tr>
+    <tr><td><b>No check-out</b></td><td>An hour after the shift ends with no check-out.</td></tr>
+    <tr><td><b>Issue reported</b></td><td>Marketer reports an issue, or damaged or missing gear, at check-out.</td></tr>
+    <tr><td><b>Expense report</b></td><td>Submitted (to the supervisor), and returned for changes (to the marketer).</td></tr>
+    <tr><td><b>Activation summary</b></td><td>Mondays from 8 am, last week (Mon–Sun), all regions, to ${SUMMARY_TO.map(esc).join(', ')}.</td></tr>
+    <tr><td><b>New manager</b></td><td>Someone signs in without hub access: they’re asked to contact Paula, and Paula gets an email.</td></tr>
+  </tbody></table><div class="small muted" style="margin-top:6px">Alerts from check-ins and expenses send right away. The “not checked in”, “no check-out” and Monday summary alerts send while any manager has the hub open (it checks every 5 minutes). Each alert sends only once.</div></div>
+  ${isLeadUser()&&S.mode==='live'?`<div class="card"><h2>Recent emails</h2>${(S.mailRecent||[]).length?`<table><thead><tr><th>Sent</th><th>Subject</th><th>To</th><th>Status</th></tr></thead><tbody>${S.mailRecent.map(m=>`<tr><td class="small">${fmtStamp(m.createdAt)}</td><td>${esc((m.message||{}).subject||'')}</td><td class="small">${esc((m.to||[]).join(', '))}</td><td><span class="pill ${((m.delivery||{}).state)==='SUCCESS'?'p-green':((m.delivery||{}).state)==='ERROR'?'p-red':'p-gray'}">${esc(((m.delivery||{}).state)||'Waiting')}</span>${(m.delivery||{}).error?`<div class="small" style="color:var(--red)">${esc(m.delivery.error)}</div>`:''}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">No emails yet.</p>'}</div>`:''}
+  ${log.length?`<div class="card"><h2>Demo email log</h2><table><tbody>${log.map(([id,m])=>`<tr><td class="small">${esc(id)}</td><td>${esc(m.message.subject)}</td><td class="small">To ${esc(m.to.join(', '))}${m.cc.length?'<br>Cc '+esc(m.cc.join(', ')):''}</td></tr>`).join('')}</tbody></table></div>`:''}`;
+}
+async function saveAlertCfg(vals){
+  const c=JSON.parse(JSON.stringify(alertCfg())); c.regions=c.regions||{}; c.offices=c.offices||{};
+  (vals||[]).forEach(el=>{ const v=splitEmails(el.value).join(', '); const m=el.kind==='region'?c.regions:c.offices; if(v) m[el.key]=v; else delete m[el.key]; });
+  c.allowed=cleanList([...LEADS, ...SUMMARY_TO, ...Object.values(c.regions).flatMap(splitEmails), ...Object.values(c.offices).flatMap(splitEmails)]);
+  c.updatedAt=Date.now(); c.updatedBy=(S.user&&S.user.email)||'';
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubSettings','alerts'), c); }
+  S.alertCfg=c; if(S.mode!=='live') localSave();
+}
+
+// --- bad signal: writes are kept on the phone and sent when signal returns ---
+let SIGNAL_WAIT_MS = 9000;
+function withSignal(p){
+  return Promise.race([p, new Promise(res=>setTimeout(()=>{ ui.queued=true; res('queued'); }, SIGNAL_WAIT_MS))]);
+}
+function offlineBanner(){
+  if(navigator.onLine && !ui.queued) return '';
+  return `<div class="notice warn">📶 ${navigator.onLine?'Weak signal: what you saved is stored on this phone and will send automatically when the signal improves. Keep this page open, or open it again later.':'You’re offline. You can still check in and out: it’s saved on this phone and sends automatically when you have signal again.'}
+    ${ui.lastSms?`<div style="margin-top:6px"><a class="btn sm" href="sms:?&body=${encodeURIComponent(ui.lastSms)}">💬 Backup: text my manager</a></div>`:''}</div>`;
+}
+window.addEventListener('online', ()=>{ setTimeout(()=>{ ui.queued=false; render(); }, 6000); render(); });
+window.addEventListener('offline', ()=>render());
+
+// --- phone shortcut card ---
+function shortcutCard(){
+  if(lsGet('peHub.shortcutHidden') || window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) return '';
+  const ios=`<ol class="small" style="margin:4px 0 0 18px;padding:0"><li>Open this page in <b>Safari</b>.</li><li>Tap the <b>Share</b> button (square with an arrow).</li><li>Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.</li></ol>`;
+  const and=`<ol class="small" style="margin:4px 0 0 18px;padding:0"><li>Open this page in <b>Chrome</b>.</li><li>Tap the <b>⋮</b> menu (top right).</li><li>Tap <b>Add to Home screen</b> (or <b>Install app</b>), then <b>Add</b>.</li></ol>`;
+  return `<div class="card" style="border-color:#24583f"><div class="row"><h2 style="margin:0;flex:1">📲 Add Event Check-In to your home screen</h2><button class="btn sm" data-act="hideShortcut">Hide</button></div>
+    <div class="small muted" style="margin:4px 0">One tap to check in at every show, like an app.</div>
+    ${PHONE_OS==='ios'?ios:PHONE_OS==='android'?and:`<b class="small">iPhone</b>${ios}<b class="small">Android</b>${and}`}</div>`;
+}
+
+/* ---------------- HOW-TO GUIDES ---------------- */
+const GUIDES = {
+  marketer: { title:'Marketer guide: checking in and out', sections:[
+    ['Before your first show', [
+      'Open the check-in link from your schedule email (or the one your manager texted you).',
+      'Add it to your home screen so it opens like an app (see “Add to your home screen” below).',
+      'Install the ADP app on your phone. The check-in page has buttons for the App Store and Google Play.',
+      'Open <b>Training</b> from the check-in page and review our pitch, the booth job aid and the product guides.' ]],
+    ['Checking in (when you start working the booth)', [
+      'Open the check-in page and choose your name.',
+      'Tap <b>Check in</b> on today’s shift. If your shift isn’t listed, use <b>My shift isn’t listed</b>.',
+      'Allow location when your phone asks. If it can’t find you, you can still check in.',
+      'Take a <b>booth setup photo</b> (required). Make sure banners, table cover and signage are in the shot.',
+      'Scan or tick the booth gear and kits you’re taking.',
+      'If you picked up equipment at the office, tick that box and enter the time you clocked in on ADP at the office.',
+      'Clock in on ADP, tick <b>I’ve clocked in on ADP</b>, then tap <b>Check in</b>.' ]],
+    ['Checking out (end of your shift)', [
+      'Tap <b>Check out</b> on your shift.',
+      'Enter <b>leads</b> and <b>appointments set</b> (use 0 if none) and foot traffic.',
+      'Enter giveaways and print you used.',
+      'Tell us what happened to each piece of booth gear (returned good, needs repair, damaged, missing, or keeping it).',
+      '<b>Where is the event equipment tonight?</b> (required): kept at your home, returned to the office, left at the venue for a multi-day show, or handed to another marketer (say who).',
+      'Report any issues: your manager is alerted right away.',
+      'Clock out on ADP, tick <b>I’ve clocked out on ADP</b>, then tap <b>Check out</b>.' ]],
+    ['Bad signal at the venue', [
+      'You can check in and out with no signal. Everything is saved on your phone and sends automatically when the signal comes back.',
+      'You’ll see a yellow banner while it’s waiting. Keep the page open, or open it again once you’re outside or on Wi-Fi.',
+      'Don’t check in twice: the first one is saved.',
+      'Backup: if it still hasn’t sent, tap <b>Backup: text my manager</b> on the banner. It writes the text for you; just pick your manager.' ]],
+    ['Expense reports (weekly)', [
+      'On the check-in page, choose your name and tap <b>Start an expense report</b> for the week (Monday–Sunday).',
+      'Your event trips fill in automatically. Add the miles for each trip.',
+      'Your commute (round trip home ↔ office) is deducted on every event day.',
+      'Per diem (breakfast $6, lunch $12, dinner $25) applies only to nights with a hotel.',
+      'Add receipts with your phone camera, sign, and tap <b>Submit</b>. Your manager gets an email to approve it.',
+      'If it comes back for changes, you’ll get an email. Fix it and submit again.',
+      'Setting up direct deposit or changing banks? Use the secure banking form link in the report. Never put bank numbers in the report.' ]],
+    ['Add to your home screen', [
+      '<b>iPhone:</b> open the page in Safari → tap Share (square with an arrow) → <b>Add to Home Screen</b> → Add.',
+      '<b>Android:</b> open the page in Chrome → tap ⋮ (top right) → <b>Add to Home screen</b> or <b>Install app</b> → Add.' ]],
+  ]},
+  manager: { title:'Manager guide: running events in the hub', sections:[
+    ['Getting started', [
+      'Open the hub and sign in with your work Microsoft account.',
+      'New manager? You’ll see a welcome message: Paula Shoemaker is notified automatically and will set up your access. Until then, nothing you change will save.',
+      'Use the 📍 region/office filter (top right) to see your region, several regions, or everything.' ]],
+    ['Your routine', [
+      '<b>Start my week</b> (Monday) and <b>Start my day</b> open your checklists. Automatic items (late check-ins, expenses, evaluations, staffing, hotels, timecards, gear, supplies) tick themselves off when there’s nothing left to do.',
+      'Typical work days are Mon, Thu, Fri, Sat and Sun. Working a Tuesday event or taking a day off? Use the flex buttons on <b>My week</b>; tasks from a day off move to your next work day.',
+      'Add your own tasks right on <b>My day</b> or <b>My week</b> (just this once or repeating), or use <b>Edit my tasks</b> to change, reorder or remove them.',
+      'Weekends with events show event tasks; weekends without events switch to researching events and interviewing candidates.',
+      'Timecards: pay periods end every other Sunday (payday is the Friday after). The approve-timecards task shows on those Sundays.' ]],
+    ['Scheduling marketers', [
+      'Open <b>Marketer Schedule</b>. Set show hours, assign marketers and set partial-shift hours.',
+      'Borrow a marketer from another office or region when needed.',
+      'Staff events 3–4 weeks out (the banner reminds you).',
+      'Use <b>Email schedule</b> to copy the schedule (1–8 weeks) into Outlook. It includes each event’s check-in button, the Training link and best practices.' ]],
+    ['During events', [
+      '<b>Today’s Activity</b> shows who’s checked in, late, or finished, with booth photos, results, equipment location and issues.',
+      'Alerts go by email to the office supervisor, with a copy to Paula and the region’s manager: late check-ins, no-shows (30 minutes), no check-out (an hour after the shift), and issues reported.',
+      'Copy an event’s check-in link from Today or the schedule and text it to marketers.' ]],
+    ['After events', [
+      'Complete <b>Post-Event Evaluations</b>. If an event wasn’t activated, enter the reason (required).',
+      'Approve or return <b>Expense reports</b>. Approved reports go to Accounts Payable as a PDF with receipts.',
+      'Approve timecards in ADP on pay-period Sundays; the ADP Timecards page flags shifts to check.',
+      'The <b>Event Activation Summary</b> emails automatically on Monday mornings to Paula, Trevor, Angelique and Chris, including cost per lead.',
+      '<b>Cost per Lead</b> shows what each event cost (booth fee, wages, mileage, per diem, hotel, other) against its leads and appointments, by region and office, and flags events over target. Download it for Excel.',
+      'Submit your own expense report every Monday for the week before.' ]],
+    ['Equipment', [
+      '<b>Asset Inventory</b>: scan barcodes to check gear out, return it, or transfer it between offices; track condition and repairs.',
+      'Marketers report where equipment is every night at check-out (home, office, venue or handed off).',
+      'Do the annual count by scanning every item.' ]],
+    ['Photos and records', [
+      'Booth photos are deleted automatically after 12 months. Expense receipts and training files are kept.' ]],
+  ]},
+};
+function guideView(){
+  const which=ui.guide || (MARKETER_MODE||!S.user ? 'marketer' : 'manager'), g=GUIDES[which];
+  return `${MARKETER_MODE?'<div class="row" style="margin-bottom:10px"><button class="btn" data-act="backCheckin">◀ Back to check-in</button></div>':''}
+  <div class="row" style="margin-bottom:10px">${Object.entries(GUIDES).map(([k,x])=>`<button class="btn ${k===which?'primary':''}" data-act="guidePick" data-g="${k}">${k==='marketer'?'📱 Marketers':'🧭 Managers'}</button>`).join('')}<span class="spacer"></span><button class="btn" data-act="guidePrint">🖨️ Print</button></div>
+  <div class="card guide" id="guideBody"><h2>${esc(g.title)}</h2>${g.sections.map(([h,items])=>`<h3>${esc(h)}</h3><ol>${items.map(i=>`<li>${i}</li>`).join('')}</ol>`).join('')}</div>`;
+}
+/* ---------------- quick-add tasks on My day / My week ---------------- */
+function quickAdd(scope, key){
+  const dow=scope==='day'?parseIso(key).getDay():null;
+  return `<div class="row qadd" style="margin-top:8px"><input type="text" data-qtext="${scope}" placeholder="Add a task…" style="flex:1;min-width:180px">
+    <select data-qrep="${scope}">${scope==='day'?`<option value="once">Just ${key===todayIso()?'today':fmtMD(key)}</option><option value="dow:${dow}">Every ${DOW_NAMES[dow]}</option><option value="daily">Every work day</option>`:`<option value="once">Just this week</option><option value="weekly">Every week</option>`}</select>
+    <button class="btn sm primary" data-act="qAdd" data-scope="${scope}" data-key="${key}">+ Add</button></div>`;
+}
+function extraTasks(scope, key){ const m=mgrDoc(), log=((scope==='day'?m.days:m.weeks)||{})[key]||{}; return (log.extra||[]).map(x=>Object.assign({ group:'Added for '+(scope==='day'?'today':'this week'), oneTime:true, scope, key }, x)); }
+
+/* =====================================================================
+   COST PER LEAD: what each event cost vs. the leads and appointments it
+   produced. Costs: booth/contract fee (ETACC), marketer wages, mileage,
+   per diem, phone and misc (approved expense reports or the evaluation's
+   actual costs), and hotel nights (ETACC estimate).
+   Pay rates live in peHubRates/main: managers can read, Paula/Trevor edit.
+   ===================================================================== */
+const DEFAULT_PAY = 23;          // $/hour, same as ETACC's labor rate
+const HOTEL_EST = 175;           // $/night, same as ETACC
+const DEFAULT_CPA_TARGET = 350;  // cost per appointment target (ETACC "cost per opp")
+const DEFAULT_CPL_TARGET = 120;  // cost per lead target
+function ratesDoc(){ return S.rates || { default:DEFAULT_PAY, rates:{}, cpaTarget:DEFAULT_CPA_TARGET, cplTarget:DEFAULT_CPL_TARGET }; }
+function rateKey(p){ return p && p.empId ? 'id:'+String(p.empId).trim() : 'n:'+normName(p&&p.name); }
+function payRate(personId, name){ const p=person(personId)||{ name }, r=ratesDoc(); const v=(r.rates||{})[rateKey(p)]; return v!==undefined&&v!==''?num(v):num(r.default||DEFAULT_PAY); }
+// Paid hours: from the office ADP clock-in (equipment pickup) or check-in, to check-out.
+function paidHours(c){
+  if(!(c && c.inAt && c.outAt)) return 0;
+  let start=c.inAt;
+  if(c.officePickup && c.officeClockIn){ const m=toMin(c.officeClockIn), d=new Date(c.inAt); if(m!==null){ const t=new Date(d.getFullYear(),d.getMonth(),d.getDate(),Math.floor(m/60),m%60).getTime(); if(t<c.inAt && c.inAt-t<6*36e5) start=t; } }
+  return Math.max(0,(c.outAt-start)/36e5);
+}
+function eventCost(e, from, to){
+  const ev=evalFor(e), m=etaccMatch(e)||{}, r=rollup(e), xc=expenseCostsForEvent(e);
+  const cs=r.cs.filter(c=>(!from||c.date>=from)&&(!to||c.date<=to)), done=cs.filter(c=>c.status==='out');
+  const est={};
+  const pick=(actual, fallback, k)=>{ const a=num(actual); if(String(actual??'').trim()!=='' && a>0) return a; if(fallback>0) est[k]=true; return fallback; };
+  const laborCalc=done.reduce((t,c)=>t+paidHours(c)*payRate(c.personId,c.personName),0);
+  const cost={
+    fee: num(m.contractCost)+num(m.miscCosts),
+    labor: pick(ev.actualLaborCost, laborCalc, 'labor'),
+    mileage: pick(ev.actualMileageCost, xc.mileage, 'mileage'),
+    perDiem: pick(ev.actualPerDiem, xc.perDiem, 'perDiem'),
+    phone: pick(ev.actualPhoneCost, xc.phone, 'phone'),
+    misc: pick(ev.actualMiscExpenses, xc.misc, 'misc'),
+    hotel: num(m.hotelNights)*HOTEL_EST,
+  };
+  if(cost.hotel) est.hotel=true;
+  // labor computed from check-outs and expenses from approved reports are "actual" data; only hotel is a true estimate
+  delete est.mileage; delete est.perDiem; delete est.phone; delete est.misc;
+  const total=Object.values(cost).reduce((a,b)=>a+b,0);
+  const leads=done.length?done.reduce((t,c)=>t+num(c.leads),0):num(ev.numberOfLeads);
+  const appts=done.length?done.reduce((t,c)=>t+num(c.appts),0):num(ev.totalAppointments);
+  const hrs=done.reduce((t,c)=>t+paidHours(c),0);
+  return { e, cost, total:Math.round(total*100)/100, leads, appts, hrs, est, noFee:!m.contractCost && !m.id, cpl:leads?total/leads:null, cpa:appts?total/appts:null, pendingReports:Object.values(S.expenses).some(x=>['submitted','returned','draft'].includes(x.status)&&[...(x.trips||[]),...(x.stays||[]),...(x.misc||[])].some(y=>y.eventKey===e.key)) };
+}
+function costRows(from, to){
+  const t=todayIso();
+  return liveEvents().filter(e=>inOffice(e.office) && e.days.some(d=>d.date>=from && d.date<=to && d.date<=t))
+    .map(e=>eventCost(e,from,to)).filter(x=>x.total>0||x.leads>0)
+    .sort((a,b)=>(b.cpl??Infinity)-(a.cpl??Infinity));
+}
+function costTotals(rows){ const o={ events:rows.length, total:0, leads:0, appts:0, hrs:0 }; rows.forEach(x=>{ o.total+=x.total; o.leads+=x.leads; o.appts+=x.appts; o.hrs+=x.hrs; }); o.cpl=o.leads?o.total/o.leads:null; o.cpa=o.appts?o.total/o.appts:null; return o; }
+const $0=v=>v===null||v===undefined?'—':'$'+Math.round(v).toLocaleString('en-US');
+function costFlag(x){ const r=ratesDoc(); return (x.cpa!==null && x.cpa>num(r.cpaTarget||DEFAULT_CPA_TARGET)) || (x.cpl!==null && x.cpl>num(r.cplTarget||DEFAULT_CPL_TARGET)) || (x.total>0 && x.leads===0); }
+function costRange(){ const t=todayIso(); return ui.costRange || { from:addDays(t,-27), to:t, label:'Last 4 weeks' }; }
+function costView(){
+  if(!S.user) return '<div class="card"><p class="muted">Sign in (top right) to see event costs.</p></div>';
+  const r=costRange(), t=todayIso(), mon=mondayOf(t), ym=t.slice(0,7), lm=new Date(parseIso(t).getFullYear(), parseIso(t).getMonth()-1, 1);
+  const lmFrom=`${lm.getFullYear()}-${String(lm.getMonth()+1).padStart(2,'0')}-01`, lmTo=addDays(ym+'-01',-1);
+  const presets=[['Last week',addDays(mon,-7),addDays(mon,-1)],['Last 4 weeks',addDays(t,-27),t],['This month',ym+'-01',t],['Last month',lmFrom,lmTo],['Year to date',t.slice(0,4)+'-01-01',t]];
+  const rows=costRows(r.from,r.to), T=costTotals(rows), RD=ratesDoc();
+  const grp=keyf=>{ const g={}; rows.forEach(x=>{ const k=keyf(x)||'(none)'; (g[k]=g[k]||[]).push(x); }); return Object.entries(g).map(([k,list])=>[k,costTotals(list)]).sort((a,b)=>(b[1].cpl??0)-(a[1].cpl??0)); };
+  const kpi=(n,l,warn)=>`<div class="kpi ${warn?'warn':''}"><b>${n}</b><span>${l}</span></div>`;
+  const gtable=(title,list)=>`<div class="card"><h2>${title}</h2><table><thead><tr><th></th><th>Events</th><th style="text-align:right">Cost</th><th style="text-align:right">Leads</th><th style="text-align:right">Appts</th><th style="text-align:right">Cost / lead</th><th style="text-align:right">Cost / appt</th></tr></thead><tbody>${list.map(([k,o])=>`<tr><td><b>${esc(k)}</b></td><td>${o.events}</td><td style="text-align:right">${$0(o.total)}</td><td style="text-align:right">${o.leads}</td><td style="text-align:right">${o.appts}</td><td style="text-align:right">${$0(o.cpl)}</td><td style="text-align:right">${$0(o.cpa)}</td></tr>`).join('')}</tbody></table></div>`;
+  const breakdown=x=>[['Booth fee',x.cost.fee],['Wages',x.cost.labor,x.est.labor],['Mileage',x.cost.mileage],['Per diem',x.cost.perDiem],['Hotel (est.)',x.cost.hotel],['Phone',x.cost.phone],['Other',x.cost.misc]].filter(y=>y[1]>0).map(([l,v])=>`${l} ${$0(v)}`).join(' · ');
+  return `<div class="row" style="margin-bottom:10px">${presets.map(([l,f,to])=>`<button class="btn sm ${r.from===f&&r.to===to?'primary':''}" data-act="costRange" data-f="${f}" data-t="${to}" data-l="${esc(l)}">${esc(l)}</button>`).join('')}
+    <input type="date" data-act="costFrom" value="${r.from}"> – <input type="date" data-act="costTo" value="${r.to}"><span class="spacer"></span>${scopePicker()}</div>
+  <div class="kpis">${kpi(T.events,'Events')}${kpi($0(T.total),'Total cost')}${kpi(T.leads,'Leads')}${kpi(T.appts,'Appointments')}${kpi($0(T.cpl),'Cost per lead', T.cpl>num(RD.cplTarget))}${kpi($0(T.cpa),'Cost per appointment', T.cpa>num(RD.cpaTarget))}</div>
+  <div class="small muted" style="margin:-4px 0 12px">Targets: ${$0(num(RD.cplTarget||DEFAULT_CPL_TARGET))} per lead, ${$0(num(RD.cpaTarget||DEFAULT_CPA_TARGET))} per appointment. ${esc(fmtLong(r.from))} – ${esc(fmtLong(r.to))} · ${esc(scopeLabel())}.</div>
+  ${gtable('By region', grp(x=>regionOf(x.e.office)))}${gtable('By office', grp(x=>x.e.office))}
+  <div class="card"><div class="row"><h2 style="margin:0;flex:1">Events (highest cost per lead first)</h2><button class="btn sm" data-act="costCsv">⬇ Download (Excel/CSV)</button></div>
+    ${rows.length?`<table><thead><tr><th>Event</th><th>Office</th><th>Dates</th><th style="text-align:right">Cost</th><th style="text-align:right">Leads</th><th style="text-align:right">Appts</th><th style="text-align:right">Cost / lead</th><th style="text-align:right">Cost / appt</th></tr></thead><tbody>
+    ${rows.map(x=>`<tr ${costFlag(x)?'style="background:#fdf1ef"':''}><td><b>${esc(x.e.name)}</b>${costFlag(x)?' <span class="pill p-red">over target</span>':''}<div class="small muted">${breakdown(x)}${x.noFee?' · <span style="color:var(--warn)">no ETACC fee found</span>':''}${x.pendingReports?' · <span style="color:var(--warn)">expense reports not yet approved</span>':''}</div></td><td class="small">${esc(x.e.office||'')}</td><td class="small">${fmtMD(x.e.start)}${x.e.end&&x.e.end!==x.e.start?'–'+fmtMD(x.e.end):''}</td><td style="text-align:right">${$0(x.total)}</td><td style="text-align:right">${x.leads}</td><td style="text-align:right">${x.appts}</td><td style="text-align:right"><b>${$0(x.cpl)}</b></td><td style="text-align:right">${$0(x.cpa)}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">No events with costs or leads in this range.</p>'}
+    <div class="small muted" style="margin-top:8px">Costs: booth fee from ETACC; wages from the evaluation’s actual labor cost, or paid hours × pay rate (from the office clock-in when they picked up equipment); mileage, per diem, phone and other from the evaluation’s actual costs, or approved expense reports; hotel = ETACC hotel nights × $${HOTEL_EST} (estimate). Leads and appointments come from check-outs.</div></div>
+  ${ratesCard()}`;
+}
+function ratesCard(){
+  const RD=ratesDoc(), ed=isLeadUser(), roster=rosterSorted().filter(p=>inOffice(p.office));
+  if(!ed) return `<div class="small muted">Pay rates and targets are set by Paula and Trevor.</div>`;
+  return `<div class="card"><details ${ui.ratesOpen?'open':''}><summary style="cursor:pointer"><b>💲 Pay rates & targets</b> <span class="small muted">(only Paula and Trevor can see and edit)</span></summary>
+    <div class="fields" style="margin-top:10px"><div class="field"><label>Default hourly pay</label><input type="number" step="0.01" min="0" data-rate="__default" value="${esc(RD.default??DEFAULT_PAY)}"></div>
+      <div class="field"><label>Target cost per lead</label><input type="number" step="1" min="0" data-rate="__cpl" value="${esc(RD.cplTarget??DEFAULT_CPL_TARGET)}"></div>
+      <div class="field"><label>Target cost per appointment</label><input type="number" step="1" min="0" data-rate="__cpa" value="${esc(RD.cpaTarget??DEFAULT_CPA_TARGET)}"></div></div>
+    <div class="row" style="margin:10px 0"><button class="btn sm" data-act="ratesFile">⬆ Upload pay rates (Excel or CSV)</button><input type="file" id="ratesFile" accept=".xlsx,.xls,.csv" style="display:none"><span class="small muted">Columns: Employee ID (or Name) and Pay Rate. Leave a rate blank to use the default.</span></div>
+    <table><thead><tr><th>Marketer</th><th>Office</th><th>Employee ID</th><th style="width:140px">Hourly pay</th></tr></thead><tbody>${roster.map(p=>`<tr><td>${esc(p.name)}</td><td class="small">${esc(p.office||'')}</td><td class="small">${esc(p.empId||'')}</td><td><input type="number" step="0.01" min="0" data-rate="${esc(rateKey(p))}" value="${esc((RD.rates||{})[rateKey(p)]??'')}" placeholder="${esc(RD.default??DEFAULT_PAY)}"></td></tr>`).join('')}</tbody></table>
+    <div class="row" style="margin-top:10px"><button class="btn primary" data-act="ratesSave" ${ui.busy?'disabled':''}>${ui.busy?'Saving…':'Save rates & targets'}</button>${ui.ratesMsg?`<span class="small">${esc(ui.ratesMsg)}</span>`:''}</div></details></div>`;
+}
+async function saveRates(vals){
+  const RD=JSON.parse(JSON.stringify(ratesDoc())); RD.rates=RD.rates||{};
+  vals.forEach(({k,v})=>{ if(k==='__default') RD.default=num(v)||DEFAULT_PAY; else if(k==='__cpl') RD.cplTarget=num(v)||DEFAULT_CPL_TARGET; else if(k==='__cpa') RD.cpaTarget=num(v)||DEFAULT_CPA_TARGET; else if(String(v).trim()==='') delete RD.rates[k]; else RD.rates[k]=num(v); });
+  RD.updatedAt=Date.now(); RD.updatedBy=(S.user&&S.user.email)||'';
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubRates','main'), RD); }
+  S.rates=RD; if(S.mode!=='live') localSave();
+}
+async function importRates(file){
+  if(!window.XLSX) await new Promise((res,rej)=>{ const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; sc.onload=res; sc.onerror=()=>rej(new Error('Couldn’t load the Excel reader.')); document.head.appendChild(sc); });
+  const wb=XLSX.read(await file.arrayBuffer(),{type:'array'}), rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
+  if(!rows.length) throw new Error('The file is empty.');
+  const cols=Object.keys(rows[0]), find=re=>cols.find(c=>re.test(c));
+  const cId=find(/employee\s*id|emp.*id|associate\s*id|file\s*#|^id$/i), cName=find(/^name$|full\s*name|employee\s*name|marketer/i), cFirst=find(/first/i), cLast=find(/last/i), cRate=find(/rate|pay|wage|hourly/i);
+  if(!cRate) throw new Error('No pay rate column found. Name a column “Pay Rate”.');
+  const roster=S.sched.roster, vals=[]; let matched=0, missed=[];
+  rows.forEach(r=>{ const rate=String(r[cRate]).replace(/[^\d.]/g,''); if(!rate) return;
+    const id=cId?String(r[cId]).trim():'', name=cName?String(r[cName]):[cFirst&&r[cFirst],cLast&&r[cLast]].filter(Boolean).join(' ');
+    const p=(id&&roster.find(x=>String(x.empId||'').trim()===id)) || (name&&roster.find(x=>normName(x.name)===normName(name)));
+    if(p){ vals.push({k:rateKey(p), v:rate}); matched++; } else missed.push(name||id); });
+  await saveRates(vals);
+  return `Updated ${matched} pay rate${matched===1?'':'s'}.${missed.length?` Not on the roster: ${missed.slice(0,8).join(', ')}${missed.length>8?'…':''}.`:''}`;
+}
+function costCsv(){
+  const r=costRange(), rows=costRows(r.from,r.to);
+  const head=['Event','Office','Region','Start','End','Booth fee','Wages','Mileage','Per diem','Hotel (est.)','Phone','Other','Total cost','Leads','Appointments','Cost per lead','Cost per appointment','Paid hours'];
+  const lines=[head, ...rows.map(x=>[x.e.name,x.e.office,regionOf(x.e.office),x.e.start,x.e.end||x.e.start,x.cost.fee,x.cost.labor.toFixed(2),x.cost.mileage,x.cost.perDiem,x.cost.hotel,x.cost.phone,x.cost.misc,x.total,x.leads,x.appts,x.cpl===null?'':x.cpl.toFixed(2),x.cpa===null?'':x.cpa.toFixed(2),x.hrs.toFixed(1)])];
+  const csv=lines.map(l=>l.map(v=>{ v=String(v??''); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(',')).join('\r\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'})); a.download=`cost-per-lead_${r.from}_to_${r.to}.csv`; a.click();
+}
+// Section for the Monday activation summary email.
+function costSummaryHtml(from, to){
+  if(!S.rates && S.mode==='live' && !isLeadUser()) {}
+  const rows=costRows(from,to); if(!rows.length) return '';
+  const T=costTotals(rows), F='font:13px Segoe UI,Arial,sans-serif;', td=`padding:5px 8px;border:1px solid #d8dfda;${F}`, th=td+'background:#24583f;color:#fff;font-weight:600;text-align:left;';
+  const byOff={}; rows.forEach(x=>{ (byOff[x.e.office||'(none)']=byOff[x.e.office||'(none)']||[]).push(x); });
+  const flagged=rows.filter(costFlag);
+  return `<h3 style="font:600 15px Segoe UI,Arial,sans-serif;color:#24583f;margin:16px 0 4px">Cost per lead</h3>
+    <p style="${F}">Total cost <b>${$0(T.total)}</b> · <b>${T.leads}</b> leads · <b>${T.appts}</b> appointments · <b>${$0(T.cpl)}</b> per lead · <b>${$0(T.cpa)}</b> per appointment.</p>
+    <table style="border-collapse:collapse;width:100%;margin:6px 0 10px"><tr>${['Office','Events','Cost','Leads','Appts','Cost/lead','Cost/appt'].map(h=>`<th style="${th}">${h}</th>`).join('')}</tr>
+    ${Object.entries(byOff).sort().map(([k,l])=>{ const o=costTotals(l); return `<tr><td style="${td}">${esc(k)}</td><td style="${td}">${o.events}</td><td style="${td}">${$0(o.total)}</td><td style="${td}">${o.leads}</td><td style="${td}">${o.appts}</td><td style="${td}">${$0(o.cpl)}</td><td style="${td}">${$0(o.cpa)}</td></tr>`; }).join('')}</table>
+    ${flagged.length?`<p style="${F}"><b>Over target (${flagged.length}):</b> ${flagged.map(x=>`${esc(x.e.name)} (${esc(x.e.office||'')}): ${$0(x.total)}, ${x.leads} leads, ${$0(x.cpl)}/lead`).join('; ')}.</p>`:''}
+    <p style="${F}color:#5a6760">Hotel is an ETACC estimate; costs update as evaluations and expense reports are approved.</p>`;
+}
+
 /* ---------------- evaluations ---------------- */
 function eventCode(e){ return hash(e.key); }
 function checkinLink(e){ return location.origin+location.pathname+'?m=1&e='+eventCode(e); }
@@ -1389,7 +1835,8 @@ function mergeMgrTimes(){
 const DB = { fb:null };
 const LOCAL_KEY='peHub.local';
 function localLoad(){ try{ return JSON.parse(lsGet(LOCAL_KEY)||'{}'); }catch(e){ return {}; } }
-function localSave(){ lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
+function localSave(){ lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, alertCfg:S.alertCfg, rates:S.rates, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
+setInterval(()=>{ sweepAlerts(); }, 5*60000);
 async function initDB(){
   if(DEMO){ goLocal('demo'); return; }
   const timeout=setTimeout(()=>{ if(S.mode==='connecting') goLocal('timeout'); },10000);
@@ -1397,11 +1844,13 @@ async function initDB(){
     const base=`https://www.gstatic.com/firebasejs/${FB_VER}/`;
     const [appM,authM,fsM]=await Promise.all([import(base+'firebase-app.js'),import(base+'firebase-auth.js'),import(base+'firebase-firestore.js')]);
     const app=appM.initializeApp(FIREBASE_CONFIG); // default app: shares sign-in with ETACC on the same site
-    const auth=authM.getAuth(app), db=fsM.getFirestore(app);
+    const auth=authM.getAuth(app);
+    let db; try{ db=fsM.initializeFirestore(app,{ localCache: fsM.persistentLocalCache({ tabManager: fsM.persistentMultipleTabManager() }) }); }catch(e){ console.warn('offline cache off',e); db=fsM.getFirestore(app); }
     DB.fb={authM,fsM,auth,db};
     const F=fsM;
     let first=true; const live=()=>{ if(first){ first=false; clearTimeout(timeout); S.mode='live'; } };
     const fail=(what)=>err=>{ console.error(what,err); if(what==='schedule' && S.mode==='connecting'){ clearTimeout(timeout); goLocal(err.code||err.message); } else { ui.notice=`Couldn’t read ${what}: ${err.code||err.message}`; ui.noticeKind='err'; render(); } };
+    F.onSnapshot(F.doc(db,'peHubSettings','alerts'), snap=>{ S.alertCfg=snap.exists()?snap.data():null; render(); }, ()=>{});
     F.onSnapshot(F.doc(db,'peHubTraining','main'), snap=>{ S.training=snap.exists()?snap.data():null; render(); }, ()=>{});
     ['events','roster','assignments','details','practices'].forEach(name=>{
       F.onSnapshot(F.doc(db,'patioEnclosuresSchedule',name), snap=>{
@@ -1423,12 +1872,15 @@ async function initDB(){
     F.onSnapshot(F.collection(db,'peHubAudits'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.audits=m; render(); }, fail('inventory counts'));
     let unsubs=[];
     authM.onAuthStateChanged(auth, u=>{
-      S.user=u; unsubs.forEach(f=>f()); unsubs=[]; S.etacc=null; S.etaccErr=''; S.evals={};
+      S.user=u; unsubs.forEach(f=>f()); unsubs=[]; S.etacc=null; S.etaccErr=''; S.evals={}; S.evalsLoaded=false; S.mailRecent=[];
+      checkAccess(u).then(()=>{ if(S.isMgr){ setTimeout(sweepAlerts, 60000); setTimeout(cleanupPhotos, 20000); } });
       if(u){
         unsubs.push(F.onSnapshot(F.collection(db,'dashboardEvents'), snap=>{ const a=[]; snap.forEach(d=>a.push(Object.assign({id:d.id},d.data()))); S.etacc=a; render(); }, err=>{ S.etaccErr=err.code||err.message; render(); }));
         { const mk=String(u.email||'').toLowerCase().replace(/[^a-z0-9]+/g,'_'); unsubs.push(F.onSnapshot(F.doc(db,'peHubMgr',mk), snap=>{ if(snap.exists()){ S.mgr[mk]=mgrFromFs(snap.data()); render(); } }, err=>console.warn('mgr',err))); }
         unsubs.push(F.onSnapshot(F.collection(db,'peHubExpenses'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=Object.assign({id:d.id},d.data())); S.expenses=m; render(); }, err=>console.warn('expenses',err)));
-        unsubs.push(F.onSnapshot(F.collection(db,'peHubEvals'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.evals=m; render(); }, err=>console.warn('evals',err)));
+        if(LEADS.includes(String(u.email||'').toLowerCase())) unsubs.push(F.onSnapshot(F.query(F.collection(db,'mail'), F.orderBy('createdAt','desc'), F.limit(25)), snap=>{ const a=[]; snap.forEach(d=>a.push(d.data())); S.mailRecent=a; render(); }, err=>console.warn('mail log',err)));
+        unsubs.push(F.onSnapshot(F.doc(db,'peHubRates','main'), snap=>{ S.rates=snap.exists()?snap.data():null; render(); }, err=>console.warn('rates',err)));
+        unsubs.push(F.onSnapshot(F.collection(db,'peHubEvals'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.evals=m; S.evalsLoaded=true; render(); }, err=>console.warn('evals',err)));
       }
       render();
     });
@@ -1439,7 +1891,7 @@ function goLocal(why){
   const L=localLoad();
   if(DEMO && !L.sched) seedDemo(); else {
     if(L.sched) S.sched=L.sched;
-    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; S.mgr=L.mgr||{}; S.training=L.training||null; ui.localPhotos=L.photos||{};
+    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; S.mgr=L.mgr||{}; S.training=L.training||null; S.alertCfg=L.alertCfg||null; S.rates=L.rates||null; ui.localPhotos=L.photos||{};
   }
   if(DEMO){ S.user={email:'demo.manager@patio'}; }
   S.schedLoaded=true; render();
@@ -1448,12 +1900,12 @@ async function saveCheckin(id, obj, isCreate){
   obj=JSON.parse(JSON.stringify(Object.assign({}, obj, {updatedAt:Date.now()})));
   if(S.mode==='live'){
     const {fsM,db}=DB.fb, ref=fsM.doc(db,'peHubCheckins',id);
-    if(isCreate) await fsM.setDoc(ref, obj); else await fsM.updateDoc(ref, obj);
+    await withSignal(isCreate ? fsM.setDoc(ref, obj) : fsM.updateDoc(ref, obj));
   } else { S.checkins[id]=Object.assign({id}, S.checkins[id]||{}, obj); localSave(); }
 }
 async function putPhoto(dataUrl, meta){
   const id='ph_'+uid();
-  if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubPhotos',id), Object.assign({data:dataUrl, at:Date.now()}, meta)); }
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; await withSignal(fsM.setDoc(fsM.doc(db,'peHubPhotos',id), Object.assign({data:dataUrl, at:Date.now()}, meta))); }
   else { ui.localPhotos=ui.localPhotos||{}; ui.localPhotos[id]=dataUrl; localSave(); }
   ui.photoCache[id]=dataUrl; return id;
 }
@@ -1530,7 +1982,7 @@ function render(){
   computeStates();
   const keep=captureInputs();
   document.body.classList.toggle('marketer', MARKETER_MODE);
-  app.innerHTML = `<div class="wrap">${header()}${MARKETER_MODE?'':tabs()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}`;
+  app.innerHTML = `<div class="wrap">${header()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}`;
   restoreInputs(keep);
   // lazy-load any photos now on screen
   app.querySelectorAll('img[data-photo]').forEach(im=>{ const id=im.dataset.photo; if(ui.photoCache[id]===undefined) getPhoto(id); });
@@ -1550,7 +2002,7 @@ function header(){
     <div><h1>${MARKETER_MODE?'Event Check-In':'Event Activity Hub'}</h1><div class="asof">${stat}${S.mode==='local'&&!DEMO?` · not saving to the shared database (${esc(S.err)})`:''}</div></div>
     <div class="spacer"></div>${signin}</header>`;
 }
-const SECTIONS={ today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Marketer Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Asset Inventory & Check-Out'], evals:['📝','Post-Event Evaluations'], expenses:['🧾','Expense Reports'], travel:['🏨','Navan Travel'], adp:['⏱️','ADP Timecards'], myday:['☀️','My Day'], myweek:['▶️','My Week'], summary:['📊','Event Activation Summary'], training:['📚','Training'] };
+const SECTIONS={ today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Marketer Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Asset Inventory & Check-Out'], evals:['📝','Post-Event Evaluations'], expenses:['🧾','Expense Reports'], travel:['🏨','Navan Travel'], adp:['⏱️','ADP Timecards'], myday:['☀️','My Day'], myweek:['▶️','My Week'], summary:['📊','Event Activation Summary'], training:['📚','Training'], alerts:['🔔','Alerts'], guide:['📖','How-to Guides'], costs:['💲','Cost per Lead'] };
 function tabs(){
   if(ui.tab==='home' || !SECTIONS[ui.tab]) return '';
   const [ic,l]=SECTIONS[ui.tab];
@@ -1575,11 +2027,12 @@ function tilesView(){
   const gear=scopedAssets().filter(isGear).map(stOf);
   const out=gear.filter(g=>g.status==='out').length, overdue=gear.filter(g=>g.overdue).length, repair=gear.filter(g=>g.status==='repair').length;
   const low=scopedAssets().filter(isLow).length, staff=needsStaffing().length;
-  const TC={ today:['#2f5f9e','#e6eef8'], events:['#2f7a78','#dcebea'], schedule:['#6b4fbb','#efeafb'], checkin:['#24583f','#e6f0ea'], assets:['#b5791f','#f6e9d2'], evals:['#b0425e','#f8e4ea'], expenses:['#5b6b1f','#eef2dc'], travel:['#1f6f8b','#dff0f6'], adp:['#9a3412','#fbe9df'] };
+  const TC={ today:['#2f5f9e','#e6eef8'], events:['#2f7a78','#dcebea'], schedule:['#6b4fbb','#efeafb'], checkin:['#24583f','#e6f0ea'], assets:['#b5791f','#f6e9d2'], evals:['#b0425e','#f8e4ea'], expenses:['#5b6b1f','#eef2dc'], travel:['#1f6f8b','#dff0f6'], adp:['#9a3412','#fbe9df'], costs:['#0f766e','#ddf3ef'] };
   const tile=(k,desc,stat,cls,flag,flagCls)=>{ const [ic,l]=SECTIONS[k], [c,soft]=TC[k]||['#24583f','#e6f0ea']; return `<div class="tile" data-tab="${k}" role="button" tabindex="0" style="--tc:${c};--tcs:${soft}">${flag?`<span class="flag ${flagCls||''}">${flag}</span>`:''}<div class="ic">${ic}</div><h2>${esc(l)}</h2><p>${desc}</p><div class="stat ${cls||''}">${stat}</div></div>`; };
   return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span>${scopePicker()}</div>${staffBanner()}
   <div class="banners"><a class="teamsbanner" href="${TEAMS_HUB_URL}" target="_blank" rel="noopener"><div class="ic">👥</div><div style="flex:1"><h2>Team Resource Hub</h2><p>Guides, forms, standards and announcements in Microsoft Teams.</p></div><span class="go">Open in Teams ↗</span></a>
   <a class="teamsbanner trainbanner" href="#training" data-tab="training"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products, booth setup and standards.</p></div><span class="go">Open ↗</span></a></div>
+  <div class="row" style="margin:-6px 0 14px"><button class="btn" data-tab="guide">📖 How-to guides</button><button class="btn" data-tab="alerts">🔔 Alert settings</button></div>
   ${mgrBar()}
   <div class="tiles">
     ${tile('today','Who’s scheduled, checked in, late or done, with photos and results.', today.length?`${today.length} shifts · ${inNow} working now${late?` · ${late} late`:''}`:'No shifts today', late?'alert':'', late||'', 'alert')}
@@ -1590,6 +2043,7 @@ function tilesView(){
     ${tile('evals','Manager post-event evaluations, pre-filled from check-outs.', due?`${due} waiting for evaluation`:'All caught up', due?'warn':'', due||'')}
     ${(()=>{ const r=adpRows(mondayOf(todayIso())), f=r.filter(x=>x.flag).length; return tile('adp','Open ADP to approve timecards. Compare this week’s check-ins and ADP confirmations first.', f?`${f} shift${f===1?'':'s'} to double-check this week`:'Open ADP', f?'warn':'', f||''); })()}
     ${(()=>{ const n=travelNeeds().length; return tile('travel','Book and manage team hotels in Navan. See which upcoming events need rooms.', n?`${n} event${n===1?'':'s'} may need hotels`:'Open Navan', n?'warn':'', ''); })()}
+    ${S.user?(()=>{ const t=todayIso(), rows=costRows(addDays(t,-27),t), T=costTotals(rows), f=rows.filter(costFlag).length; return tile('costs','What each event cost against the leads and appointments it brought in.', T.leads?`${$0(T.cpl)} per lead · last 4 weeks`:'No results in the last 4 weeks', f?'warn':'', f?`${f} over target`:''); })():''}
     ${(()=>{ const w=Object.values(S.expenses).filter(x=>x.status==='submitted' && (!x.office||inOffice(x.office))).length; return tile('expenses','Weekly expense reports: mileage, per diem and receipts. Approve and send to accounting.', S.user?(w?`${w} waiting for approval`:'Nothing waiting'):'Sign in to review', w?'warn':'', w||''); })()}
   </div>${leaderCard()}</div>`;
 }
@@ -1606,6 +2060,9 @@ function body(){
     case 'adp': return adpView();
     case 'summary': return summaryView();
     case 'training': return trainingView();
+    case 'alerts': return alertsView();
+    case 'guide': return guideView();
+    case 'costs': return costView();
     case 'myday': return S.user?myDayView():'<div class="card">Sign in to see your day.</div>';
     case 'myweek': return S.user?myWeekView():'<div class="card">Sign in to see your week.</div>';
     case 'today': return homeView();
@@ -1654,7 +2111,7 @@ function homeView(){
   <div class="card"><h2>Event activity</h2><div class="sub">Every scheduled marketer for ${fmtLong(date)}, with live check-in status. Click a row for photos, location and results.</div>
   ${Object.values(byEv).length?Object.values(byEv).map(({ev,rows})=>`<h3 class="row">${esc(ev.name)} <span class="muted small">· ${esc(ev.office||'')}${ev.venueName?' · '+esc(ev.venueName):''}</span><span class="spacer"></span>${linkBtn(ev)}</h3>
     <table><thead><tr><th>Marketer</th><th>Shift</th><th>Status</th><th>Results</th><th>Gear</th></tr></thead><tbody>
-    ${rows.map(([s,x])=>`<tr class="click" data-detail="${s.cid}" data-day="${esc(s.dayId)}" data-pid="${esc(s.personId)}"><td>${esc(personName(s.personId))}${s.unscheduled?' <span class="pill p-warn">unscheduled</span>':''}</td><td>${timeRange(s.day)}</td><td><span class="pill ${x.cls}">${esc(x.label)}</span>${s.c&&s.c.inLoc?' <span class="small muted">📍</span>':''}${s.c&&s.c.inPhoto?' <span class="small muted">📷</span>':''}</td><td>${s.c&&s.c.status==='out'?`${num(s.c.leads)} leads · ${num(s.c.appts)} appts · ${round1(hoursOf(s.c))} h`:''}${s.c&&((s.c.issues||[]).length||s.c.issueText)?' <span class="pill p-red">issue</span>':''}</td><td class="small">${s.c?(s.c.assetsOut||[]).map(id=>esc(assetName(id))).join(', '):''}</td></tr>`).join('')}
+    ${rows.map(([s,x])=>`<tr class="click" data-detail="${s.cid}" data-day="${esc(s.dayId)}" data-pid="${esc(s.personId)}"><td>${esc(personName(s.personId))}${s.unscheduled?' <span class="pill p-warn">unscheduled</span>':''}</td><td>${timeRange(s.day)}</td><td><span class="pill ${x.cls}">${esc(x.label)}</span>${s.c&&s.c.inLoc?' <span class="small muted">📍</span>':''}${s.c&&s.c.inPhoto?' <span class="small muted">📷</span>':''}</td><td>${s.c&&s.c.status==='out'?`${num(s.c.leads)} leads · ${num(s.c.appts)} appts · ${round1(hoursOf(s.c))} h`:''}${s.c&&((s.c.issues||[]).length||s.c.issueText)?' <span class="pill p-red">issue</span>':''}</td><td class="small">${s.c?(s.c.assetsOut||[]).map(id=>esc(assetName(id))).join(', '):''}${s.c&&s.c.equipWhere?`<div>${s.c.equipWhere==='home'?'🏠':s.c.equipWhere==='office'?'🏢':s.c.equipWhere==='venue'?'📍':s.c.equipWhere==='handoff'?'🤝':'—'} ${esc(EQUIP_WHERE[s.c.equipWhere]||'')}${s.c.equipNote?': '+esc(s.c.equipNote):''}</div>`:''}</td></tr>`).join('')}
     </tbody></table>`).join(''):`<p class="muted">No marketers are scheduled on this day${(ui.scope||[]).length?' for '+esc(scopeLabel()):''}.</p>`}
   </div>
   <div class="card"><h2>Issues reported (last 7 days)</h2>${recentIssues.length?`<table><tbody>${recentIssues.slice(0,25).map(c=>`<tr class="click" data-detail="${c.id}"><td style="width:90px">${fmtMD(c.date)}</td><td>${esc(c.personName)}<div class="small muted">${esc(c.eventName)}</div></td><td>${(c.issues||[]).map(i=>`<span class="pill p-red">${esc(i)}</span>`).join(' ')} ${esc(c.issueText||'')}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">None reported.</p>'}</div>`;
@@ -1674,14 +2131,14 @@ function checkinView(){
   const roster=rosterSorted();
   const me=person(ui.me);
   const pick=`<div class="card"><div class="field"><label>Who are you?</label><select data-act="me" style="font-size:16px;padding:10px"><option value="">Choose your name…</option>${offices().map(o=>{ const ppl=roster.filter(r=>r.office===o); return ppl.length?`<optgroup label="${esc(o)}">${ppl.map(r=>`<option value="${r.id}" ${r.id===ui.me?'selected':''}>${esc(r.name)}</option>`).join('')}</optgroup>`:''; }).join('')}${roster.filter(r=>!r.office).length?`<optgroup label="No office">${roster.filter(r=>!r.office).map(r=>`<option value="${r.id}" ${r.id===ui.me?'selected':''}>${esc(r.name)}</option>`).join('')}</optgroup>`:''}</select></div></div>`;
-  if(!me) return pick+(MARKETER_MODE?`<a class="teamsbanner trainbanner" href="#training" data-tab="training"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products and booth setup.</p></div><span class="go">Open</span></a>`:upcomingLinks());
+  if(!me) return pick+(MARKETER_MODE?shortcutCard()+`<a class="btn" href="#guide" data-tab="guide" style="margin-bottom:10px">📖 How to check in and out</a><a class="teamsbanner trainbanner" href="#training" data-tab="training"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products and booth setup.</p></div><span class="go">Open</span></a>`:upcomingLinks());
   const today=todayIso();
   const mine=[addDays(today,-1),today,addDays(today,1)].flatMap(d=>shiftsOn(d).filter(s=>s.personId===me.id));
   // also any open check-in older than yesterday
   Object.values(S.checkins).filter(c=>c.personId===me.id&&c.status==='in'&&c.date<addDays(today,-1)).forEach(c=>{ const ev=S.sched.events.find(e=>e.key===c.eventKey)||{key:c.eventKey,name:c.eventName,office:c.office}; mine.unshift({ev,day:{date:c.date,start:c.shiftStart,stop:c.shiftStop},dayId:c.dayId,personId:me.id,cid:c.id,c}); });
   const cards=mine.filter(s=>s.day.date>=today || (s.c&&s.c.status==='in')).map(s=>shiftCard(s)).join('');
   const otherToday=liveEvents().filter(e=>e.days.some(d=>d.date===today)&&(!me.office||e.office===me.office||ui.showOtherShift==='all'));
-  return pick+`<a class="teamsbanner trainbanner" href="#training" data-tab="training" style="margin-top:0"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products and booth setup.</p></div><span class="go">Open</span></a>
+  return pick+shortcutCard()+`<a class="teamsbanner trainbanner" href="#training" data-tab="training" style="margin-top:0"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products and booth setup.</p></div><span class="go">Open</span></a>
   <div class="card"><h2>${esc(me.name)}’s shifts</h2><div class="sub">Check in when you start working the booth and check out at the end of your shift.</div>
     ${cards||`<p class="muted">You’re not on the schedule for today or tomorrow.</p>`}
     <details ${ui.showOtherShift?'open':''}><summary class="small" style="cursor:pointer;margin-top:6px">My shift isn’t listed</summary>
@@ -1749,6 +2206,9 @@ function checkOutPanel(p){
     </div>
     ${cons.length?`<h3>Giveaways & print used</h3><div class="fields">${cons.map(a=>`<div class="field"><label class="small">${esc(a.name)}</label><input type="number" min="0" inputmode="numeric" data-keep="use-${a.id}" placeholder="0"></div>`).join('')}</div>`:''}
     ${(c.assetsOut||[]).length?`<h3>Booth gear</h3><div class="small muted">Tell us what came back and what shape it’s in.</div>${c.assetsOut.map(id=>`<div class="row" style="margin:4px 0"><span style="flex:1">${esc(assetName(id))}</span><select data-keep="ret-${id}"><option value="Good">Returned – good</option><option value="Needs repair">Returned – needs repair</option><option value="Damaged">Returned – damaged</option><option value="keep">I still have it</option><option value="Missing">Missing / left at venue</option></select></div>`).join('')}`:''}
+    <h3>Where is the event equipment tonight? <span style="color:var(--red)">*</span></h3><div class="small muted">Banners, table, tent, kit, giveaways: let us know where everything is.</div>
+    <select data-keep="out-equip" style="font-size:16px;padding:9px;width:100%;margin-top:4px"><option value="">Choose…</option>${Object.entries(EQUIP_WHERE).map(([k,l])=>`<option value="${k}" ${p.equipWhere===k?'selected':''}>${esc(l)}</option>`).join('')}</select>
+    <div class="field" style="margin-top:6px"><input type="text" data-keep="out-equip-note" value="${esc(p.equipNote||'')}" placeholder="Details (who has it, where it’s stored, when it goes back to the office)"></div>
     <h3>Any issues?</h3>${ISSUE_TYPES.map((t,i)=>`<label class="chk"><input type="checkbox" data-keep="iss-${i}"> ${esc(t)}</label>`).join('')}
     <div class="field" style="margin-top:6px"><textarea data-keep="out-issue" placeholder="Describe the issue or what you need (optional)"></textarea></div>
     <div style="margin-top:12px">${adpBox('out', p.adpOut)}</div>
@@ -1774,7 +2234,9 @@ async function submitIn(){
       assetsOut:p.gear, inNote:(document.querySelector('[data-keep="in-note"]')||{}).value||''
     }, true);
     try{ await logAsset(p.gear.flatMap(id=>expandKits([id])).map(x=>({ type:'checkout', assetId:x, personId:p.pid, personName:me.name||'', eventKey:s.ev.key, eventName:s.ev.name, cid:p.cid }))); }catch(err){ console.error('asset log',err); }
-    ui.panel=null; ui.scanMsg=null; ui.notice='You’re checked in. Have a great show! Remember to clock out on ADP at the end of your shift.'; ui.noticeKind='ok';
+    ui.lastSms=`${me.name||''}: checked in at ${s.ev.name} at ${new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}.`;
+    alertLateCheckin(S.checkins[p.cid]||{ id:p.cid, personName:me.name||'', eventName:s.ev.name, office:s.ev.office||'', venueName:s.ev.venueName||'', date:s.day.date, shiftStart:s.day.start||'', shiftStop:s.day.stop||'', inAt:Date.now() });
+    ui.panel=null; ui.scanMsg=null; ui.notice=ui.queued?'Saved on your phone. Your check-in will send when you have signal. Remember to clock out on ADP at the end of your shift.':'You’re checked in. Have a great show! Remember to clock out on ADP at the end of your shift.'; ui.noticeKind='ok';
   }catch(e){ console.error(e); p.err = e.code==='permission-denied' ? 'The database refused this check-in. It may already exist, or the hub rules aren’t published yet. Tell your manager.' : 'Couldn’t save: '+(e.message||e.code)+'. Check your signal and try again.'; }
   ui.busy=false; render();
 }
@@ -1786,6 +2248,9 @@ async function submitOut(){
   p.adpOut=!!v('adp-out');
   if(!p.adpOut){ p.err='Please clock out on ADP, then tick “I’ve clocked out on ADP.”'; render(); return; }
   if(leads==='' || appts===''){ p.err='Enter your leads and appointments (use 0 if none).'; render(); return; }
+  p.equipWhere=v('out-equip')||''; p.equipNote=v('out-equip-note')||'';
+  if(!p.equipWhere){ p.err='Tell us where the event equipment is tonight.'; render(); return; }
+  if(p.equipWhere==='handoff' && !p.equipNote.trim()){ p.err='Enter who you handed the equipment to.'; render(); return; }
   ui.busy=true; p.err=''; render();
   try{
     const cons={}; S.assets.filter(a=>!a.retired && a.kind==='consumable').forEach(a=>{ const n=num(v('use-'+a.id)); if(n>0) cons[a.id]=n; });
@@ -1798,9 +2263,11 @@ async function submitOut(){
     let outPhoto=''; if(p.photo) outPhoto=await putPhoto(p.photo,{checkin:p.cid, kind:'out'});
     const loc=await Promise.race([getLocation(), new Promise(r=>setTimeout(()=>r({loc:null}),8000))]);
     await saveCheckin(p.cid,{ status:'out', outAt:Date.now(), adpOut:true, outLoc:loc.loc||null, leads:num(leads), appts:num(appts), traffic:p.traffic||'',
-      consumables:cons, assetsReturned:returned, assetConditions:retCond, issues, issueText:v('out-issue')||'', notes:v('out-notes')||'', outPhoto }, false);
+      consumables:cons, assetsReturned:returned, assetConditions:retCond, issues, issueText:v('out-issue')||'', notes:v('out-notes')||'', outPhoto, equipWhere:p.equipWhere, equipNote:p.equipNote }, false);
     try{ await logAsset(aEntries); }catch(err){ console.error('asset log',err); }
-    ui.panel=null; ui.notice='Checked out. Thanks for your work today!'; ui.noticeKind='ok';
+    alertCheckout(Object.assign({}, c, { leads:num(leads), appts:num(appts), issues, issueText:v('out-issue')||'', assetConditions:retCond, equipWhere:p.equipWhere, equipNote:p.equipNote }));
+    ui.lastSms=`${c.personName}: checked out of ${c.eventName}. Leads ${num(leads)}, appts ${num(appts)}. Equipment: ${EQUIP_WHERE[p.equipWhere]}${p.equipNote?' ('+p.equipNote+')':''}.`;
+    ui.panel=null; ui.notice=ui.queued?'Saved on your phone. Your check-out will send when you have signal.':'Checked out. Thanks for your work today!'; ui.noticeKind='ok';
   }catch(e){ console.error(e); p.err='Couldn’t save: '+(e.message||e.code)+'. Check your signal and try again.'; }
   ui.busy=false; render();
 }
@@ -1879,6 +2346,7 @@ function detailPanel(){
       <tr><th>ADP</th><td>${c.adpIn?'✓ Confirmed clock-in':'<span style="color:var(--warn)">Clock-in not confirmed</span>'}${c.status==='out'?(c.adpOut?' · ✓ Confirmed clock-out':' · <span style="color:var(--warn)">Clock-out not confirmed</span>'):''}</td></tr>
       <tr><th>Checked out</th><td>${c.outAt?fmtStamp(c.outAt)+(c.outLoc?` · <a href="${mapLink(c.outLoc)}" target="_blank" rel="noopener">location</a>`:'')+` · ${round1(hoursOf(c))} h`:'<span class="muted">Not yet</span>'}</td></tr>
       ${c.status==='out'?`<tr><th>Results</th><td>${num(c.leads)} leads · ${num(c.appts)} appointments${c.traffic?' · '+esc(c.traffic)+' traffic':''}</td></tr>`:''}
+      ${c.equipWhere?`<tr><th>Equipment tonight</th><td>${esc(EQUIP_WHERE[c.equipWhere]||'')}${c.equipNote?' – '+esc(c.equipNote):''}</td></tr>`:''}
       ${(c.assetsOut||[]).length?`<tr><th>Gear</th><td>${c.assetsOut.map(id=>{ const k=(c.assetConditions||{})[id]; return esc(assetName(id))+(c.status!=='out'?'':k==='keep'?' <span style="color:var(--warn)">still with marketer</span>':k==='Missing'?' <span style="color:var(--red)">missing</span>':(c.assetsReturned||[]).includes(id)?` ✓ returned${k&&k!=='Good'?' – '+esc(k.toLowerCase()):''}`:''); }).join('<br>')}</td></tr>`:''}
       ${Object.keys(c.consumables||{}).length?`<tr><th>Used</th><td>${Object.entries(c.consumables).map(([id,n])=>`${n} × ${esc(assetName(id))}`).join('<br>')}</td></tr>`:''}
       ${(c.issues||[]).length||c.issueText?`<tr><th>Issues</th><td style="color:var(--red)">${esc([...(c.issues||[]),c.issueText].filter(Boolean).join('; '))}</td></tr>`:''}
@@ -1934,7 +2402,7 @@ document.addEventListener('click', async ev=>{
   if(a==='expSave'||a==='expSubmit'){ const x=ui.exp;
     if(a==='expSubmit'){ const err=expValidate(x); if(err){ ui.expErr=err; render(); return; } x.status='submitted'; x.submittedAt=Date.now(); x.history=[...(x.history||[]), { at:Date.now(), by:x.personName, action:'Submitted' }]; }
     ui.busy=true; ui.expErr=''; render();
-    try{ await saveExpense(x); ui.notice = a==='expSubmit' ? 'Expense report submitted for approval.' : 'Draft saved.'; ui.noticeKind='ok'; if(a==='expSubmit') ui.exp=null; }
+    try{ await saveExpense(x); if(a==='expSubmit') alertExpenseSubmitted(x); ui.notice = a==='expSubmit' ? 'Expense report submitted for approval.' : 'Draft saved.'; ui.noticeKind='ok'; if(a==='expSubmit') ui.exp=null; }
     catch(err){ ui.expErr='Couldn’t save: '+(err.code==='permission-denied'?'permission denied (the expense rules may not be published yet).':(err.message||err.code)); }
     ui.busy=false; render(); window.scrollTo(0,0); return; }
   if(a==='expDiscard'){ if(!confirm('Delete this draft?')) return; const id=ui.exp.id; try{ if(S.mode==='live' && S.expenses[id]){ const {fsM,db}=DB.fb; await fsM.deleteDoc(fsM.doc(db,'peHubExpenses',id)); } }catch(e){} delete S.expenses[id]; localSave(); ui.exp=null; render(); return; }
@@ -1943,7 +2411,22 @@ document.addEventListener('click', async ev=>{
   if(a==='expPrint'){ printExpense(S.expenses[ui.expView]); return; }
   if(a==='expEmail'){ emailExpense(S.expenses[ui.expView]); return; }
   if(a==='expApprove'){ const x=S.expenses[ui.expView]; if(!confirm(`Approve ${x.personName}’s report for ${money2((x.totals||expCalc(x)).total)}?`)) return; await guard(()=>expAction(x,'approved')); ui.notice='Approved. Save it as a PDF and email it to Accounts Payable using the steps on the report.'; ui.noticeKind='ok'; render(); return; }
-  if(a==='expReturn'){ const x=S.expenses[ui.expView]; const note=prompt('What needs to change? (the marketer will see this)',''); if(note===null) return; await guard(()=>expAction(x,'returned',note)); ui.expView=null; render(); return; }
+  if(a==='expReturn'){ const x=S.expenses[ui.expView]; const note=prompt('What needs to change? (the marketer will see this)',''); if(note===null) return; await guard(()=>expAction(x,'returned',note)); alertExpenseReturned(x, note); ui.expView=null; render(); return; }
+  if(a==='costRange'){ ui.costRange={ from:t.dataset.f, to:t.dataset.t, label:t.dataset.l }; render(); return; }
+  if(a==='costCsv'){ costCsv(); return; }
+  if(a==='ratesFile'){ ui.ratesOpen=true; document.getElementById('ratesFile').click(); return; }
+  if(a==='ratesSave'){ const vals=[...document.querySelectorAll('[data-rate]')].map(el=>({ k:el.dataset.rate, v:el.value })); ui.ratesOpen=true; ui.busy=true; render(); try{ await saveRates(vals); ui.ratesMsg='Saved.'; }catch(e){ ui.ratesMsg='Couldn’t save: '+(e.code||e.message); } ui.busy=false; render(); return; }
+  if(a==='guidePick'){ ui.guide=t.dataset.g; render(); return; }
+  if(a==='guidePrint'){ document.getElementById('printArea').innerHTML=document.getElementById('guideBody').outerHTML; document.body.classList.add('printing-expense'); window.print(); setTimeout(()=>{ document.body.classList.remove('printing-expense'); document.getElementById('printArea').innerHTML=''; },500); return; }
+  if(a==='qAdd'){ const sc=t.dataset.scope, key=t.dataset.key, box=t.closest('.qadd'), text=box.querySelector('[data-qtext]').value.trim(), rep=box.querySelector('[data-qrep]').value; if(!text) return;
+    const m=mgrDoc();
+    if(rep==='once'){ const coll=sc==='day'?'days':'weeks', all=Object.assign({}, m[coll]||{}), rec=Object.assign({}, all[key]||{}); rec.extra=[...(rec.extra||[]), { id:'x_'+uid(), text }]; all[key]=rec; await guard(()=>saveMgr({ [coll]:all })); }
+    else await guard(()=>saveMgr({ tasks:[...(m.tasks||[]), { id:'t_'+uid(), text, when:rep, group:'My tasks' }] }));
+    return; }
+  if(a==='qDel'){ const sc=t.dataset.scope, key=t.dataset.key, coll=sc==='day'?'days':'weeks', m=mgrDoc(), all=Object.assign({}, m[coll]||{}), rec=Object.assign({}, all[key]||{}); rec.extra=(rec.extra||[]).filter(x=>x.id!==t.dataset.id); all[key]=rec; await guard(()=>saveMgr({ [coll]:all })); return; }
+  if(a==='hideShortcut'){ lsSet('peHub.shortcutHidden','1'); render(); return; }
+  if(a==='alertSave'){ const vals=[...document.querySelectorAll('[data-alert]')].map(el=>({ kind:el.dataset.alert, key:el.dataset.key, value:el.value })); ui.busy=true; render(); try{ await saveAlertCfg(vals); ui.alertMsg='Saved.'; }catch(e){ ui.alertMsg='Couldn’t save: '+(e.code||e.message); } ui.busy=false; render(); return; }
+  if(a==='alertTest'){ const ok=await queueMail('test-'+Date.now(), { to:[(S.user&&S.user.email)||PAULA], kind:'test', subject:'Event Hub test alert', html:mailShell('Test alert','<p>If you’re reading this, automatic alerts are working.</p>') }); ui.alertMsg=ok?'Test queued: check your inbox in a minute.':'Couldn’t queue the test email.'; render(); return; }
   if(a==='backCheckin'){ ui.tab='checkin'; history.replaceState(null,'',location.pathname+location.search); render(); return; }
   if(a==='tAdd'){ ui.tForm={}; render(); return; }
   if(a==='tEdit'){ ui.tForm={ id:t.dataset.id }; render(); return; }
@@ -1960,8 +2443,8 @@ document.addEventListener('click', async ev=>{
   if(a==='mgrWk'){ const n=+t.dataset.n; ui.mgrWeek = n===0 ? workWeekStart(todayIso()) : addDays(ui.mgrWeek||workWeekStart(todayIso()), n); render(); return; }
   if(a==='mgrEdit'){ ui.mgrEditOpen=true; render(); return; }
   if(a==='mtAdd'){ const tasks=[...(mgrDoc().tasks||[]), { id:'t_'+uid(), text:'New task', when:'dow:'+parseIso(todayIso()).getDay(), group:'' }]; await guard(()=>saveMgr({ tasks })); return; }
-  if(a==='mtDel'){ if(!confirm('Remove this task from your list?')) return; await guard(()=>saveMgr({ tasks:(mgrDoc().tasks||[]).filter(x=>x.id!==t.dataset.id) })); return; }
-  if(a==='mtReset'){ if(!confirm('Replace your task list with the team’s standard Sunday/Monday cadence?')) return; await guard(()=>saveMgr({ tasks:JSON.parse(JSON.stringify(DEFAULT_MGR_TASKS)) })); return; }
+  if(a==='mtDel'){ if(!confirm('Remove this task from your list?')) return; const m=mgrDoc(); await guard(()=>saveMgr({ tasks:(m.tasks||[]).filter(x=>x.id!==t.dataset.id), removedTasks:[...new Set([...(m.removedTasks||[]), t.dataset.id])] })); return; }
+  if(a==='mtReset'){ if(!confirm('Replace your task list with the team’s standard weekly cadence?')) return; await guard(()=>saveMgr({ removedTasks:[], tasks:JSON.parse(JSON.stringify(DEFAULT_MGR_TASKS)) })); return; }
   if(a==='adpWk'){ const n=+t.dataset.n; ui.adpWeek = n===0 ? mondayOf(todayIso()) : addDays(ui.adpWeek||mondayOf(todayIso()), n); render(); return; }
   if(a==='scopeToggle'){ ui.scopeOpen=!ui.scopeOpen; render(); return; }
   if(a==='scopeClear'){ ui.scope=[]; lsSet('peHub.scope','[]'); render(); return; }
@@ -2010,6 +2493,8 @@ function readEvalDraft(){ document.querySelectorAll('[data-ef]').forEach(el=>{ u
 document.addEventListener('input', ev=>{ const el=ev.target; if(el.dataset.ex && ui.exp && el.type!=='checkbox' && el.type!=='radio'){ setPath(ui.exp, el.dataset.ex, el.value); if(el.type==='number') updateExpTotals(); } if(el.dataset.ef && ui.evalDraft) ui.evalDraft[el.dataset.ef]=el.value; if(el.dataset.act==='aq'){ ui.aq=el.value; render(); } });
 document.addEventListener('change', async ev=>{
   const el=ev.target;
+  if(el.dataset.act==='costFrom'||el.dataset.act==='costTo'){ const r=Object.assign({}, costRange()); if(el.value){ if(el.dataset.act==='costFrom') r.from=el.value; else r.to=el.value; r.label='Custom'; ui.costRange=r; render(); } return; }
+  if(el.id==='ratesFile' && el.files[0]){ ui.ratesOpen=true; ui.busy=true; render(); try{ ui.ratesMsg=await importRates(el.files[0]); }catch(e){ ui.ratesMsg=e.message||String(e); } ui.busy=false; el.value=''; render(); return; }
   if(el.dataset.ef && ui.evalDraft){ ui.evalDraft[el.dataset.ef]=el.value; return; }
   if(el.dataset.ex && ui.exp){ const x=ui.exp, pth=el.dataset.ex;
     const v = el.type==='checkbox' ? el.checked : el.value;
@@ -2035,9 +2520,9 @@ document.addEventListener('change', async ev=>{
     const all=Object.assign({}, m[coll]||{}); const rec=Object.assign({}, all[key]||{}); const done=Object.assign({}, rec.done||{});
     if(el.checked) done[id]=Date.now(); else delete done[id]; rec.done=done; all[key]=rec; await guard(()=>saveMgr({ [coll]:all })); return; }
   if(el.dataset.mwd!==undefined){ const i=+el.dataset.mwd, order=WEEK_ORDER; let wd=workDays().slice(); wd = el.checked ? [...new Set([...wd,i])] : wd.filter(x=>x!==i); wd=order.filter(x=>wd.includes(x)); if(!wd.length) return; await guard(()=>saveMgr({ workDays:wd })); return; }
-  if(el.dataset.mttext||el.dataset.mtwhen||el.dataset.mtgroup||el.dataset.mturl!==undefined){ const id=el.dataset.mttext||el.dataset.mtwhen||el.dataset.mtgroup||el.dataset.mturl;
+  if(el.dataset.mttext||el.dataset.mtwhen||el.dataset.mtgroup||el.dataset.mtcond!==undefined||el.dataset.mturl!==undefined){ const id=el.dataset.mttext||el.dataset.mtwhen||el.dataset.mtgroup||el.dataset.mtcond||el.dataset.mturl;
     const tasks=(mgrDoc().tasks||[]).map(x=>{ if(x.id!==id) return x; const y=Object.assign({}, x);
-      if(el.dataset.mttext) y.text=el.value; if(el.dataset.mtwhen) y.when=el.value; if(el.dataset.mtgroup) y.group=el.value;
+      if(el.dataset.mttext) y.text=el.value; if(el.dataset.mtwhen) y.when=el.value; if(el.dataset.mtcond!==undefined){ if(el.value) y.cond=el.value; else delete y.cond; } if(el.dataset.mtgroup) y.group=el.value;
       if(el.dataset.mturl!==undefined){ const u=el.value.trim(); const rest=(x.links||[]).slice(1); y.links = u ? [[(x.links&&x.links[0]&&x.links[0][0])||'Open', u], ...rest] : rest; }
       return y; });
     await guard(()=>saveMgr({ tasks })); return; }

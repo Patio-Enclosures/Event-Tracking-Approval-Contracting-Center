@@ -281,7 +281,7 @@ const FIREBASE_CONFIG = {
 };
 const CLOUD_COLL = 'patioEnclosuresSchedule';
 // Only these sign-ins may upload a roster file. Add more emails here (lowercase) to share the job.
-const ROSTER_UPLOADERS = ['paula.shoemaker@greatdayimprovements.com'];
+const ROSTER_UPLOADERS = ['paula.shoemaker@greatdayimprovements.com','trevor.morrissey@greatdayimprovements.com'];
 function canUploadRoster(){ return !!(cloud.user && ROSTER_UPLOADERS.includes(String(cloud.user.email||'').toLowerCase())); }
 const FB_VER = '10.12.2';
 const cloud = { status:'connecting', user:null, fb:null, loaded:{}, pushed:{}, remote:{}, dirty:false, saving:false, savedAt:null, err:'', saveErr:'', authErr:'', authNote:'' };
@@ -303,6 +303,7 @@ async function pushCloud(only){
   for(const name of (only || DOCS)){
     const body = cloudPayload(name), sig = JSON.stringify(body);
     if(cloud.pushed[name] === sig) continue;
+    if(name==='practices' && !canUploadRoster()) continue;   // only Paula/Trevor can change best practices
     try{
       await fsM.setDoc(fsM.doc(db, CLOUD_COLL, name), Object.assign({}, body, { updatedAt: Date.now(), updatedBy: cloud.user.email || '' }));
       cloud.pushed[name] = sig;
@@ -1009,7 +1010,7 @@ function rosterModal(){
   return `<div class="modal-bg" data-act="closemodal"><div class="modal" role="dialog" aria-modal="true" aria-label="Roster">
     <h2>Marketer roster</h2>
     <div class="hint" style="margin-bottom:10px;">${data.rosterAsOf ? `Last roster upload ${esc(fmtFull(data.rosterAsOf))}. ` : ''}${data.hpiAsOf ? `Hrs/Issued as of ${esc(fmtFull(data.hpiAsOf))} (${esc(HPI_NOTE)}). ` : ''}
-      ${canUploadRoster() ? `<button class="btn sm" data-act="rosterfile">Upload roster (Excel or CSV)…</button>` : `<span class="hint">Roster uploads are limited to the national events manager.</span>`}
+      ${canUploadRoster() ? `<button class="btn sm" data-act="rosterfile">Upload roster (Excel or CSV)…</button>` : `<span class="hint">Roster uploads are limited to Paula Shoemaker and Trevor Morrissey.</span>`}
       <button class="btn sm" data-act="rosterdl">⬇ Download roster CSV</button>
       <span class="hint">Columns read: Employee ID, Name (or First/Last), Branch, Region, Email, Phone, Commute Miles, Title, Hire Date, Status, Hrs/Issued. People are matched by Employee ID, then name. Tip: download the roster, fill it in with Excel, save as CSV and upload it back.</span></div>
     <div class="hint" style="margin-bottom:8px;">Or paste one name per line, type or pick their office, and click Add.</div>
@@ -1104,7 +1105,7 @@ document.addEventListener('click', e=>{
       save(); render(); break;
     }
     case 'import': document.getElementById('csvFile').click(); break;
-    case 'rosterfile': if(!canUploadRoster()){ alert('Only the national events manager can upload a roster file.'); break; } document.getElementById('rosterFile').click(); break;
+    case 'rosterfile': if(!canUploadRoster()){ alert('Only Paula Shoemaker and Trevor Morrissey can upload a roster file.'); break; } document.getElementById('rosterFile').click(); break;
     case 'rosterdl': {
       const head=['Employee ID','Name','Branch','Region','Email','Phone','Commute Miles','Title','Hire Date','Manager','Hrs/Issued'];
       const rows=rosterSorted().map(r=>[r.empId||'', r.name, r.office||'', personRegion(r), r.email||'', r.phone||'', r.commuteMiles??'', r.title||'', r.hire||'', r.mgr?'Yes':'', r.hpi??'']);
@@ -1179,7 +1180,7 @@ readFile(document.getElementById('csvFile'), importCSV);
 // Roster accepts CSV or Excel (.xlsx/.xls); Excel is converted with SheetJS (same library ETACC uses).
 document.getElementById('rosterFile').addEventListener('change', e=>{
   const f=e.target.files[0]; if(!f) return;
-  if(!canUploadRoster()){ e.target.value=''; alert('Only the national events manager can upload a roster file.'); return; }
+  if(!canUploadRoster()){ e.target.value=''; alert('Only Paula Shoemaker and Trevor Morrissey can upload a roster file.'); return; }
   if(/\.xlsx?$/i.test(f.name)){
     const go=()=>{ const r=new FileReader(); r.onload=()=>{ try{ const wb=XLSX.read(r.result,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; importRosterCSV(XLSX.utils.sheet_to_csv(ws,{blankrows:false}), f); }catch(err){ alert('Couldn’t read that Excel file. Save it as CSV and try again.'); } e.target.value=''; }; r.readAsArrayBuffer(f); };
     if(window.XLSX) go(); else { const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; sc.onload=go; sc.onerror=()=>{ alert('Couldn’t load the Excel reader. Save the file as CSV and upload that instead.'); e.target.value=''; }; document.head.appendChild(sc); }

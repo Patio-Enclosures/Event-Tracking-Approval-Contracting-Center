@@ -1869,6 +1869,7 @@ function emptyDraft(regionIdx){
     registrationLink:'',
     registrationUsername:'',
     registrationPassword:'',
+    contractReleaseDate:'',      // date the show's registration/contract is released (opens)
     boothSize:'',
     boothSizeOther:'',
     boothLocation:'',
@@ -4346,6 +4347,7 @@ function generateApprovalPDF(ev){
   addRow('Submission Type', ev.submissionType==='new'?'New Show':ev.submissionType==='renewal'?'Show Renewal':'');
   if(ev.submissionType==='renewal') addRow('Historical Show Code', ev.historicalShowCode);
   addRow('Show Registration Link', ev.registrationLink);
+  addRow('Registration / Contract Release Date', ev.contractReleaseDate);
   addRow('Contract Document', (() => { const names = getContractFiles(ev).map(f=>f.name); return names.length ? `${names.join(', ')} (attached to approval email)` : ''; })());
   addSectionHeader('Payment Information');
   addRow('Due Date', ev.paymentDueDate);
@@ -4465,6 +4467,7 @@ function downloadEventPDF(ev){
   addRow('Submission Type', ev.submissionType==='new'?'New Show':ev.submissionType==='renewal'?'Show Renewal':'');
   if(ev.submissionType==='renewal') addRow('Historical Show Code', ev.historicalShowCode);
   addRow('Show Registration Link', ev.registrationLink);
+  addRow('Registration / Contract Release Date', ev.contractReleaseDate);
   addRow('Contract Document', getContractFiles(ev).map(f=>f.name).join(', '));
   addSectionHeader('Payment Information');
   addRow('Due Date', ev.paymentDueDate);
@@ -4553,6 +4556,7 @@ function buildFullEventTextSummary(ev){
     `Cost Per Opp: ${costPerOppDisplay(ev)}`,
     `Submission Type: ${submissionLabel}`,
     `Show Registration Link: ${ev.registrationLink || '—'}`,
+    `Registration / Contract Release Date: ${ev.contractReleaseDate || '—'}`,
     `Contract Document: ${attachmentNote}`,
     '',
     'FINANCIALS',
@@ -5181,6 +5185,7 @@ function downloadEventsCSV(eventsToExport, filenameSuffix){
     ['Check Mailing State', ev=>ev.checkMailingState],
     ['Check Mailing Zip', ev=>ev.checkMailingZip],
     ['Registration Link', ev=>ev.registrationLink],
+    ['Registration/Contract Release Date', ev=>ev.contractReleaseDate],
     ['Registration Username', ev=>ev.registrationUsername],
     ['Registration Password', ev=>ev.registrationPassword],
     ['Booth Size', ev=>ev.boothSize==='other' ? ev.boothSizeOther : ev.boothSize],
@@ -5315,6 +5320,8 @@ const CSV_IMPORT_COLUMNS = {
   'check mailing state': (ev,v)=>{ ev.checkMailingState = v; },
   'check mailing zip': (ev,v)=>{ ev.checkMailingZip = v; },
   'registration link': (ev,v)=>{ ev.registrationLink = v; },
+  'registration/contract release date': (ev,v)=>{ ev.contractReleaseDate = normalizeCsvDate(v); },
+  'contract release date': (ev,v)=>{ ev.contractReleaseDate = normalizeCsvDate(v); },
   'registration username': (ev,v)=>{ ev.registrationUsername = v; },
   'registration password': (ev,v)=>{ ev.registrationPassword = v; },
   'booth size': (ev,v)=>{
@@ -6742,6 +6749,7 @@ function renderEventDetail(ev){
       ${item('Submission Type', val(ev.submissionType==='new'?'New Show':ev.submissionType==='renewal'?'Show Renewal':''), isEmptyV(ev.submissionType))}
       ${ev.submissionType==='renewal' ? item('Historical Show Code', val(ev.historicalShowCode), isEmptyV(ev.historicalShowCode)) : ''}
       ${item('Show Registration Link', val(ev.registrationLink), isEmptyV(ev.registrationLink))}
+      ${item('Registration / Contract Release Date', val(ev.contractReleaseDate), isEmptyV(ev.contractReleaseDate))}
       ${(() => {
         const files = getContractFiles(ev);
         return files.length > 0
@@ -7770,6 +7778,10 @@ function renderPanel(){
         </div>
       </div>
       <div class="field">
+        <label>Registration / Contract Release Date <span class="hint" style="margin:0;display:inline;">(when the show opens registration or sends contracts)</span></label>
+        <input id="f_contractReleaseDate" type="date" value="${escapeHtml(d.contractReleaseDate||'')}" style="max-width:220px"/>
+      </div>
+      <div class="field">
         <label>Contract Documents${reconfirmMark(d)}</label>
         <input id="f_contractFile" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" multiple/>
         <div class="hint">Upload signed contracts — they'll be attached to the approval email. PDF, Word, or image, up to 10MB each. Select multiple at once, or use this again to add more later.</div>
@@ -7985,6 +7997,7 @@ function readDraftFromForm(){
   d.registrationLink = val('f_registrationLink', d.registrationLink);
   d.registrationUsername = val('f_registrationUsername', d.registrationUsername);
   d.registrationPassword = val('f_registrationPassword', d.registrationPassword);
+  d.contractReleaseDate = val('f_contractReleaseDate', d.contractReleaseDate);
   d.boothSize = val('f_boothSize', d.boothSize);
   d.boothSizeOther = val('f_boothSizeOther', d.boothSizeOther);
   d.boothLocation = val('f_boothLocation', d.boothLocation);
@@ -8033,6 +8046,7 @@ function refreshLiveFormValidation(){
     venueState: val('f_venueState'),
     venueAddress: state.draft ? state.draft.venueAddress : '',
     registrationLink: val('f_registrationLink'),
+    contractReleaseDate: val('f_contractReleaseDate'),
     contractFiles: state.draft ? (state.draft.contractFiles || []) : [],
     paymentDueDate: val('f_paymentDueDate'),
     paymentMethod: val('f_paymentMethod'),

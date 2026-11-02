@@ -2300,6 +2300,14 @@ function firstName(){
 }
 function welcomeKey(){ return 'peHub.welcome.'+String((S.user&&S.user.email)||'').toLowerCase(); }
 function welcomedToday(){ return lsGet(welcomeKey())===todayIso(); }
+// Show the welcome on the first visit of the day, and again (“Welcome back”) after 2+ hours away.
+const WELCOME_GAP_MS = 2*3600e3;
+function lastSeenKey(){ return 'peHub.lastSeen.'+String((S.user&&S.user.email)||'').toLowerCase(); }
+function lastSeen(){ return num(lsGet(lastSeenKey())); }
+function touchSeen(){ if(!S.user) return; const now=Date.now(); if(now-(touchSeen.at||0)<60e3) return; touchSeen.at=now; try{ lsSet(lastSeenKey(), String(now)); }catch(e){} }
+function welcomeDue(){ const ls=lastSeen(); return !welcomedToday() || (ls && Date.now()-ls>=WELCOME_GAP_MS); }
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState!=='visible' || !S.user || MARKETER_MODE || S.mode!=='live' || ui.tour!=null || ui.welcome) return;
+  if(welcomeDue()){ ui.welcomeBack=welcomedToday(); ui.welcome=true; markWelcomed(); touchSeen.at=0; touchSeen(); render(); } else touchSeen(); });
 function markWelcomed(){ try{ lsSet(welcomeKey(), todayIso()); }catch(e){} }
 function welcomeOverlay(){
   if(!ui.welcome) return '';
@@ -2319,7 +2327,7 @@ function welcomeOverlay(){
     isRemUser()&&cnt('rem')&&mon ? opt('data-act="welcomeGo" data-go="tab:remnums"','✍️','Enter REM numbers',`${cnt('rem')} regions missing`) : '',
     opt('data-act="welcomeGo" data-go="search"','🔎','Find something','Search events, marketers, equipment') ].filter(Boolean);
   return `<div class="tourbg" data-act="welcomeClose"><div class="tourbox welcome" role="dialog" aria-label="Welcome">
-    <div class="tourstep">${esc(fmtLong(t))}</div><h2>${hi}${nm?', '+esc(nm):''}! 👋</h2><p style="margin:0 0 12px">What would you like to do first?</p>
+    <div class="tourstep">${esc(fmtLong(t))}</div><h2>${ui.welcomeBack?'Welcome back':hi}${nm?', '+esc(nm):''}! 👋</h2><p style="margin:0 0 12px">${ui.welcomeBack?'What would you like to do next?':'What would you like to do first?'}</p>
     <div class="wopts">${opts.join('')}</div>
     <div class="wquote"><span>💡 Today’s thought</span>“${esc(quoteOfDay())}”</div>
     <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-act="welcomeClose">Just take me to the hub</button></div></div></div>`;
@@ -2679,9 +2687,9 @@ function render(){
   actOnRender();
   const keep=captureInputs();
   document.body.classList.toggle('marketer', MARKETER_MODE);
-  if(!ui.tourT && S.user){ ui.tourT=setTimeout(()=>{ maybeStartTour(); if(ui.tour!=null){ markWelcomed(); render(); } else if(S.user && !MARKETER_MODE && (S.mode==='live'||ui.forceWelcome) && !welcomedToday()){ ui.welcome=true; markWelcomed(); render(); } },3000); }
+  if(!ui.tourT && S.user){ ui.tourT=setTimeout(()=>{ maybeStartTour(); if(ui.tour!=null){ markWelcomed(); render(); } else if(S.user && !MARKETER_MODE && (S.mode==='live'||ui.forceWelcome) && welcomeDue()){ ui.welcomeBack=welcomedToday(); ui.welcome=true; markWelcomed(); touchSeen.at=0; touchSeen(); render(); } else touchSeen(); },3000); }
   app.innerHTML = `<div class="wrap">${header()}${searchBox()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}${bottomNav()}${tourOverlay()}${welcomeOverlay()}`;
-  stackTables(app); document.body.classList.toggle('hasnav', !!(S.user && !MARKETER_MODE));
+  stackTables(app); document.body.classList.toggle('hasnav', !!(S.user && !MARKETER_MODE)); if(ui.tourT && !ui.welcome) touchSeen();
   restoreInputs(keep);
   // lazy-load any photos now on screen
   app.querySelectorAll('img[data-photo]').forEach(im=>{ const id=im.dataset.photo; if(ui.photoCache[id]===undefined) getPhoto(id); });

@@ -1221,8 +1221,9 @@ function importHoursRows(rows, overwrite){
       if((has||hasEt) && !overwrite){ skipped++; return; }
       det.times[date]={ start:st, stop:en }; days++; evs.add(e.key); });
   });
-  save(); if(cloud.status==='live' && cloud.user) saveSchedule(); render();
-  return `Added hours for ${days} day${days===1?'':'s'} across ${evs.size} event${evs.size===1?'':'s'}.${skipped?` Skipped ${skipped} day${skipped===1?'':'s'} that already had hours.`:''}${ahead.size?` Saved ahead ${aheadDays} day${aheadDays===1?'':'s'} for ${ahead.size} event${ahead.size===1?'':'s'} not on the schedule yet — they'll show once those events are approved.`:''}${miss.size?` Not found on the schedule: ${[...miss].slice(0,8).join('; ')}${miss.size>8?'…':''}.`:''}`;
+  save(); const live=cloud.status==='live' && cloud.user; if(live) saveSchedule(); render();
+  const where = live ? ' Saved to the shared schedule, so the hub will show them.' : ' ⚠️ NOT shared yet: these hours are only on this device. Sign in under “Build the schedule” and click 💾 Save schedule so the hub and marketers see them.';
+  return `Added hours for ${days} day${days===1?'':'s'} across ${evs.size} event${evs.size===1?'':'s'}.${skipped?` Skipped ${skipped} day${skipped===1?'':'s'} that already had hours.`:''}${ahead.size?` Saved ahead ${aheadDays} day${aheadDays===1?'':'s'} for ${ahead.size} event${ahead.size===1?'':'s'} not on the schedule yet — they'll show once those events are approved.`:''}${miss.size?` Not found on the schedule: ${[...miss].slice(0,8).join('; ')}${miss.size>8?'…':''}.`:''}${(days||aheadDays)?where:''}`;
 }
 document.getElementById('hoursFile').addEventListener('change', e=>{
   const f=e.target.files[0]; e.target.value=''; if(!f) return;

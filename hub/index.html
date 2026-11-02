@@ -80,6 +80,11 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .tourbg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
 .tourbox{background:#fff;border-radius:16px;max-width:460px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35);border-top:6px solid var(--aqua)}.tourbox h2{margin:6px 0 8px}.tourbox p{color:var(--ink-soft);line-height:1.5}
 .touric{font-size:40px}.tourstep{font-size:12px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em}.tourdots{display:flex;gap:6px;justify-content:center;margin:12px 0}.tourdots i{width:8px;height:8px;border-radius:50%;background:#ddd}.tourdots i.on{background:var(--aqua)}
+.tourbox.welcome{max-width:560px;border-top-color:var(--gold)}.tourbox{max-height:92vh;overflow:auto}
+.wopts{display:grid;grid-template-columns:1fr 1fr;gap:8px}@media (max-width:520px){.wopts{grid-template-columns:1fr}}
+.wopt{display:flex;align-items:center;gap:10px;text-align:left;background:#fff;border:2px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;font:inherit;color:inherit;min-height:56px}
+.wopt:hover{border-color:var(--aqua);background:#f3fbfc}.wopt.pri{border-color:var(--aqua);background:#e0f4f6}.wopt .ic{font-size:22px}.wopt .wt{display:flex;flex-direction:column}.wopt small{color:var(--ink-soft);font-size:12px}
+.wquote{margin-top:14px;background:linear-gradient(90deg,#fef0dc,#fff);border-left:4px solid var(--gold);border-radius:8px;padding:10px 12px;font-style:italic;color:#333}.wquote span{display:block;font-style:normal;font-size:11.5px;font-weight:700;color:#b46b00;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
 .minis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 16px}
 @media (max-width:760px){.minis{grid-template-columns:1fr 1fr}}
 .mini{position:relative;display:flex;align-items:center;gap:10px;background:var(--surface);border:2px solid var(--tc,var(--line));border-radius:12px;padding:10px 12px;cursor:pointer;text-decoration:none;color:inherit;min-height:60px}
@@ -2231,7 +2236,7 @@ function pageHelp(){ const h=HELP_FOR[ui.tab]; if(!h) return; ui.guide=h[0]; ui.
 const TOUR = [
   ['👋','Welcome to the Event Activity Hub','Everything for running events lives here: your daily checklist, check-ins, events, expenses, equipment and the scorecard. This 1-minute tour shows the basics. You can reopen it anytime from How-to guides.'],
   ['☀️','Start your day','Tap <b>Start my day</b> (or <b>Start my week</b> on Mondays) at the top of the home page. You get a checklist for the day, and anything that needs you is listed above it.'],
-  ['⚑','Needs your attention','One list collects everything waiting on you: late check-ins, events that need marketers, ETACC deadlines and contract releases, evaluations, expense reports, timecards, equipment and hotels. Tap any item to go straight to it. It drops off once it’s done.'],
+  ['⚑','Needs your attention','Everything that needs you is collected in one list: late check-ins, events that need marketers, ETACC deadlines and contract releases, evaluations, expense reports, timecards, equipment and hotels. Tap an item to go straight to it. Once it’s taken care of, it comes off the list.'],
   ['📍','Checking in a marketer','Marketers check themselves in with their event’s link. Copy it from <b>Today’s Activity</b> or the schedule and text it to them. You can also check someone in from <b>Check-in</b> if their phone won’t cooperate.'],
   ['🧾','Approving expenses','Each Monday, open <b>Expense reports</b>, review your team’s reports and approve or return them. Approved reports go to Accounts Payable automatically. Submit your own report the same day.'],
   ['🔎','Finding anything','Use the <b>search box</b> at the top to jump to an event, marketer, piece of equipment or page. On a phone, the menu at the bottom gets you Home, My day, Check-in, Events and Alerts.'],
@@ -2245,6 +2250,80 @@ function tourOverlay(){
 }
 async function tourFinish(){ ui.tour=null; try{ lsSet('peHub.tourDone.'+String((S.user&&S.user.email)||'').toLowerCase(),'1'); }catch(e){} render(); try{ await saveMgr({ tourDone:Date.now() }); }catch(e){} }
 function maybeStartTour(){ if(S.user && !MARKETER_MODE && !DEMO && S.mode==='live' && ui.tour==null && !ui.tourChecked && S.mgrLoaded!==false){ ui.tourChecked=true; if(!tourDone()) ui.tour=0; } }
+/* ---------------- Daily welcome (once per day per manager) ---------------- */
+const DAILY_LINES = [
+  'Every booth conversation is a chance to change someone’s home. Make today count.',
+  'Small wins add up. One great event at a time.',
+  'Show up early, set up sharp, and smile first.',
+  'The best booths don’t wait for traffic. They create it.',
+  'Your team follows your energy. Bring the good stuff today.',
+  'A quick follow-up today beats a perfect one next week.',
+  'Every “no” gets you closer to the next “yes.”',
+  'Great events are planned on Monday and won on Saturday.',
+  'Coach one marketer today. It pays off all season.',
+  'Consistency beats intensity. Do the basics brilliantly.',
+  'Know your numbers, and your numbers will know you.',
+  'A clean booth says “we take care of homes.” Keep it sharp.',
+  'Celebrate a win from last week. Then go find the next one.',
+  'Be the reason a marketer loves working our events.',
+  'The schedule you build today is the success you see next month.',
+  'Curiosity sells. Ask one more question at the booth.',
+  'Lead with listening. The best pitch starts with their story.',
+  'Progress, not perfection. Keep moving forward.',
+  'Today’s preparation is tomorrow’s appointment.',
+  'When the weekend gets busy, the prep you did this week shines.',
+  'Be relentless about the details. They’re what customers remember.',
+  'Energy is contagious. Start your team’s day strong.',
+  'Every show is a fresh start. Make this one the best yet.',
+  'Your attitude sets the booth’s temperature. Keep it warm.',
+  'Recognition is free and powerful. Thank someone today.',
+  'Turn one slow day into a lesson, and one great day into a habit.',
+  'Goals are just plans with deadlines. Check yours today.',
+  'The difference between good and great is follow-through.',
+  'Help one person on your team get better today.',
+  'Make it easy for customers to say yes.',
+  'You don’t have to be perfect to be the best booth at the show.',
+  'Plan the work, then work the plan.',
+  'Results love routine. Start your day with the checklist.',
+  'A sunny attitude sells sunrooms. Bring it.',
+  'Ask for the appointment. Then ask again, kindly.',
+  'Strong weeks start with clear priorities. Pick your top three.',
+  'Every marketer you train well is an event you won’t have to worry about.',
+  'Stay hungry, stay humble, stay organized.',
+  'Great teams are built one honest conversation at a time.',
+  'Make today the day someone on your team remembers.' ];
+function quoteOfDay(){ const d=parseIso(todayIso()), n=Math.floor((d - new Date(d.getFullYear(),0,0))/864e5); return DAILY_LINES[(n + d.getFullYear()) % DAILY_LINES.length]; }
+function firstName(){
+  const em=String((S.user&&S.user.email)||'').toLowerCase(), known=actKnownManagers()[em], nm=(known&&known.name)||((S.sched.roster||[]).find(p=>String(p.email||'').toLowerCase()===em)||{}).name||'';
+  if(nm) return nm.includes(',')?nm.split(',')[1].trim().split(' ')[0]:nm.split(' ')[0];
+  const p=em.split('@')[0].split(/[._]/)[0]; return p?p[0].toUpperCase()+p.slice(1):'';
+}
+function welcomeKey(){ return 'peHub.welcome.'+String((S.user&&S.user.email)||'').toLowerCase(); }
+function welcomedToday(){ return lsGet(welcomeKey())===todayIso(); }
+function markWelcomed(){ try{ lsSet(welcomeKey(), todayIso()); }catch(e){} }
+function welcomeOverlay(){
+  if(!ui.welcome) return '';
+  const h=new Date().getHours(), hi=h<12?'Good morning':h<17?'Good afternoon':'Good evening', nm=firstName(), t=todayIso(), mon=parseIso(t).getDay()===1;
+  const G=todoGroups(), cnt=k=>((G.find(g=>g.key===k)||{}).items||[]).length, todo=todoCount(G);
+  const m=mgrDoc(), dayStarted=((m.days||{})[t]||{}).started, wkStarted=((m.weeks||{})[workWeekStart(t)]||{}).started;
+  const opt=(attrs,ic,l,sub,primary)=>`<button class="wopt ${primary?'pri':''}" ${attrs}><span class="ic">${ic}</span><span class="wt"><b>${l}</b>${sub?`<small>${sub}</small>`:''}</span></button>`;
+  const opts=[
+    mon&&!wkStarted ? opt('data-act="welcomeGo" data-go="startWeek"','▶️','Start my week','Monday: plan the week', true) : '',
+    opt('data-act="welcomeGo" data-go="startDay"','☀️',dayStarted?'Open my day':'Start my day','Your checklist for today', !(mon&&!wkStarted)),
+    todo ? opt('data-act="welcomeGo" data-go="tab:myday"','⚑','See what needs me',`${todo} item${todo===1?'':'s'} waiting`) : '',
+    opt('data-act="welcomeGo" data-go="tab:today"','📋','Check today’s events',(()=>{ const n=shiftsOn(t).filter(s=>inOffice(s.ev.office)).length; return n?`${n} shift${n===1?'':'s'} today`:'No shifts today'; })()),
+    opt('data-act="welcomeGo" data-go="tab:scorecard"','🏆','Review the scorecard','Last week’s results'),
+    cnt('exp') ? opt('data-act="welcomeGo" data-go="tab:expenses"','🧾','Approve expense reports',`${cnt('exp')} waiting`) : '',
+    cnt('evals') ? opt('data-act="welcomeGo" data-go="tab:evals"','📝','Complete evaluations',`${cnt('evals')} due`) : '',
+    cnt('staff') ? opt('data-act="welcomeGo" data-go="tab:schedule"','🗓️','Staff upcoming events',`${cnt('staff')} need marketers`) : '',
+    isRemUser()&&cnt('rem')&&mon ? opt('data-act="welcomeGo" data-go="tab:remnums"','✍️','Enter REM numbers',`${cnt('rem')} regions missing`) : '',
+    opt('data-act="welcomeGo" data-go="search"','🔎','Find something','Search events, marketers, equipment') ].filter(Boolean);
+  return `<div class="tourbg" data-act="welcomeClose"><div class="tourbox welcome" role="dialog" aria-label="Welcome">
+    <div class="tourstep">${esc(fmtLong(t))}</div><h2>${hi}${nm?', '+esc(nm):''}! 👋</h2><p style="margin:0 0 12px">What would you like to do first?</p>
+    <div class="wopts">${opts.join('')}</div>
+    <div class="wquote"><span>💡 Today’s thought</span>“${esc(quoteOfDay())}”</div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-act="welcomeClose">Just take me to the hub</button></div></div></div>`;
+}
 function scBanner(){
   if(!S.user) return '';
   const kw=ui.scWeek, kv=ui.scView; ui.scWeek=null; ui.scView='week'; const D=scData(), t=D.total, P=D.P; ui.scWeek=kw; ui.scView=kv;
@@ -2600,8 +2679,8 @@ function render(){
   actOnRender();
   const keep=captureInputs();
   document.body.classList.toggle('marketer', MARKETER_MODE);
-  if(!ui.tourT && S.user){ ui.tourT=setTimeout(()=>{ maybeStartTour(); if(ui.tour!=null) render(); },5000); }
-  app.innerHTML = `<div class="wrap">${header()}${searchBox()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}${bottomNav()}${tourOverlay()}`;
+  if(!ui.tourT && S.user){ ui.tourT=setTimeout(()=>{ maybeStartTour(); if(ui.tour!=null){ markWelcomed(); render(); } else if(S.user && !MARKETER_MODE && (S.mode==='live'||ui.forceWelcome) && !welcomedToday()){ ui.welcome=true; markWelcomed(); render(); } },3000); }
+  app.innerHTML = `<div class="wrap">${header()}${searchBox()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}${bottomNav()}${tourOverlay()}${welcomeOverlay()}`;
   stackTables(app); document.body.classList.toggle('hasnav', !!(S.user && !MARKETER_MODE));
   restoreInputs(keep);
   // lazy-load any photos now on screen
@@ -3066,6 +3145,10 @@ document.addEventListener('click', async ev=>{
   if(a==='scCsv'){ scCsv(); return; }
   if(a==='sgo'){ searchGo(+t.dataset.i); return; }
   if(a==='pageHelp'){ pageHelp(); return; }
+  if(a==='welcomeClose'){ if(ev.target.closest('.tourbox') && t.classList.contains('tourbg')) return; ui.welcome=false; render(); return; }
+  if(a==='welcomeGo'){ ui.welcome=false; const g=t.dataset.go;
+    if(g==='startDay'||g==='startWeek'){ render(); const b=document.createElement('button'); b.dataset.act=g; b.style.display='none'; document.body.appendChild(b); b.click(); b.remove(); return; } else if(g==='search'){ render(); setTimeout(()=>{ const i=document.getElementById('hubSearch'); i&&i.focus(); },30); return; }
+    else { ui.tab=g.slice(4); history.pushState(null,'','#'+ui.tab); render(); window.scrollTo(0,0); return; } }
   if(a==='tourStart'){ ui.tour=0; render(); return; }
   if(a==='tourNext'){ ui.tour=Math.min(TOUR.length-1,(ui.tour||0)+1); render(); return; }
   if(a==='tourBack'){ ui.tour=Math.max(0,(ui.tour||0)-1); render(); return; }

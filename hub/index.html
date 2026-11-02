@@ -4,21 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Patio Enclosures Event Hub</title>
-<meta name="theme-color" content="#24583f"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Event Check-In">
+<meta name="theme-color" content="#00A7B7"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Event Check-In">
 <link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png">
 <style>
 :root{
-  --bg:#f5f6f4; --surface:#fff; --ink:#18221c; --ink-soft:#5a6760; --line:#d8dfda; --line-soft:#ecf0ed;
-  --accent:#24583f; --accent-soft:#e6f0ea; --warn:#a15c00; --warn-soft:#fdf1df; --red:#b42318; --red-soft:#fdecea;
-  --blue:#2f5f9e; --blue-soft:#e6eef8; --gray-soft:#eef1ef;
-  --font:"Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+  /* Patio Enclosures brand: Aqua PMS 320 #00A7B7, Black, Gold PMS 1375 #F99D1C (accent, sparingly), Cool Gray 11 #55565A */
+  --aqua:#00A7B7; --aqua-ink:#007C88; --gold:#F99D1C; --gray:#55565A; --black:#000;
+  --bg:#f3f5f5; --surface:#fff; --ink:#111; --ink-soft:#55565A; --line:#d9dbdc; --line-soft:#eceeee;
+  --accent:#007C88; --accent-soft:#e0f4f6; --warn:#a15c00; --warn-soft:#fdf1df; --red:#b42318; --red-soft:#fdecea;
+  --blue:#55565A; --blue-soft:#eeeeef; --gray-soft:#f0f1f1;
+  --font:"Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 var(--font)}
 button,select,input,textarea{font:inherit;color:inherit}
-a{color:var(--accent)}
+a{color:var(--aqua-ink)}
+h1,h2,h3,b,strong,th{font-weight:700}
 .wrap{max-width:1300px;margin:0 auto;padding:14px}
-header.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px}
+header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:-14px -14px 14px;padding:10px 18px;background:#fff;border-bottom:4px solid var(--aqua)}
+.brandlogo{height:64px;width:auto;display:block}
+@media (max-width:560px){.brandlogo{height:44px}header.top{padding:8px 12px;gap:10px}}
 .brand{background:var(--accent);color:#fff;border-radius:9px;padding:7px 14px;line-height:1.15}
 .brand b{font-size:17px;display:block}.brand span{font-size:10.5px;opacity:.85;text-transform:uppercase;letter-spacing:.09em}
 h1{font-size:21px;margin:0;font-weight:650}
@@ -27,13 +32,13 @@ h1{font-size:21px;margin:0;font-weight:650}
 .cstat.live{color:var(--accent);font-weight:600}.cstat.local{color:var(--warn);font-weight:600}
 nav.tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:14px}
 nav.tabs button{border:0;background:none;padding:9px 14px;cursor:pointer;border-bottom:3px solid transparent;color:var(--ink-soft);font-weight:600}
-nav.tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+nav.tabs button.on{color:#000;border-bottom-color:var(--aqua)}
 nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-left:4px}
 .home{max-width:980px;margin:0 auto}
 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:6px}
 @media (max-width:760px){.tiles{grid-template-columns:1fr 1fr}}
 .tile{position:relative;aspect-ratio:1/1;background:var(--surface);border:2px solid var(--tc,var(--line));border-radius:14px;padding:20px;cursor:pointer;display:flex;flex-direction:column;text-align:left;transition:transform .12s,box-shadow .12s,border-color .12s}
-.tile:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(20,40,30,.12);border-width:3px;padding:19px}
+.tile:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,80,90,.14);border-width:3px;padding:19px}
 .tile .ic{width:54px;height:54px;border-radius:12px;background:var(--tcs,var(--accent-soft));display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:14px}
 .tile h2{font-size:18px;margin:0 0 6px}
 .tile p{margin:0;color:var(--ink-soft);font-size:13.5px}
@@ -41,22 +46,22 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .tile .stat.warn{color:var(--warn)}.tile .stat.alert{color:var(--red)}
 .tile .flag{position:absolute;top:14px;right:14px;background:var(--warn);color:#fff;border-radius:12px;padding:1px 9px;font-size:12px;font-weight:700}
 .tile .flag.alert{background:var(--red)}
-.teamsbanner{display:flex;align-items:center;gap:18px;background:linear-gradient(90deg,#eef0fc,#fff);border:2px solid #4b53bc;border-radius:14px;padding:18px 22px;margin:6px 0 18px;text-decoration:none;color:inherit;transition:transform .12s,box-shadow .12s}
-.teamsbanner:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(40,40,120,.15)}
-.teamsbanner .ic{width:58px;height:58px;border-radius:12px;background:#4b53bc;color:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;flex:none}
+.teamsbanner{display:flex;align-items:center;gap:18px;background:linear-gradient(90deg,#eeeeef,#fff);border:2px solid var(--gray);border-radius:14px;padding:18px 22px;margin:6px 0 18px;text-decoration:none;color:inherit;transition:transform .12s,box-shadow .12s}
+.teamsbanner:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.14)}
+.teamsbanner .ic{width:58px;height:58px;border-radius:12px;background:var(--gray);color:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;flex:none}
 .teamsbanner h2{margin:0 0 3px;font-size:20px}.teamsbanner p{margin:0;color:var(--ink-soft)}
-.teamsbanner .go{background:#4b53bc;color:#fff;border-radius:9px;padding:10px 16px;font-weight:700;white-space:nowrap}
+.teamsbanner .go{background:#000;color:#fff;border-radius:9px;padding:10px 16px;font-weight:700;white-space:nowrap}
 @media (max-width:560px){.teamsbanner{padding:12px;gap:10px}.teamsbanner .ic{width:42px;height:42px;font-size:22px}.teamsbanner h2{font-size:16px}.teamsbanner p{display:none}.teamsbanner .go{padding:8px 10px;font-size:13px}}
 .mgrbar{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:0 0 18px}
 .mgrbar .btn.big{font-size:18px;padding:14px 16px;border-radius:12px;line-height:1.2}
 .mgrbar .btn.big small{display:block;font-size:12.5px;font-weight:500;opacity:.9;margin-top:2px}
-.mgrbar .btn.big:not(.primary){background:#fff;border:2px solid var(--accent);color:var(--accent)}
+.mgrbar .btn.big:not(.primary){background:#fff;border:2px solid var(--aqua);color:#000}
 .mtask{display:flex;align-items:center;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line-soft);padding:3px 0}
 .mtask.done .chk span{text-decoration:line-through;color:var(--ink-soft)}
 .mtask .chk{flex:1 1 260px}.mtask .acts{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .daycard .mtask{display:block}.daycard .mtask .acts{margin:0 0 4px 30px}
 .mgroup{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);margin:12px 0 2px}
-.prog{height:8px;background:var(--line-soft);border-radius:6px;overflow:hidden;margin:4px 0 8px}.prog span{display:block;height:100%;background:var(--accent)}
+.prog{height:8px;background:var(--line-soft);border-radius:6px;overflow:hidden;margin:4px 0 8px}.prog span{display:block;height:100%;background:var(--aqua)}
 .weekgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
 .daycard.today{border:2px solid var(--blue)}
 .daycard.offday{background:#f7f8f7}.daycard.offday h3{color:var(--ink-soft)}
@@ -66,9 +71,9 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .leaders{margin-top:18px}.leadgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px}.lead>div{min-width:0}.lead a{overflow-wrap:anywhere}
 .lead{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line-soft);border-radius:10px;padding:10px}
 @media (max-width:760px){.leadgrid{grid-template-columns:1fr}}
-.lav{width:40px;height:40px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex:none}
+.lav{width:40px;height:40px;border-radius:50%;background:var(--aqua);color:#000;display:flex;align-items:center;justify-content:center;font-weight:700;flex:none}
 .banners{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:6px 0 18px}.banners .teamsbanner{margin:0}
-.trainbanner{border-color:#b5791f;background:linear-gradient(90deg,#fbf1df,#fff)}.trainbanner .ic,.trainbanner .go{background:#b5791f}
+.trainbanner{border-color:var(--gold);background:linear-gradient(90deg,#fef0dc,#fff)}.trainbanner .ic{background:var(--gold)}.trainbanner .go{background:var(--gold);color:#000}
 .tcard{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--line-soft);padding:9px 0}
 .practices{border-top:1px solid var(--line-soft);margin-top:8px;padding-top:4px}
 @media (max-width:900px){.banners{grid-template-columns:1fr}}
@@ -85,7 +90,8 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .sub{color:var(--ink-soft);font-size:13px;margin-bottom:10px}
 .btn{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:7px 12px;cursor:pointer;white-space:nowrap}
 .btn:hover{background:var(--line-soft)}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary{background:var(--aqua);border-color:var(--aqua);color:#000;font-weight:700}
+.btn.primary:hover{background:#0095a4;border-color:#0095a4}
 .btn.danger{color:var(--red)}
 .btn.big{padding:12px 18px;font-size:16px;font-weight:600;width:100%}
 .btn.sm{padding:3px 9px;font-size:12.5px}
@@ -109,7 +115,7 @@ tr.click{cursor:pointer}tr.click:hover td{background:var(--line-soft)}
 .p-warn{background:var(--warn-soft);color:var(--warn)}
 .muted{color:var(--ink-soft)}.small{font-size:12.5px}
 .notice{background:var(--warn-soft);border:1px solid #f0d3a6;border-radius:8px;padding:9px 12px;margin-bottom:12px}
-.notice.ok{background:var(--accent-soft);border-color:#9cc3ad}
+.notice.ok{background:var(--accent-soft);border-color:#8fd3da}
 .notice.err{background:var(--red-soft);border-color:#f3b8b2}
 .field{display:flex;flex-direction:column;gap:4px}
 .field>label,.lbl{font-weight:600;font-size:13px}
@@ -1265,12 +1271,12 @@ function activationData(from, to){
 function summaryHtml(from, to, forEmail){
   const rows=activationData(from,to), act=rows.filter(x=>x.status==='Activated'), not=rows.filter(x=>x.status!=='Activated'), zero=act.filter(x=>x.leads===0 && (x.e.end||x.e.start)<todayIso() && x.cs.every(c=>c.status==='out'));
   const L=act.reduce((s,x)=>s+x.leads,0), A=act.reduce((s,x)=>s+x.appts,0), H=act.reduce((s,x)=>s+x.hrs,0);
-  const F='font:13px Segoe UI,Arial,sans-serif;', td=`padding:5px 8px;border:1px solid #d8dfda;vertical-align:top;${F}`, th=td+'background:#24583f;color:#fff;font-weight:600;text-align:left;';
+  const F='font:13px Helvetica Neue,Helvetica,Arial,sans-serif;', td=`padding:5px 8px;border:1px solid #d9dbdc;vertical-align:top;${F}`, th=td+'background:#000;color:#fff;font-weight:600;text-align:left;';
   const tbl=(head,body)=>`<table style="border-collapse:collapse;width:100%;margin:6px 0 14px"><tr>${head.map(h=>`<th style="${th}">${h}</th>`).join('')}</tr>${body}</table>`;
-  const h=(t)=>`<h3 style="font:600 15px Segoe UI,Arial,sans-serif;color:#24583f;margin:16px 0 4px">${t}</h3>`;
+  const h=(t)=>`<h3 style="font:600 15px Helvetica Neue,Helvetica,Arial,sans-serif;color:#007C88;margin:16px 0 4px">${t}</h3>`;
   // by office
   const byOff={}; rows.forEach(x=>{ const k=x.e.office||'(no office)'; const o=byOff[k]=byOff[k]||{ ev:0, act:0, not:0, leads:0, appts:0, zero:0 }; o.ev++; if(x.status==='Activated'){ o.act++; o.leads+=x.leads; o.appts+=x.appts; if(!x.leads) o.zero++; } else o.not++; });
-  const kpi=(n,l)=>`<td style="${td}text-align:center"><div style="font:700 20px Segoe UI,Arial,sans-serif">${n}</div><div style="${F}color:#5a6760">${l}</div></td>`;
+  const kpi=(n,l)=>`<td style="${td}text-align:center"><div style="font:700 20px Helvetica Neue,Helvetica,Arial,sans-serif">${n}</div><div style="${F}color:#5a6760">${l}</div></td>`;
   return `<div style="${F}">
     <p style="${F}">Event activation summary for <b>${esc(scopeLabel())}</b>, <b>${fmtLong(from)} – ${fmtLong(to)}</b>.</p>
     <table style="border-collapse:collapse;margin:6px 0 10px"><tr>${kpi(rows.length,'Events')}${kpi(act.length,'Activated')}${kpi(not.length,'Not activated')}${kpi(L,'Total leads')}${kpi(A,'Appointments')}${kpi(H?round1(L/H):0,'Leads / hour')}${kpi(zero.length,'Activated, 0 leads')}</tr></table>
@@ -1329,13 +1335,13 @@ const DEFAULT_PRACTICES = `## Our pitch
 - Name badge on the upper right chest at all times.
 - Clean, pressed clothing; showered, fresh breath, minimal fragrance.`;
 function practicesHtml(txt){
-  const F='font:14px Segoe UI,Arial,sans-serif;';
+  const F='font:14px Helvetica Neue,Helvetica,Arial,sans-serif;';
   const inl=t=>esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
   let out='', inList=false;
   String(txt||'').split(/\r?\n/).forEach(line=>{ const l=line.trim();
     if(/^- /.test(l)){ if(!inList){ out+=`<ul style="${F}margin:4px 0 10px 18px;padding:0">`; inList=true; } out+=`<li style="margin:2px 0">${inl(l.slice(2))}</li>`; return; }
     if(inList){ out+='</ul>'; inList=false; }
-    if(/^## /.test(l)) out+=`<h4 style="font:600 14px Segoe UI,Arial,sans-serif;color:#24583f;margin:12px 0 4px">${inl(l.slice(3))}</h4>`;
+    if(/^## /.test(l)) out+=`<h4 style="font:600 14px Helvetica Neue,Helvetica,Arial,sans-serif;color:#007C88;margin:12px 0 4px">${inl(l.slice(3))}</h4>`;
     else if(l) out+=`<p style="${F}margin:4px 0">${inl(l)}</p>`;
   });
   if(inList) out+='</ul>';
@@ -1441,10 +1447,10 @@ function alertRecipients(office){
   return { to, cc };
 }
 function mailShell(title, bodyHtml){
-  const F='font:14px Segoe UI,Arial,sans-serif;color:#1d2a23;';
-  return `<div style="${F}"><div style="background:#24583f;color:#fff;padding:10px 14px;border-radius:6px 6px 0 0;font:600 15px Segoe UI,Arial,sans-serif">Patio Enclosures · Event Activity Hub</div>
-    <div style="border:1px solid #d8dfda;border-top:0;padding:14px;border-radius:0 0 6px 6px"><h2 style="font:600 17px Segoe UI,Arial,sans-serif;margin:0 0 8px;color:#24583f">${title}</h2>${bodyHtml}
-    <p style="margin-top:16px"><a href="${SITE}hub/" style="background:#24583f;color:#fff;text-decoration:none;padding:7px 12px;border-radius:6px;font-weight:600">Open the Event Hub</a></p>
+  const F='font:14px Helvetica Neue,Helvetica,Arial,sans-serif;color:#111;';
+  return `<div style="${F}"><div style="background:#fff;padding:10px 14px;border:1px solid #d9dbdc;border-bottom:4px solid #00A7B7;border-radius:6px 6px 0 0"><img src="${SITE}hub/pe-logo.png" alt="Patio Enclosures" height="44" style="vertical-align:middle"> <span style="font:700 15px Helvetica Neue,Helvetica,Arial,sans-serif;color:#000;margin-left:8px;vertical-align:middle">Event Activity Hub</span></div>
+    <div style="border:1px solid #d9dbdc;border-top:0;padding:14px;border-radius:0 0 6px 6px"><h2 style="font:600 17px Helvetica Neue,Helvetica,Arial,sans-serif;margin:0 0 8px;color:#007C88">${title}</h2>${bodyHtml}
+    <p style="margin-top:16px"><a href="${SITE}hub/" style="background:#00A7B7;color:#000;text-decoration:none;padding:7px 12px;border-radius:6px;font-weight:600">Open the Event Hub</a></p>
     <p style="color:#5a6760;font-size:12px">Automatic alert from the Event Activity Hub.</p></div></div>`;
 }
 const ALERT_TAB = { late:'today', noshow:'today', noout:'today', issue:'today', expense:'expenses', summary:'summary', newmgr:'alerts', test:'alerts' };
@@ -1462,7 +1468,7 @@ async function queueMail(id, src){
   catch(e){ if(e.code!=='permission-denied') console.warn('mail',id,e); return false; }   // permission-denied = already sent
 }
 const row2=(k,v)=>v?`<tr><td style="padding:3px 10px 3px 0;color:#5a6760;vertical-align:top">${k}</td><td style="padding:3px 0">${v}</td></tr>`:'';
-function shiftTable(c, extra){ return `<table style="font:14px Segoe UI,Arial,sans-serif;border-collapse:collapse">${row2('Marketer',esc(c.personName||''))}${row2('Event',esc(c.eventName||''))}${row2('Office',esc(c.office||''))}${row2('Venue',esc(c.venueName||''))}${row2('Date',fmtLong(c.date))}${row2('Shift',c.shiftStart?esc(fmt12(c.shiftStart)+' – '+fmt12(c.shiftStop)):'')}${extra||''}</table>`; }
+function shiftTable(c, extra){ return `<table style="font:14px Helvetica Neue,Helvetica,Arial,sans-serif;border-collapse:collapse">${row2('Marketer',esc(c.personName||''))}${row2('Event',esc(c.eventName||''))}${row2('Office',esc(c.office||''))}${row2('Venue',esc(c.venueName||''))}${row2('Date',fmtLong(c.date))}${row2('Shift',c.shiftStart?esc(fmt12(c.shiftStart)+' – '+fmt12(c.shiftStop)):'')}${extra||''}</table>`; }
 function fmt12(t){ const m=toMin(t); if(m===null) return t||''; const h=Math.floor(m/60)%24, mm=String(m%60).padStart(2,'0'); return `${(h%12)||12}:${mm} ${h<12?'am':'pm'}`; }
 const EQUIP_WHERE = { home:'Kept at my home', office:'Returned to the office', venue:'Left at the venue (multi-day event, secured)', handoff:'Handed to another marketer', none:'I didn’t have any event equipment' };
 
@@ -1491,7 +1497,7 @@ async function alertExpenseReturned(x, note){
   const p=person(x.personId)||{}, r=alertRecipients(x.office||p.office||'');
   if(!p.email) return;
   await queueMail(`expret-${x.id}-${Date.now()}`, { to:[p.email], cc:r.to, office:x.office||p.office||'', kind:'expense', subject:`Your expense report needs changes – week of ${fmtMD(x.weekStart)}`,
-    html:mailShell('Expense report returned', `<p>Hi ${esc((p.name||'').split(' ')[0]||'')},</p><p>Your expense report for the week of <b>${fmtLong(x.weekStart)}</b> was returned for changes:</p><blockquote style="border-left:3px solid #b5791f;margin:8px 0;padding:4px 10px">${esc(note||'')}</blockquote><p>Open the check-in page, tap your name, and open the report under Expense reports to fix and resubmit it.</p>`) });
+    html:mailShell('Expense report returned', `<p>Hi ${esc((p.name||'').split(' ')[0]||'')},</p><p>Your expense report for the week of <b>${fmtLong(x.weekStart)}</b> was returned for changes:</p><blockquote style="border-left:3px solid #F99D1C;margin:8px 0;padding:4px 10px">${esc(note||'')}</blockquote><p>Open the check-in page, tap your name, and open the report under Expense reports to fix and resubmit it.</p>`) });
 }
 
 // --- alerts swept by any manager with the hub open ---
@@ -1632,7 +1638,7 @@ function shortcutCard(){
   if(lsGet('peHub.shortcutHidden') || window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) return '';
   const ios=`<ol class="small" style="margin:4px 0 0 18px;padding:0"><li>Open this page in <b>Safari</b>.</li><li>Tap the <b>Share</b> button (square with an arrow).</li><li>Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.</li></ol>`;
   const and=`<ol class="small" style="margin:4px 0 0 18px;padding:0"><li>Open this page in <b>Chrome</b>.</li><li>Tap the <b>⋮</b> menu (top right).</li><li>Tap <b>Add to Home screen</b> (or <b>Install app</b>), then <b>Add</b>.</li></ol>`;
-  return `<div class="card" style="border-color:#24583f"><div class="row"><h2 style="margin:0;flex:1">📲 Add Event Check-In to your home screen</h2><button class="btn sm" data-act="hideShortcut">Hide</button></div>
+  return `<div class="card" style="border-color:var(--aqua)"><div class="row"><h2 style="margin:0;flex:1">📲 Add Event Check-In to your home screen</h2><button class="btn sm" data-act="hideShortcut">Hide</button></div>
     <div class="small muted" style="margin:4px 0">One tap to check in at every show, like an app.</div>
     ${PHONE_OS==='ios'?ios:PHONE_OS==='android'?and:`<b class="small">iPhone</b>${ios}<b class="small">Android</b>${and}`}</div>`;
 }
@@ -1848,10 +1854,10 @@ function costCsv(){
 function costSummaryHtml(from, to){
   if(!S.rates && S.mode==='live' && !isLeadUser()) {}
   const rows=costRows(from,to); if(!rows.length) return '';
-  const T=costTotals(rows), F='font:13px Segoe UI,Arial,sans-serif;', td=`padding:5px 8px;border:1px solid #d8dfda;${F}`, th=td+'background:#24583f;color:#fff;font-weight:600;text-align:left;';
+  const T=costTotals(rows), F='font:13px Helvetica Neue,Helvetica,Arial,sans-serif;', td=`padding:5px 8px;border:1px solid #d9dbdc;${F}`, th=td+'background:#000;color:#fff;font-weight:600;text-align:left;';
   const byOff={}; rows.forEach(x=>{ (byOff[x.e.office||'(none)']=byOff[x.e.office||'(none)']||[]).push(x); });
   const flagged=rows.filter(costFlag);
-  return `<h3 style="font:600 15px Segoe UI,Arial,sans-serif;color:#24583f;margin:16px 0 4px">Cost per lead</h3>
+  return `<h3 style="font:600 15px Helvetica Neue,Helvetica,Arial,sans-serif;color:#007C88;margin:16px 0 4px">Cost per lead</h3>
     <p style="${F}">Total cost <b>${$0(T.total)}</b> · <b>${T.leads}</b> leads · <b>${T.appts}</b> appointments · <b>${$0(T.cpl)}</b> per lead · <b>${$0(T.cpa)}</b> per appointment.</p>
     <table style="border-collapse:collapse;width:100%;margin:6px 0 10px"><tr>${['Office','Events','Cost','Leads','Appts','Cost/lead','Cost/appt'].map(h=>`<th style="${th}">${h}</th>`).join('')}</tr>
     ${Object.entries(byOff).sort().map(([k,l])=>{ const o=costTotals(l); return `<tr><td style="${td}">${esc(k)}</td><td style="${td}">${o.events}</td><td style="${td}">${$0(o.total)}</td><td style="${td}">${o.leads}</td><td style="${td}">${o.appts}</td><td style="${td}">${$0(o.cpl)}</td><td style="${td}">${$0(o.cpa)}</td></tr>`; }).join('')}</table>
@@ -2058,7 +2064,7 @@ function header(){
   const signin = MARKETER_MODE ? `<a class="small" href="${location.pathname}">Manager view</a>` :
     S.user ? `<div class="signin small">${(()=>{ const n=unreadAlerts().length; return `<button class="btn sm bell" data-tab="alerts" title="Alerts">🔔${n?`<span class="bdot">${n}</span>`:''}</button>`; })()}<span class="muted">${esc(S.user.email)}</span><button class="btn sm" data-act="signOut">Sign out</button></div>` :
     `<form class="signin" data-form="signin"><input type="email" name="email" placeholder="Manager email" data-keep="si-email" autocomplete="username" style="width:170px"><input type="password" name="pw" placeholder="Password" data-keep="si-pw" autocomplete="current-password" style="width:120px"><button class="btn sm primary">Sign in</button>${S.authErr?`<span class="small" style="color:var(--red)">${esc(S.authErr)}</span>`:''}</form>`;
-  return `<header class="top"><div class="brand"><b>Patio Enclosures</b><span>Field Marketing</span></div>
+  return `<header class="top"><img class="brandlogo" src="pe-logo.png" alt="Patio Enclosures by Great Day Improvements">
     <div><h1>${MARKETER_MODE?'Event Check-In':'Event Activity Hub'}</h1><div class="asof">${stat}${S.mode==='local'&&!DEMO?` · not saving to the shared database (${esc(S.err)})`:''}</div></div>
     <div class="spacer"></div>${signin}</header>`;
 }
@@ -2087,8 +2093,8 @@ function tilesView(){
   const gear=scopedAssets().filter(isGear).map(stOf);
   const out=gear.filter(g=>g.status==='out').length, overdue=gear.filter(g=>g.overdue).length, repair=gear.filter(g=>g.status==='repair').length;
   const low=scopedAssets().filter(isLow).length, staff=needsStaffing().length;
-  const TC={ today:['#2f5f9e','#e6eef8'], events:['#2f7a78','#dcebea'], schedule:['#6b4fbb','#efeafb'], checkin:['#24583f','#e6f0ea'], assets:['#b5791f','#f6e9d2'], evals:['#b0425e','#f8e4ea'], expenses:['#5b6b1f','#eef2dc'], travel:['#1f6f8b','#dff0f6'], adp:['#9a3412','#fbe9df'], costs:['#0f766e','#ddf3ef'] };
-  const tile=(k,desc,stat,cls,flag,flagCls)=>{ const [ic,l]=SECTIONS[k], [c,soft]=TC[k]||['#24583f','#e6f0ea']; return `<div class="tile" data-tab="${k}" role="button" tabindex="0" style="--tc:${c};--tcs:${soft}">${flag?`<span class="flag ${flagCls||''}">${flag}</span>`:''}<div class="ic">${ic}</div><h2>${esc(l)}</h2><p>${desc}</p><div class="stat ${cls||''}">${stat}</div></div>`; };
+  const TC={ today:['var(--aqua)','#e0f4f6'], events:['#000','#ededed'], schedule:['var(--gray)','#eeeeef'], checkin:['var(--aqua)','#e0f4f6'], assets:['var(--gold)','#fef0dc'], evals:['#000','#ededed'], expenses:['var(--gray)','#eeeeef'], travel:['var(--aqua)','#e0f4f6'], adp:['var(--gold)','#fef0dc'], costs:['#000','#ededed'] };
+  const tile=(k,desc,stat,cls,flag,flagCls)=>{ const [ic,l]=SECTIONS[k], [c,soft]=TC[k]||['var(--aqua)','#e0f4f6']; return `<div class="tile" data-tab="${k}" role="button" tabindex="0" style="--tc:${c};--tcs:${soft}">${flag?`<span class="flag ${flagCls||''}">${flag}</span>`:''}<div class="ic">${ic}</div><h2>${esc(l)}</h2><p>${desc}</p><div class="stat ${cls||''}">${stat}</div></div>`; };
   return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span>${scopePicker()}</div>${staffBanner()}
   ${alertsBanner()}<div class="banners"><a class="teamsbanner" href="${TEAMS_HUB_URL}" target="_blank" rel="noopener"><div class="ic">👥</div><div style="flex:1"><h2>Team Resource Hub</h2><p>Guides, forms, standards and announcements in Microsoft Teams.</p></div><span class="go">Open in Teams ↗</span></a>
   <a class="teamsbanner trainbanner" href="#training" data-tab="training"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products, booth setup and standards.</p></div><span class="go">Open ↗</span></a></div>

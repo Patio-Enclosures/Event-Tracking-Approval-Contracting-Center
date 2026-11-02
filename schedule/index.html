@@ -177,6 +177,7 @@ h3.bh{font-size:14px;margin:18px 0 4px}
 <div class="wrap" id="app"></div>
 <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none">
 <input type="file" id="rosterFile" accept=".csv,text/csv,.xlsx,.xls" style="display:none">
+<input type="file" id="hoursFile" accept=".csv,text/csv,.xlsx,.xls" style="display:none">
 <input type="file" id="backupFile" accept=".json,application/json" style="display:none">
 <script>
 /* ======================================================================
@@ -752,6 +753,7 @@ function render(){
     </div>
     <select data-act="weeks" aria-label="How many weeks to show">${[1,2,3,4,6,8].map(n=>`<option value="${n}" ${n===nW?'selected':''}>${n===1?'1 week':n+' weeks'}</option>`).join('')}</select>
     <div class="spacer"></div>
+    ${cloud.user||cloud.status!=='live'?`<button class="btn" data-act="hoursfile" title="Upload a file of show hours (Event Name, Start Date, Date, Open, Close)">⏰ Import show hours</button>`:''}
     <button class="btn" data-act="emailsched">✉ Email schedule</button>
     <button class="btn" data-act="print">🖨 Print / PDF</button>
   </div>
@@ -1131,6 +1133,7 @@ document.addEventListener('click', e=>{
     case 'nextweek': ui.weekStart=addDays(sundayOf(todayIso()),7); render(); break;
     case 'print': window.print(); break;
     case 'gostaff': ui.weekStart=sundayOf(t.dataset.date); ui.buildOpen=true; render(); setTimeout(()=>{ const b=document.querySelector('[data-build]'); b && b.scrollIntoView({behavior:'smooth'}); },60); break;
+    case 'hoursfile': document.getElementById('hoursFile').click(); break;
     case 'emailsched': ui.modal='email'; ui.copyNote=''; render(); break;
     case 'copyto': copyText(emailRecipients().map(r=>r.email).join('; '), 'Email addresses copied. Paste them into the To: line.'); break;
     case 'copysched': copySchedule(); break;
@@ -1178,6 +1181,49 @@ function readFile(input, fn){
 }
 readFile(document.getElementById('csvFile'), importCSV);
 // Roster accepts CSV or Excel (.xlsx/.xls); Excel is converted with SheetJS (same library ETACC uses).
+/* ---- Import show hours from a file (Event Name, Start Date, Date, Open, Close). Fills days with no hours yet. ---- */
+function parseTimeCell(v){
+  v=String(v??'').trim().toLowerCase(); if(!v) return '';
+  if(/^\d*\.\d+$/.test(v)){ const m=Math.round(parseFloat(v)*1440); return `${pad(Math.floor(m/60)%24)}:${pad(m%60)}`; }   // Excel time fraction
+  if(/noon/.test(v)) return '12:00'; if(/midnight/.test(v)) return '24:00';
+  const m=v.match(/(\d{1,2})(?::(\d{2}))?\s*(a|p)?/); if(!m) return '';
+  let h=+m[1], mi=+(m[2]||0); if(m[3]==='p' && h<12) h+=12; if(m[3]==='a' && h===12) h=0;
+  if(h>24||mi>59) return ''; return `${pad(h)}:${pad(mi)}`;
+}
+function parseDateCell(v){
+  if(v instanceof Date) return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())}`;
+  v=String(v??'').trim(); if(!v) return '';
+  if(/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0,10);
+  if(/^\d{5}$/.test(v)){ const d=new Date(Date.UTC(1899,11,30)+(+v)*864e5); return d.toISOString().slice(0,10); }
+  const m=v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/); if(m){ const y=m[3].length===2?'20'+m[3]:m[3]; return `${y}-${pad(+m[1])}-${pad(+m[2])}`; }
+  const d=new Date(v); return isNaN(d)?'':`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+function importHoursRows(rows, overwrite){
+  const nn=x=>String(x||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  if(!rows.length) return 'The file is empty.';
+  const cols=Object.keys(rows[0]), col=re=>cols.find(c=>re.test(c));
+  const cName=col(/event\s*name|^event$|^name$/i), cStart=col(/start\s*date|event\s*start/i), cDate=col(/^date$|show\s*date|day/i), cOpen=col(/open|^start$|start\s*time|from/i), cClose=col(/close|^end$|end\s*time|^to$|stop/i), cOff=col(/branch|office/i);
+  if(!cName || !cDate || !cOpen || !cClose) return 'The file needs these columns: Event Name, Date, Open, Close (Start Date and Branch help match).';
+  let days=0, skipped=0; const evs=new Set(), miss=new Set();
+  rows.forEach(r=>{
+    const name=nn(r[cName]), date=parseDateCell(r[cDate]), st=parseTimeCell(r[cOpen]), en=parseTimeCell(r[cClose]), sd=cStart?parseDateCell(r[cStart]):'', off=cOff?nn(r[cOff]):'';
+    if(!name || !date || !st || !en) return;
+    const cand=(data.events||[]).filter(e=>nn(e.name)===name && (e.days||[]).some(d=>d.date===date) && (!sd || e.start===sd) && (!off || nn(e.office).includes(off.split(' ')[0]) || off.includes(nn(e.office).split(' ')[0])));
+    if(!cand.length){ miss.add(String(r[cName])); return; }
+    cand.forEach(e=>{ const det=data.details[e.key]=data.details[e.key]||{ booth:'', setup:'', times:{} }; det.times=det.times||{};
+      const has=det.times[date] && (det.times[date].start||det.times[date].stop), d=(e.days||[]).find(x=>x.date===date), hasEt=d && (d._s||d._t);
+      if((has||hasEt) && !overwrite){ skipped++; return; }
+      det.times[date]={ start:st, stop:en }; days++; evs.add(e.key); });
+  });
+  save(); if(cloud.status==='live' && cloud.user) saveSchedule(); render();
+  return `Added hours for ${days} day${days===1?'':'s'} across ${evs.size} event${evs.size===1?'':'s'}.${skipped?` Skipped ${skipped} day${skipped===1?'':'s'} that already had hours.`:''}${miss.size?` Not found on the schedule: ${[...miss].slice(0,8).join('; ')}${miss.size>8?'…':''}.`:''}`;
+}
+document.getElementById('hoursFile').addEventListener('change', e=>{
+  const f=e.target.files[0]; e.target.value=''; if(!f) return;
+  const overwrite=confirm('Replace hours that are already entered?\n\nOK = replace them with the file’s hours\nCancel = only fill days that have no hours yet');
+  const go=()=>{ const r=new FileReader(); r.onload=()=>{ try{ const wb=XLSX.read(r.result,{type:'array',cellDates:true}); const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:true}); ui.notice=importHoursRows(rows, overwrite); render(); }catch(err){ alert('Couldn’t read that file: '+err.message); } }; r.readAsArrayBuffer(f); };
+  if(window.XLSX) go(); else { const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; sc.onload=go; sc.onerror=()=>alert('Couldn’t load the Excel reader. Check your connection.'); document.head.appendChild(sc); }
+});
 document.getElementById('rosterFile').addEventListener('change', e=>{
   const f=e.target.files[0]; if(!f) return;
   if(!canUploadRoster()){ e.target.value=''; alert('Only Paula Shoemaker and Trevor Morrissey can upload a roster file.'); return; }

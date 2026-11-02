@@ -44,6 +44,17 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .sctable tr.scdiv td{background:#f4f5f5;font-weight:600}.sctable tr.sctotal td{border-top:2px solid #000;font-weight:700}
 .scin{width:70px;height:28px;min-height:0;font-size:14px;padding:2px 6px;text-align:right;border:1px solid var(--line);border-radius:6px;background:#fffbea}
 .seg{display:inline-flex;gap:4px}.kpi small{display:block;font-size:11.5px;color:var(--ink-soft);margin-top:2px}
+.scbanner{display:flex;align-items:center;gap:20px;background:#000;color:#fff;border:3px solid var(--gold);border-radius:16px;padding:20px 24px;margin:0 0 18px;text-decoration:none;transition:transform .12s,box-shadow .12s}
+.scbanner:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(249,157,28,.35)}
+.scbanner .ic{width:66px;height:66px;border-radius:14px;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:36px;flex:none}
+.scbanner h2{margin:0 0 4px;font-size:24px;color:#fff}.scbanner p{margin:0;color:#cfd0d2;font-size:14px}.scb-main{flex:1;min-width:0}
+.scb-stats{display:flex;gap:10px}.scb-stat{background:#1d1d1f;border:1px solid #3a3a3d;border-radius:10px;padding:8px 12px;min-width:84px;text-align:center}
+.scb-stat b{display:block;font-size:20px;color:var(--gold)}.scb-stat span{font-size:11.5px;color:#cfd0d2}.scb-stat.miss b{color:#ff6b6b}
+.scbanner .go{background:var(--gold);color:#000;border-radius:10px;padding:12px 18px;font-weight:800;white-space:nowrap}
+@media (max-width:1000px){.scbanner{flex-wrap:wrap}.scb-stats{order:3;width:100%}.scb-stat{flex:1}}
+@media (max-width:560px){.scbanner{padding:14px;gap:12px}.scbanner .ic{width:48px;height:48px;font-size:26px}.scbanner h2{font-size:19px}.scbanner .go{width:100%;text-align:center}.scb-stat{min-width:0;padding:6px}.scb-stat b{font-size:16px}}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media (max-width:800px){.grid2{grid-template-columns:1fr}}
+.actbar{display:grid;grid-template-columns:170px 1fr 40px;gap:8px;align-items:center;margin:5px 0;font-size:13.5px}.actbar div{background:#eef0f0;border-radius:6px;height:12px;overflow:hidden}.actbar i{display:block;height:100%;background:var(--aqua)}.actbar b{text-align:right}
 .minis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 16px}
 @media (max-width:760px){.minis{grid-template-columns:1fr 1fr}}
 .mini{position:relative;display:flex;align-items:center;gap:10px;background:var(--surface);border:2px solid var(--tc,var(--line));border-radius:12px;padding:10px 12px;cursor:pointer;text-decoration:none;color:inherit;min-height:60px}
@@ -1771,7 +1782,8 @@ const GUIDES = {
       'Approve timecards in ADP on pay-period Sundays; the ADP Timecards page flags shifts to check.',
       'The <b>Event Activation Summary</b> emails automatically on Monday mornings to Paula, Trevor, Angelique and Chris, including cost per lead.',
       '<b>Cost per Lead</b> shows what each event cost (booth fee, wages, mileage, per diem, hotel, other) against its leads and appointments, by region and office, and flags events over target. Download it for Excel.',
-      'Submit your own expense report every Monday for the week before.' ]],
+      'Submit your own expense report every Monday for the week before.',
+      'So leadership can see how the hub is being used, it records which sections you open and key actions you take (like starting your day or approving an expense report). It never records what you type.' ]],
     ['Equipment', [
       '<b>Asset Inventory</b>: scan barcodes to check gear out, return it, or transfer it between offices; track condition and repairs.',
       'Marketers report where equipment is every night at check-out (home, office, venue or handed off).',
@@ -1982,6 +1994,99 @@ function scMiss(k,v){ const T=scTargets(); if(v===null||v===undefined) return fa
 function scCell(k,v,txt){ return `<td class="num ${scMiss(k,v)?'scred':''}">${txt}</td>`; }
 function scReportLine(){ const R=showReport(); if(!R) return `<span style="color:var(--warn)">No Tradeshow Master uploaded yet, so shows, cost, opps and goals come from the hub (ETACC + check-outs).</span>`;
   return `Tradeshow Master: <b>${esc(R.fileName||'uploaded file')}</b> · ${R.count||R.rows.length} shows · uploaded ${fmtStamp(R.uploadedAt)}${R.by?' by '+esc(R.by):''}.`; }
+/* ---------------- Hub user activity (leaders only) ----------------
+   Records which hub sections signed-in managers open and key actions they take (never what they type),
+   one small document per manager per day: peHubActivity/{yyyy-mm-dd}_{email key}
+   { email, day, firstAt, lastAt, sessions, views:{section:n}, actions:{action:n} }.
+   Only Paula, Trevor, Angelique and Chris can read it. Kept 180 days. Marketers (no sign-in) aren't tracked. */
+const ACT_LABELS = { startWeek:'Started week', startDay:'Started day', task:'Checked off a task', qAdd:'Added a quick task', saveEval:'Saved an evaluation', expApprove:'Approved an expense report', expReturn:'Returned an expense report', expSubmit:'Submitted own expense report', submitIn:'Checked a marketer in', submitOut:'Checked a marketer out', itemOut:'Checked out equipment', itemReturn:'Returned equipment', itemTransfer:'Transferred equipment', addAsset:'Added equipment', auditStart:'Started an inventory count', remSave:'Entered REM numbers', srFile:'Uploaded Tradeshow Master', sumCopy:'Copied the activation summary', costCsv:'Downloaded a report', scCsv:'Downloaded a report', auditCsv:'Downloaded a report', alertSave:'Changed alert settings', ratesSave:'Changed pay rates', copyLink:'Copied a check-in link' };
+const ACT_KEYS = new Set(Object.keys(ACT_LABELS));
+const ACT_KEEP_DAYS = 180;
+let actLastTab=null, actSessionSent=false;
+function actDocId(){ return todayIso()+'_'+String(S.user.email||'').toLowerCase().replace(/[^a-z0-9]+/g,'_'); }
+function actTrack(kind, key){
+  try{
+    if(!S.user || MARKETER_MODE || !S.user.email) return;
+    const now=Date.now(), id=actDocId();
+    if(S.mode==='live'){
+      const {fsM,db}=DB.fb, inc=fsM.increment(1), body={ email:String(S.user.email).toLowerCase(), day:todayIso(), lastAt:now };
+      if(kind==='session'){ body.sessions=inc; body.firstSeen=now; }
+      if(kind==='view') body.views={ [key]:inc };
+      if(kind==='action') body.actions={ [key]:inc };
+      fsM.setDoc(fsM.doc(db,'peHubActivity',id), body, { merge:true }).catch(e=>console.warn('activity',e.code||e.message));
+    } else {
+      S.activity=S.activity||{}; const d=S.activity[id]=S.activity[id]||{ email:String(S.user.email).toLowerCase(), day:todayIso(), views:{}, actions:{}, sessions:0 };
+      d.lastAt=now; d.firstSeen=d.firstSeen||now; if(kind==='session') d.sessions++; if(kind==='view') d.views[key]=(d.views[key]||0)+1; if(kind==='action') d.actions[key]=(d.actions[key]||0)+1;
+    }
+  }catch(e){ console.warn('activity',e); }
+}
+function actOnRender(){
+  if(!S.user || MARKETER_MODE) { actLastTab=null; return; }
+  if(!actSessionSent){ actSessionSent=true; actTrack('session'); }
+  const tab=ui.tab||'home'; if(tab!==actLastTab){ actLastTab=tab; actTrack('view', tab); }
+}
+function actKnownManagers(){
+  const m={}, add=(email,name,where)=>{ email=String(email||'').trim().toLowerCase(); if(!/@/.test(email)) return; const x=m[email]=m[email]||{ email, name:'', where:new Set() }; if(name&&!x.name) x.name=name; if(where) x.where.add(where); };
+  LEADERSHIP.forEach(p=>add(p.email,p.name,p.title));
+  ORG.forEach(d=>Object.entries(d.regions).forEach(([r,x])=>add(x.email,x.name,REGION_NAMES[r]||r)));
+  const c=alertCfg(); Object.entries(c.offices||{}).forEach(([o,v])=>splitEmails(v).forEach(e=>add(e,'',o)));
+  (S.sched.roster||[]).forEach(p=>{ if(p.email) { const e=String(p.email).toLowerCase(); if(m[e]&&!m[e].name) m[e].name=p.name; } });
+  return m;
+}
+function actRange(){ const t=todayIso(), r=ui.actRange||'7'; if(r==='week') return { from:mondayOf(t), to:t, label:'This week', days:daysBetween(mondayOf(t),t)+1 }; const n=+r; return { from:addDays(t,-(n-1)), to:t, label:`Last ${n} days`, days:n }; }
+function actRows(){
+  const R=actRange(), docs=Object.values(S.activity||{}).filter(d=>d.day>=R.from && d.day<=R.to), known=actKnownManagers(), by={};
+  Object.values(known).forEach(k=>{ by[k.email]={ email:k.email, name:k.name, where:[...k.where].slice(0,2).join(', '), days:new Set(), sessions:0, lastAt:0, views:{}, actions:{} }; });
+  docs.forEach(d=>{ const e=String(d.email||'').toLowerCase(); const x=by[e]=by[e]||{ email:e, name:'', where:'', days:new Set(), sessions:0, lastAt:0, views:{}, actions:{} };
+    x.days.add(d.day); x.sessions+=num(d.sessions); x.lastAt=Math.max(x.lastAt, num(d.lastAt));
+    Object.entries(d.views||{}).forEach(([k,v])=>x.views[k]=(x.views[k]||0)+num(v)); Object.entries(d.actions||{}).forEach(([k,v])=>x.actions[k]=(x.actions[k]||0)+num(v)); });
+  // last active ever (within loaded history), for people quiet in this range
+  Object.values(S.activity||{}).forEach(d=>{ const x=by[String(d.email||'').toLowerCase()]; if(x) x.everAt=Math.max(x.everAt||0, num(d.lastAt)); });
+  return { R, rows:Object.values(by).sort((a,b)=>(b.days.size-a.days.size)||((b.lastAt||0)-(a.lastAt||0))||(a.name||a.email).localeCompare(b.name||b.email)) };
+}
+const actSecName=k=>(SECTIONS[k]||['','Home'])[1]||k;
+function activityView(){
+  if(!S.user) return '<div class="card"><p class="muted">Sign in to see hub activity.</p></div>';
+  if(!isRemUser()) return '<div class="card"><p class="muted">Hub activity is available to Paula, Trevor, Angelique and Chris.</p></div>';
+  const {R,rows}=actRows(), active=rows.filter(r=>r.days.size), quiet=rows.filter(r=>!r.days.size);
+  const sec={}, acts={}; rows.forEach(r=>{ Object.entries(r.views).forEach(([k,v])=>sec[k]=(sec[k]||0)+v); Object.entries(r.actions).forEach(([k,v])=>{ const l=ACT_LABELS[k]||k; acts[l]=(acts[l]||0)+v; }); });
+  const secList=Object.entries(sec).sort((a,b)=>b[1]-a[1]), max=secList.length?secList[0][1]:1;
+  const actList=Object.entries(acts).sort((a,b)=>b[1]-a[1]);
+  const A=(r,k)=>r.actions[k]||0, top=r=>Object.entries(r.views).filter(([k])=>k!=='home').sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k])=>esc(actSecName(k))).join(', ')||'—';
+  const when=ts=>ts?fmtStamp(ts):'—';
+  const row=r=>{ const days=r.days.size, flag=!days; return `<tr ${flag?'style="background:#fdf1ef"':''}><td><b>${esc(r.name||r.email)}</b><div class="small muted">${esc(r.where||r.email)}</div></td>
+    <td class="small">${r.lastAt?when(r.lastAt):(r.everAt?'<span style="color:var(--red)">'+when(r.everAt)+'</span>':'<span style="color:var(--red);font-weight:700">Not in this period</span>')}</td>
+    <td class="num">${days} / ${R.days}</td><td class="num">${r.sessions}</td><td class="num">${A(r,'startWeek')}</td><td class="num">${A(r,'startDay')}</td><td class="num">${A(r,'task')}</td><td class="num">${A(r,'saveEval')}</td><td class="num">${A(r,'expApprove')+A(r,'expReturn')}</td><td class="num">${A(r,'submitIn')+A(r,'submitOut')}</td>
+    <td class="small">${top(r)}</td><td>${Object.keys(r.actions).length?`<details><summary class="small" style="cursor:pointer">All</summary><div class="small">${Object.entries(r.actions).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${esc(ACT_LABELS[k]||k)}: ${v}`).join('<br>')}</div></details>`:''}</td></tr>`; };
+  return `<div class="row" style="margin-bottom:10px;gap:6px;flex-wrap:wrap">${[['7','Last 7 days'],['week','This week'],['30','Last 30 days'],['90','Last 90 days']].map(([k,l])=>`<button class="btn sm ${(ui.actRange||'7')===k?'primary':''}" data-act="actRange" data-v="${k}">${l}</button>`).join('')}<span class="spacer"></span><button class="btn sm" data-act="actCsv">⬇ Download (Excel/CSV)</button></div>
+    <div class="card"><h2 style="margin-top:0">👀 Hub activity <span class="small muted">${esc(R.label)} · ${fmtMD(R.from)}–${fmtMD(R.to)}</span></h2>
+      <div class="kpis">${[[active.length,'Managers active'],[quiet.length,'Not active this period',quiet.length>0],[rows.reduce((t,r)=>t+r.sessions,0),'Sessions'],[rows.reduce((t,r)=>t+A(r,'startDay'),0),'“Start my day” used'],[rows.reduce((t,r)=>t+A(r,'task'),0),'Tasks checked off'],[rows.reduce((t,r)=>t+A(r,'saveEval'),0),'Evaluations saved']].map(([v,l,w])=>`<div class="kpi ${w?'warn':''}"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
+      ${quiet.length?`<div class="notice" style="margin:0">Not seen in the hub this period: ${quiet.map(r=>`<b>${esc(r.name||r.email)}</b>`).join(', ')}.</div>`:''}</div>
+    <div class="card"><h2 style="margin-top:0">By manager</h2><div style="overflow-x:auto"><table class="sctable"><thead><tr><th>Manager</th><th>Last active</th><th class="num">Days active</th><th class="num">Sessions</th><th class="num">Started week</th><th class="num">Started day</th><th class="num">Tasks done</th><th class="num">Evaluations</th><th class="num">Expense reviews</th><th class="num">Check-ins / outs</th><th>Most-used sections</th><th>Actions</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>
+      <div class="small muted" style="margin-top:6px">Managers come from the org chart, office supervisors in Alert settings, and anyone who signed in. ETACC and the schedule open inside the hub, so time spent in them counts as opening those sections; changes made inside them aren’t counted here.</div></div>
+    <div class="grid2"><div class="card"><h2 style="margin-top:0">Sections opened</h2>${secList.length?secList.map(([k,v])=>`<div class="actbar"><span>${esc(actSecName(k))}</span><div><i style="width:${Math.max(3,Math.round(v/max*100))}%"></i></div><b>${v}</b></div>`).join(''):'<div class="muted">No activity yet.</div>'}</div>
+      <div class="card"><h2 style="margin-top:0">Actions taken</h2>${actList.length?`<table><tbody>${actList.map(([l,v])=>`<tr><td>${esc(l)}</td><td class="num" style="text-align:right"><b>${v}</b></td></tr>`).join('')}</tbody></table>`:'<div class="muted">No actions yet.</div>'}</div></div>
+    <div class="small muted">Activity is recorded from today forward: which sections managers open and key actions they take, never what they type. Managers are told this in the how-to guide. Records older than ${ACT_KEEP_DAYS} days are deleted automatically.</div>`;
+}
+function actCsv(){
+  const {R,rows}=actRows(), A=(r,k)=>r.actions[k]||0;
+  const head=['Manager','Email','Region / office','Last active','Days active','Days in period','Sessions','Started week','Started day','Tasks checked off','Evaluations saved','Expense reports approved/returned','Check-ins/outs','Most-used sections',...Object.values(ACT_LABELS).filter((v,i,a)=>a.indexOf(v)===i)];
+  const lines=[head, ...rows.map(r=>{ const byLabel={}; Object.entries(r.actions).forEach(([k,v])=>{ const l=ACT_LABELS[k]||k; byLabel[l]=(byLabel[l]||0)+v; });
+    return [r.name,r.email,r.where,r.lastAt?new Date(r.lastAt).toLocaleString():'',r.days.size,R.days,r.sessions,A(r,'startWeek'),A(r,'startDay'),A(r,'task'),A(r,'saveEval'),A(r,'expApprove')+A(r,'expReturn'),A(r,'submitIn')+A(r,'submitOut'),Object.entries(r.views).filter(([k])=>k!=='home').sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k])=>actSecName(k)).join('; '),...Object.values(ACT_LABELS).filter((v,i,a)=>a.indexOf(v)===i).map(l=>byLabel[l]||0)]; })];
+  const csv=lines.map(l=>l.map(v=>{ v=String(v??''); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(',')).join('\r\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'})); a.download=`hub-activity_${R.from}_to_${R.to}.csv`; a.click();
+}
+async function actCleanup(){
+  if(S.mode!=='live' || !isRemUser() || actCleanup.done) return; actCleanup.done=true;
+  try{ const {fsM,db}=DB.fb, cutoff=addDays(todayIso(),-ACT_KEEP_DAYS); const snap=await fsM.getDocs(fsM.query(fsM.collection(db,'peHubActivity'), fsM.where('day','<',cutoff), fsM.limit(300))); for(const d of snap.docs) await fsM.deleteDoc(d.ref); }catch(e){ console.warn('activity cleanup',e.code||e.message); }
+}
+function scBanner(){
+  if(!S.user) return '';
+  const kw=ui.scWeek, kv=ui.scView; ui.scWeek=null; ui.scView='week'; const D=scData(), t=D.total, P=D.P; ui.scWeek=kw; ui.scView=kv;
+  const st=(v,l,miss)=>`<div class="scb-stat ${miss?'miss':''}"><b>${v}</b><span>${l}</span></div>`;
+  return `<a class="scbanner" href="#scorecard" data-tab="scorecard"><div class="ic">🏆</div><div class="scb-main"><h2>Event Marketing Scorecard</h2><p>Last week (${fmtMD(P.ws)}–${fmtMD(P.we)}) · ${t.shows} show${t.shows===1?'':'s'} · opps, goals, cost per opp and REM numbers by region</p></div>
+    <div class="scb-stats">${st(t.opps+(t.goal?' / '+t.goal:''),'Opps vs goal',scMiss('pctGoal',t.pctGoal))}${st(scPct(t.pctGoal),'To goal',scMiss('pctGoal',t.pctGoal))}${st(scMoney(t.cpo),'Cost / opp',scMiss('cpo',t.cpo))}${st(scPct(t.setRate),'Set rate',scMiss('setRate',t.setRate))}</div><span class="go">Open scorecard ↗</span></a>`;
+}
 function scorecardView(){
   if(!S.user) return '<div class="card"><p class="muted">Sign in (top right) to see the scorecard.</p></div>';
   const D=scData(), P=D.P, T=scTargets(), wk=P.ws, mtd=P.view==='mtd', lead=isLeadUser();
@@ -2178,7 +2283,7 @@ function mergeMgrTimes(){
 const DB = { fb:null };
 const LOCAL_KEY='peHub.local';
 function localLoad(){ try{ return JSON.parse(lsGet(LOCAL_KEY)||'{}'); }catch(e){ return {}; } }
-function localSave(){ lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, alertCfg:S.alertCfg, rates:S.rates, scManual:S.scManual, showReport:S.showReport, alerts:S.alerts, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
+function localSave(){ lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, alertCfg:S.alertCfg, rates:S.rates, scManual:S.scManual, activity:S.activity, showReport:S.showReport, alerts:S.alerts, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
 setInterval(()=>{ sweepAlerts(); }, 5*60000);
 async function initDB(){
   if(DEMO){ goLocal('demo'); return; }
@@ -2221,6 +2326,7 @@ async function initDB(){
         unsubs.push(F.onSnapshot(F.collection(db,'dashboardEvents'), snap=>{ const a=[]; snap.forEach(d=>a.push(Object.assign({id:d.id},d.data()))); S.etacc=a; render(); }, err=>{ S.etaccErr=err.code||err.message; render(); }));
         { const mk=String(u.email||'').toLowerCase().replace(/[^a-z0-9]+/g,'_'); unsubs.push(F.onSnapshot(F.doc(db,'peHubMgr',mk), snap=>{ if(snap.exists()){ S.mgr[mk]=mgrFromFs(snap.data()); render(); } }, err=>console.warn('mgr',err))); }
         unsubs.push(F.onSnapshot(F.collection(db,'peHubExpenses'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=Object.assign({id:d.id},d.data())); S.expenses=m; render(); }, err=>console.warn('expenses',err)));
+        if(REM_USERS.includes(String(u.email||'').toLowerCase())){ unsubs.push(F.onSnapshot(F.query(F.collection(db,'peHubActivity'), F.where('day','>=',addDays(todayIso(),-90))), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.activity=m; render(); }, err=>console.warn('activity',err))); setTimeout(actCleanup, 15000); }
         if(REM_USERS.includes(String(u.email||'').toLowerCase())) unsubs.push(F.onSnapshot(F.query(F.collection(db,'mail'), F.orderBy('createdAt','desc'), F.limit(25)), snap=>{ const a=[]; snap.forEach(d=>a.push(d.data())); S.mailRecent=a; render(); }, err=>console.warn('mail log',err)));
         unsubs.push(F.onSnapshot(F.query(F.collection(db,'peHubAlerts'), F.where('createdAt','>=',Date.now()-14*864e5)), snap=>{ const m={}; snap.forEach(d=>m[d.id]=Object.assign({id:d.id},d.data())); S.alerts=m; render(); }, err=>console.warn('alerts',err)));
         unsubs.push(F.onSnapshot(F.collection(db,'peHubShowReport'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.showReport=showReportFromDocs(m); render(); }, err=>console.warn('showReport',err)));
@@ -2237,7 +2343,7 @@ function goLocal(why){
   const L=localLoad();
   if(DEMO && !L.sched) seedDemo(); else {
     if(L.sched) S.sched=L.sched;
-    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; S.mgr=L.mgr||{}; S.training=L.training||null; S.alertCfg=L.alertCfg||null; S.rates=L.rates||null; S.scManual=L.scManual||{}; S.showReport=L.showReport||null; S.alerts=L.alerts||{}; ui.localPhotos=L.photos||{};
+    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; S.mgr=L.mgr||{}; S.training=L.training||null; S.alertCfg=L.alertCfg||null; S.rates=L.rates||null; S.scManual=L.scManual||{}; S.activity=L.activity||{}; S.showReport=L.showReport||null; S.alerts=L.alerts||{}; ui.localPhotos=L.photos||{};
   }
   if(DEMO){ S.user={email:'demo.manager@patio'}; }
   S.schedLoaded=true; render();
@@ -2326,6 +2432,7 @@ function compressImage(file){
 function render(){
   const app=document.getElementById('app');
   computeStates();
+  actOnRender();
   const keep=captureInputs();
   document.body.classList.toggle('marketer', MARKETER_MODE);
   app.innerHTML = `<div class="wrap">${header()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}`;
@@ -2348,7 +2455,7 @@ function header(){
     <div><h1>${MARKETER_MODE?'Event Check-In':'Event Activity Hub'}</h1><div class="asof">${stat}${S.mode==='local'&&!DEMO?` · not saving to the shared database (${esc(S.err)})`:''}</div></div>
     <div class="spacer"></div>${signin}</header>`;
 }
-const SECTIONS={ today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Marketer Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Asset Inventory & Check-Out'], evals:['📝','Post-Event Evaluations'], expenses:['🧾','Expense Reports'], travel:['🏨','Navan Travel'], adp:['⏱️','ADP Timecards'], myday:['☀️','My Day'], myweek:['▶️','My Week'], summary:['📊','Event Activation Summary'], training:['📚','Training'], alerts:['🔔','Alerts'], guide:['📖','How-to Guides'], costs:['💲','Cost per Lead'], scorecard:['🏆','Event Marketing Scorecard'], remnums:['✍️','REM Weekly Numbers'] };
+const SECTIONS={ today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Marketer Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Asset Inventory & Check-Out'], evals:['📝','Post-Event Evaluations'], expenses:['🧾','Expense Reports'], travel:['🏨','Navan Travel'], adp:['⏱️','ADP Timecards'], myday:['☀️','My Day'], myweek:['▶️','My Week'], summary:['📊','Event Activation Summary'], training:['📚','Training'], alerts:['🔔','Alerts'], guide:['📖','How-to Guides'], costs:['💲','Cost per Lead'], scorecard:['🏆','Event Marketing Scorecard'], remnums:['✍️','REM Weekly Numbers'], activity:['👀','Hub Activity'] };
 function tabs(){
   if(ui.tab==='home' || !SECTIONS[ui.tab]) return '';
   const [ic,l]=SECTIONS[ui.tab];
@@ -2378,7 +2485,8 @@ function tilesView(){
   return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span>${scopePicker()}</div>${staffBanner()}
   ${alertsBanner()}<div class="banners"><a class="teamsbanner" href="${TEAMS_HUB_URL}" target="_blank" rel="noopener"><div class="ic">👥</div><div style="flex:1"><h2>Team Resource Hub</h2><p>Guides, forms, standards and announcements in Microsoft Teams.</p></div><span class="go">Open in Teams ↗</span></a>
   <a class="teamsbanner trainbanner" href="#training" data-tab="training"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products, booth setup and standards.</p></div><span class="go">Open ↗</span></a></div>
-  <div class="row" style="margin:-6px 0 14px"><button class="btn" data-tab="guide">📖 How-to guides</button>${isRemUser()?'<button class="btn" data-tab="alerts">🔔 Alert settings</button>':''}${isRemUser()?'<button class="btn" data-tab="remnums">✍️ REM weekly numbers</button>':''}<button class="btn" data-tab="scorecard">🏆 Scorecard</button></div>
+  ${scBanner()}
+  <div class="row" style="margin:-6px 0 14px"><button class="btn" data-tab="guide">📖 How-to guides</button>${isRemUser()?'<button class="btn" data-tab="alerts">🔔 Alert settings</button>':''}${isRemUser()?'<button class="btn" data-tab="remnums">✍️ REM weekly numbers</button><button class="btn" data-tab="activity">👀 Hub activity</button>':''}</div>
   ${mgrBar()}
   <div class="minis">
     ${(()=>{ const f=adpRows(mondayOf(todayIso())).filter(x=>x.flag).length; return `<div class="mini" data-tab="adp" role="button" tabindex="0" style="--tc:var(--gold);--tcs:#fef0dc"><span class="ic">⏱️</span><span class="mt"><b>ADP</b><small class="${f?'warn':''}">${f?`${f} to double-check`:'Approve timecards'}</small></span>${f?`<span class="flag">${f}</span>`:''}</div>`; })()}
@@ -2394,7 +2502,6 @@ function tilesView(){
     ${tile('assets','Inventory, barcode check-out and returns, transfers and the annual count.', `${gear.length} items · ${out} out${overdue?` · ${overdue} overdue`:''}${repair?` · ${repair} in repair`:''}${low?` · ${low} to reorder`:''}`, overdue||low?'warn':'', (overdue+low)||'')}
     ${tile('evals','Manager post-event evaluations, pre-filled from check-outs.', due?`${due} waiting for evaluation`:'All caught up', due?'warn':'', due||'')}
     ${S.user?(()=>{ const t=todayIso(), rows=costRows(addDays(t,-27),t), T=costTotals(rows), f=rows.filter(costFlag).length; return tile('costs','What each event cost against the leads and appointments it brought in.', T.leads?`${$0(T.cpl)} per lead · last 4 weeks`:'No results in the last 4 weeks', f?'warn':'', f?`${f} over target`:''); })():''}
-    ${S.user?(()=>{ const kw=ui.scWeek, kv=ui.scView; ui.scWeek=null; ui.scView='week'; const D=scData(), t=D.total; ui.scWeek=kw; ui.scView=kv; return tile('scorecard','Weekly opps vs goal, cost per opp, set and cancel rates by region, with meets and sales.', t.shows?`Last week: ${t.opps} opps · ${scPct(t.pctGoal)} to goal`:'Open the scorecard', scMiss('pctGoal',t.pctGoal)?'warn':''); })():''}
     ${(()=>{ const w=Object.values(S.expenses).filter(x=>x.status==='submitted' && (!x.office||inOffice(x.office))).length; return tile('expenses','Weekly expense reports: mileage, per diem and receipts. Approve and send to accounting.', S.user?(w?`${w} waiting for approval`:'Nothing waiting'):'Sign in to review', w?'warn':'', w||''); })()}
   </div>${leaderCard()}</div>`;
 }
@@ -2416,6 +2523,7 @@ function body(){
     case 'costs': return costView();
     case 'scorecard': return scorecardView();
     case 'remnums': return remNumsView();
+    case 'activity': return activityView();
     case 'myday': return S.user?myDayView():'<div class="card">Sign in to see your day.</div>';
     case 'myweek': return S.user?myWeekView():'<div class="card">Sign in to see your week.</div>';
     case 'today': return homeView();
@@ -2716,6 +2824,7 @@ document.addEventListener('click', async ev=>{
   if(ev.target.matches && ev.target.matches('input[data-sel]')) return;
   if(ui.scopeOpen && !ev.target.closest('.scopewrap')){ ui.scopeOpen=false; render(); }
   const t=ev.target.closest('[data-act],[data-tab],[data-detail],[data-eval],[data-zoom],[data-item],[data-audit],[data-exp],[data-expview]'); if(!t) return;
+  if(t.dataset.act && ACT_KEYS.has(t.dataset.act)) actTrack('action', t.dataset.act);
   if(t.dataset.exp && !t.dataset.act){ const x=S.expenses[t.dataset.exp]; if(x){ ui.exp=JSON.parse(JSON.stringify(x)); ui.expErr=''; render(); window.scrollTo(0,0); } return; }
   if(t.dataset.expview && !t.dataset.act){ ui.expView=t.dataset.expview; render(); window.scrollTo(0,0); return; }
   if(t.dataset.item && !t.dataset.act){ ev.preventDefault(); ui.item=t.dataset.item; render(); return; }
@@ -2773,6 +2882,8 @@ document.addEventListener('click', async ev=>{
   if(a==='scView'){ ui.scView=t.dataset.v; render(); return; }
   if(a==='scWk'){ const n=+t.dataset.n, last=addDays(mondayOf(todayIso()),-7); ui.scWeek = n===0 ? last : addDays(ui.scWeek||last, n); render(); return; }
   if(a==='scCsv'){ scCsv(); return; }
+  if(a==='actRange'){ ui.actRange=t.dataset.v; render(); return; }
+  if(a==='actCsv'){ actCsv(); return; }
   if(a==='srFile'){ document.getElementById('srFile').click(); return; }
   if(a==='remImport'){ document.getElementById('remFile').click(); return; }
   if(a==='remSave'){ const vals=remRead(); ui.busy=true; render(); try{ await remSave(vals); const R=remDraft(); ui.remMsg=`Saved ${REGION_NAMES[R.region]||R.region} for ${R.period==='week'?'the week of '+fmtMD(R.week):R.month}. Pick the next region.`; }catch(e){ ui.remMsg='Couldn’t save: '+(e.code||e.message); } ui.busy=false; render(); return; }
@@ -2883,6 +2994,7 @@ document.addEventListener('change', async ev=>{
   if(el.dataset.gear){ const p=ui.panel; p.note=(document.querySelector('[data-keep="in-note"]')||{}).value; p.gear = el.checked ? [...p.gear, el.dataset.gear] : p.gear.filter(x=>x!==el.dataset.gear); return; }
   const a=el.dataset.act;
   if(a==='sumFrom'||a==='sumTo'){ const r=Object.assign({}, sumRange()); r[a==='sumFrom'?'from':'to']=el.value; if(r.to<r.from) r.to=r.from; r.label='Custom'; ui.sumRange=r; ui.sumNote=''; render(); return; }
+  if(el.dataset.mtask && el.checked) actTrack('action','task');
   if(el.dataset.mtask){ const [kk,id]=el.dataset.mtask.split('|'), [kind,key]=[kk.slice(0,1),kk.slice(2)], m=mgrDoc(), coll=kind==='d'?'days':'weeks';
     const all=Object.assign({}, m[coll]||{}); const rec=Object.assign({}, all[key]||{}); const done=Object.assign({}, rec.done||{});
     if(el.checked) done[id]=Date.now(); else delete done[id]; rec.done=done; all[key]=rec; await guard(()=>saveMgr({ [coll]:all })); return; }

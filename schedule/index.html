@@ -1204,19 +1204,25 @@ function importHoursRows(rows, overwrite){
   const cols=Object.keys(rows[0]), col=re=>cols.find(c=>re.test(c));
   const cName=col(/event\s*name|^event$|^name$/i), cStart=col(/start\s*date|event\s*start/i), cDate=col(/^date$|show\s*date|day/i), cOpen=col(/open|^start$|start\s*time|from/i), cClose=col(/close|^end$|end\s*time|^to$|stop/i), cOff=col(/branch|office/i);
   if(!cName || !cDate || !cOpen || !cClose) return 'The file needs these columns: Event Name, Date, Open, Close (Start Date and Branch help match).';
-  let days=0, skipped=0; const evs=new Set(), miss=new Set();
+  let days=0, skipped=0, aheadDays=0; const evs=new Set(), miss=new Set(), ahead=new Set();
   rows.forEach(r=>{
     const name=nn(r[cName]), date=parseDateCell(r[cDate]), st=parseTimeCell(r[cOpen]), en=parseTimeCell(r[cClose]), sd=cStart?parseDateCell(r[cStart]):'', off=cOff?nn(r[cOff]):'';
     if(!name || !date || !st || !en) return;
     const cand=(data.events||[]).filter(e=>nn(e.name)===name && (e.days||[]).some(d=>d.date===date) && (!sd || e.start===sd) && (!off || nn(e.office).includes(off.split(' ')[0]) || off.includes(nn(e.office).split(' ')[0])));
-    if(!cand.length){ miss.add(String(r[cName])); return; }
+    if(!cand.length){
+      // Not on the schedule yet (e.g. still Researching): save the hours ahead under the event's key so they appear once it's approved.
+      const rawOff=cOff?String(r[cOff]||'').trim():'';
+      if(rawOff && sd){ const k=eventKey(rawOff, String(r[cName]).trim(), sd); const det=data.details[k]=data.details[k]||{ booth:'', setup:'', times:{} }; det.times=det.times||{};
+        if(det.times[date] && (det.times[date].start||det.times[date].stop) && !overwrite){ skipped++; return; }
+        det.times[date]={ start:st, stop:en }; aheadDays++; ahead.add(k); return; }
+      miss.add(String(r[cName])); return; }
     cand.forEach(e=>{ const det=data.details[e.key]=data.details[e.key]||{ booth:'', setup:'', times:{} }; det.times=det.times||{};
       const has=det.times[date] && (det.times[date].start||det.times[date].stop), d=(e.days||[]).find(x=>x.date===date), hasEt=d && (d._s||d._t);
       if((has||hasEt) && !overwrite){ skipped++; return; }
       det.times[date]={ start:st, stop:en }; days++; evs.add(e.key); });
   });
   save(); if(cloud.status==='live' && cloud.user) saveSchedule(); render();
-  return `Added hours for ${days} day${days===1?'':'s'} across ${evs.size} event${evs.size===1?'':'s'}.${skipped?` Skipped ${skipped} day${skipped===1?'':'s'} that already had hours.`:''}${miss.size?` Not found on the schedule: ${[...miss].slice(0,8).join('; ')}${miss.size>8?'…':''}.`:''}`;
+  return `Added hours for ${days} day${days===1?'':'s'} across ${evs.size} event${evs.size===1?'':'s'}.${skipped?` Skipped ${skipped} day${skipped===1?'':'s'} that already had hours.`:''}${ahead.size?` Saved ahead ${aheadDays} day${aheadDays===1?'':'s'} for ${ahead.size} event${ahead.size===1?'':'s'} not on the schedule yet — they'll show once those events are approved.`:''}${miss.size?` Not found on the schedule: ${[...miss].slice(0,8).join('; ')}${miss.size>8?'…':''}.`:''}`;
 }
 document.getElementById('hoursFile').addEventListener('change', e=>{
   const f=e.target.files[0]; e.target.value=''; if(!f) return;

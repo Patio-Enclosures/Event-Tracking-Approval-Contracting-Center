@@ -6654,7 +6654,7 @@ function renderEventDetail(ev){
     const authorized = isAuthorizedApprover();
     if(missing.length===0){
       decisionButtons = `
-        <div class="decision-note">Approved — a PDF summary was downloaded. Email and Teams notification are optional, below. Ready to process contract.${!authorized ? ` <span style="color:var(--red);">Only authorized approvers can submit for contract processing — ${state.userName ? `"${escapeHtml(state.userName)}" isn't on that list` : 'you need to be signed in'}.</span>` : ''}</div>
+        <div class="decision-note">Approved — a PDF summary was downloaded. Email notification is optional, below. Ready to process contract.${!authorized ? ` <span style="color:var(--red);">Only authorized approvers can submit for contract processing — ${state.userName ? `"${escapeHtml(state.userName)}" isn't on that list` : 'you need to be signed in'}.</span>` : ''}</div>
         <div class="decision-bar-actions">
           <button class="btn btn-outline btn-sm" data-research="${ev.id}">Return to Research</button>
           <button class="btn btn-outline btn-sm" data-regen="${ev.id}">Download PDF Again</button>
@@ -6662,7 +6662,6 @@ function renderEventDetail(ev){
           ${authorized
             ? `<button class="btn btn-outline btn-sm" data-email-contracting="${ev.id}">📧 Email for Contracting</button>`
             : `<button class="btn btn-outline btn-sm" disabled title="Only authorized approvers can send this">📧 Email for Contracting</button>`}
-          ${state.teamsWebhookUrl ? `<button class="btn btn-outline btn-sm" data-notify-teams="${ev.id}">Notify Teams</button>` : ''}
           <button class="btn btn-outline btn-sm" data-notpursuing="${ev.id}">Not Pursuing</button>
           <button class="btn btn-red btn-sm" data-deny="${ev.id}">Denied by Approver</button>
           ${authorized
@@ -6822,7 +6821,6 @@ function renderNotifyPrompt(){
     <div class="notify-prompt-body">"<strong>${escapeHtml(ev.eventName)}</strong>" is ready — let your supervisor know?</div>
     <div class="notify-prompt-actions">
       <button class="btn btn-outline btn-sm" id="notifyPromptSkip">Skip</button>
-      ${state.teamsWebhookUrl ? `<button class="btn btn-outline btn-sm" id="notifyPromptTeams">Notify Teams</button>` : ''}
       <button class="btn btn-primary btn-sm" id="notifyPromptEmail">Email Supervisor</button>
     </div>
   </div>`;
@@ -7368,25 +7366,6 @@ function renderSettingsPanel(){
         <button class="btn btn-primary btn-sm" id="saveApproversBtn">Save Approvers</button>
       </div>
     </div>
-    <div class="field-group">
-      <div class="field-group-title">Microsoft Teams Webhook</div>
-      <div class="hint" style="margin-bottom:10px;">Paste an Incoming Webhook URL from a Teams channel (Channel ⋯ → Connectors → Incoming Webhook). When an event is submitted for approval, a card is posted there automatically — shared across everyone using this dashboard.</div>
-      <div class="field">
-        <label>Webhook URL</label>
-        <input id="f_teamsWebhook" value="${escapeHtml(state.teamsWebhookUrl)}" placeholder="https://yourtenant.webhook.office.com/..."/>
-      </div>
-      <div class="field">
-        <label>Alert Sender Name</label>
-        <input id="f_teamsAlertName" value="${escapeHtml(state.teamsAlertName)}" placeholder="Event Tracking, Approval & Contracting Center"/>
-      </div>
-      <div class="hint" style="margin-top:6px;">This name appears as the sender on every card posted to the channel, so it's clear where the alert came from.</div>
-      <div class="hint" style="margin-top:6px;">This request is sent directly from your browser. Some tenants block this due to CORS — use "Send Test Message" below to confirm it actually arrives before relying on it. If it's blocked, a Power Automate "When an HTTP request is received" flow works as a reliable substitute for this URL.</div>
-      ${state.teamsWebhookStatus ? `<div class="hint" style="margin-top:10px;color:var(--accent-dark);font-weight:600;">${escapeHtml(state.teamsWebhookStatus)}</div>` : ''}
-    </div>
-  </div>
-  <div class="panel-footer">
-    <button class="btn btn-outline" id="testWebhookBtn">Send Test Message</button>
-    <button class="btn btn-primary" id="saveWebhookBtn">Save</button>
   </div>
   `;
 }

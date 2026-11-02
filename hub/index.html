@@ -85,6 +85,11 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .wopt{display:flex;align-items:center;gap:10px;text-align:left;background:#fff;border:2px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;font:inherit;color:inherit;min-height:56px}
 .wopt:hover{border-color:var(--aqua);background:#f3fbfc}.wopt.pri{border-color:var(--aqua);background:#e0f4f6}.wopt .ic{font-size:22px}.wopt .wt{display:flex;flex-direction:column}.wopt small{color:var(--ink-soft);font-size:12px}
 .wquote{margin-top:14px;background:linear-gradient(90deg,#fef0dc,#fff);border-left:4px solid var(--gold);border-radius:8px;padding:10px 12px;font-style:italic;color:#333}.wquote span{display:block;font-style:normal;font-size:11.5px;font-weight:700;color:#b46b00;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+.undotoast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:150;background:#111;color:#fff;border-radius:12px;padding:10px 12px 10px 16px;display:flex;align-items:center;gap:10px;box-shadow:0 10px 30px rgba(0,0,0,.3);font-size:14px}
+.undotoast .btn{background:#fff;color:#000}.undotoast .btn[data-act="undo"]{background:var(--gold);border-color:var(--gold);font-weight:700}
+@media (max-width:700px){.undotoast{bottom:84px;width:calc(100% - 24px)}}
+.award{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:#fef8ee;border:1px solid #fde3bd;margin-bottom:6px}.award .ic{font-size:22px}
+.recog{border-color:var(--gold)}
 .minis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 16px}
 @media (max-width:760px){.minis{grid-template-columns:1fr 1fr}}
 .mini{position:relative;display:flex;align-items:center;gap:10px;background:var(--surface);border:2px solid var(--tc,var(--line));border-radius:12px;padding:10px 12px;cursor:pointer;text-decoration:none;color:inherit;min-height:60px}
@@ -1123,7 +1128,7 @@ const DEFAULT_MGR_TASKS = [
   { id:'su3', when:'dow:0', cond:'payday', group:'Wrap up the weekend', text:'Pay period ends today: review timesheets for accuracy and approve timecards (payday is Friday)', links:[['ADP',LINKS.adp]], tab:'adp', auto:'a-adp' },
   { id:'su4', when:'dow:0', group:'Wrap up the weekend', text:'Send 0-lead events to your direct manager with an explanation (by Monday 9 am)', tab:'evals', auto:'a-zero' },
   // Monday
-  { id:'mo1', when:'dow:1', group:'Administrative tasks', text:'Review the upcoming schedule of events and confirm your upcoming shows', links:[['Exhibit Day',LINKS.exhibitDay]], tab:'schedule' },
+  { id:'mo1', when:'dow:1', group:'Administrative tasks', text:'Review the upcoming schedule of events and confirm your upcoming events', links:[['Exhibit Day',LINKS.exhibitDay]], tab:'schedule' },
   { id:'mo0', when:'dow:1', group:'Administrative tasks', text:'Send the event activation summary (leads, 0-lead events, events not activated) to leadership', tab:'summary' },
   { id:'mo2', when:'dow:1', group:'Administrative tasks', text:'Confirm previous and new shows are listed correctly on the Master and the booking tool (Master is emailed Mon/Wed/Fri)', links:[['Booking tool',LINKS.booking]] },
   { id:'mo12', when:'dow:1', group:'Administrative tasks', text:'Review and approve your team’s expense reports (submitted Sunday night)', tab:'expenses', auto:'a-exp' },
@@ -1132,7 +1137,7 @@ const DEFAULT_MGR_TASKS = [
   { id:'mo3', when:'dow:1', group:'Administrative tasks', text:'Code credit card transactions', links:[['PaymentNet',LINKS.paymentNet]] },
   { id:'mo4', when:'dow:1', group:'Administrative tasks', text:'Add projected costs for NEW events in Exhibit Day', links:[['Exhibit Day',LINKS.exhibitDay]], tab:'events' },
   { id:'mo5', when:'dow:1', group:'Administrative tasks', text:'Reconcile leads using PCMS & Tableau', links:[['PCMS',LINKS.pcms],['Tableau',LINKS.tableau]] },
-  { id:'mo6', when:'dow:1', group:'Administrative tasks', text:'Confirm all NEW marketers have a booking-tool username & password before their 1st show', links:[['Booking tool',LINKS.booking]] },
+  { id:'mo6', when:'dow:1', group:'Administrative tasks', text:'Confirm all NEW marketers have a booking-tool username & password before their 1st event', links:[['Booking tool',LINKS.booking]] },
   { id:'mo7', when:'dow:1', group:'Recruiting & hiring', text:'iCIMS: send 1st-contact emails to all new applicants', links:[['ADP',LINKS.adp]] },
   { id:'mo8', when:'dow:1', group:'Recruiting & hiring', text:'Reject non-responsive candidates from prior communication' },
   { id:'mo9', when:'dow:1', group:'Recruiting & hiring', text:'Conduct scheduled phone screenings and/or interviews' },
@@ -1380,16 +1385,17 @@ function summaryHtml(from, to, forEmail){
   const kpi=(n,l)=>`<td style="${td}text-align:center"><div style="font:700 20px Helvetica Neue,Helvetica,Arial,sans-serif">${n}</div><div style="${F}color:#5a6760">${l}</div></td>`;
   return `<div style="${F}">
     <p style="${F}">Event activation summary for <b>${esc(scopeLabel())}</b>, <b>${fmtLong(from)} – ${fmtLong(to)}</b>.</p>
-    <table style="border-collapse:collapse;margin:6px 0 10px"><tr>${kpi(rows.length,'Events')}${kpi(act.length,'Activated')}${kpi(not.length,'Not activated')}${kpi(L,'Total leads')}${kpi(A,'Appointments')}${kpi(H?round1(L/H):0,'Leads / hour')}${kpi(zero.length,'Activated, 0 leads')}</tr></table>
-    ${h('By office')}${tbl(['Office','Events','Activated','Not activated','Leads','Appts','0-lead events'], Object.entries(byOff).sort().map(([k,o])=>`<tr><td style="${td}">${esc(k)}</td><td style="${td}">${o.ev}</td><td style="${td}">${o.act}</td><td style="${td}">${o.not}</td><td style="${td}">${o.leads}</td><td style="${td}">${o.appts}</td><td style="${td}">${o.zero}</td></tr>`).join(''))}
+    <table style="border-collapse:collapse;margin:6px 0 10px"><tr>${kpi(rows.length,'Events')}${kpi(act.length,'Activated')}${kpi(not.length,'Not activated')}${kpi(L,'Total leads')}${kpi(A,'Opps')}${kpi(H?round1(L/H):0,'Leads / hour')}${kpi(zero.length,'Activated, 0 leads')}</tr></table>
+    ${h('By office')}${tbl(['Office','Events','Activated','Not activated','Leads','Opps','0-lead events'], Object.entries(byOff).sort().map(([k,o])=>`<tr><td style="${td}">${esc(k)}</td><td style="${td}">${o.ev}</td><td style="${td}">${o.act}</td><td style="${td}">${o.not}</td><td style="${td}">${o.leads}</td><td style="${td}">${o.appts}</td><td style="${td}">${o.zero}</td></tr>`).join(''))}
     ${h(`Activated events with zero leads (${zero.length})`)}
     ${zero.length?tbl(['Event','Office','Dates','Who worked','Hours','Traffic','Issues & notes','Manager evaluation'], zero.map(x=>`<tr><td style="${td}"><b>${esc(x.e.name)}</b>${x.e.venueName?`<br><span style="color:#5a6760">${esc(x.e.venueName)}</span>`:''}</td><td style="${td}">${esc(x.e.office||'')}</td><td style="${td}">${fmtMD(x.e.start)}${x.e.end&&x.e.end!==x.e.start?'–'+fmtMD(x.e.end):''}</td><td style="${td}">${esc(x.names.join(', '))}</td><td style="${td}">${round1(x.hrs)}</td><td style="${td}">${esc(x.traffic||'')}</td><td style="${td}">${esc([...x.issues,...x.notes].join(' | ')||'—')}</td><td style="${td}">${esc([x.ev.overallEventRating?`Org. rating ${x.ev.overallEventRating}/5`:'', x.ev.issuesEncountered, x.ev.notesForNextYear].filter(Boolean).join(' | ')||'Not evaluated yet')}</td></tr>`).join('')):`<p style="${F}color:#5a6760">None.</p>`}
     ${h(`Events not activated (${not.length})`)}
     ${not.length?tbl(['Event','Office','Dates','Status','Reason','Scheduled shifts'], not.map(x=>`<tr><td style="${td}"><b>${esc(x.e.name)}</b>${x.e.venueName?`<br><span style="color:#5a6760">${esc(x.e.venueName)}</span>`:''}</td><td style="${td}">${esc(x.e.office||'')}</td><td style="${td}">${fmtMD(x.e.start)}${x.e.end&&x.e.end!==x.e.start?'–'+fmtMD(x.e.end):''}</td><td style="${td}">${esc(x.status)}${x.inferred?' <i>(no evaluation yet)</i>':''}</td><td style="${td}${/needed/.test(x.reason)?'color:#b42318;font-weight:600;':''}">${esc(x.reason||'—')}</td><td style="${td}">${x.scheduled}</td></tr>`).join('')):`<p style="${F}color:#5a6760">None.</p>`}
     ${h(`All activated events (${act.length})`)}
-    ${act.length?tbl(['Event','Office','Dates','Marketers','Leads','Appts','Hours','Leads/hr'], act.map(x=>`<tr><td style="${td}">${esc(x.e.name)}</td><td style="${td}">${esc(x.e.office||'')}</td><td style="${td}">${fmtMD(x.e.start)}${x.e.end&&x.e.end!==x.e.start?'–'+fmtMD(x.e.end):''}</td><td style="${td}">${x.names.length}</td><td style="${td}${x.leads?'':'color:#b42318;font-weight:600;'}">${x.leads}</td><td style="${td}">${x.appts}</td><td style="${td}">${round1(x.hrs)}</td><td style="${td}">${x.hrs?round1(x.leads/x.hrs):0}</td></tr>`).join('')):`<p style="${F}color:#5a6760">None.</p>`}
+    ${act.length?tbl(['Event','Office','Dates','Marketers','Leads','Opps','Hours','Leads/hr'], act.map(x=>`<tr><td style="${td}">${esc(x.e.name)}</td><td style="${td}">${esc(x.e.office||'')}</td><td style="${td}">${fmtMD(x.e.start)}${x.e.end&&x.e.end!==x.e.start?'–'+fmtMD(x.e.end):''}</td><td style="${td}">${x.names.length}</td><td style="${td}${x.leads?'':'color:#b42318;font-weight:600;'}">${x.leads}</td><td style="${td}">${x.appts}</td><td style="${td}">${round1(x.hrs)}</td><td style="${td}">${x.hrs?round1(x.leads/x.hrs):0}</td></tr>`).join('')):`<p style="${F}color:#5a6760">None.</p>`}
     ${costSummaryHtml(from,to)}
-    ${forEmail?`<p style="${F}color:#5a6760">Leads, appointments and hours come from marketer check-outs in the Event Hub; statuses and reasons from post-event evaluations.</p>`:''}
+    ${forEmail?scorecardEmailHtml():''}
+    ${forEmail?`<p style="${F}color:#5a6760">Leads, opps and hours come from marketer check-outs in the Event Hub; statuses and reasons from post-event evaluations.</p>`:''}
   </div>`;
 }
 function summarySubject(from,to){ return `Event activation summary – ${scopeLabel()} – ${fmtMD(from)} to ${fmtMD(to)}`; }
@@ -1554,8 +1560,8 @@ function mailShell(title, bodyHtml){
     <p style="margin-top:16px"><a href="${SITE}hub/" style="background:#00A7B7;color:#000;text-decoration:none;padding:7px 12px;border-radius:6px;font-weight:600">Open the Event Hub</a></p>
     <p style="color:#5a6760;font-size:12px">Automatic alert from the Event Activity Hub.</p></div></div>`;
 }
-const ALERT_TAB = { late:'today', noshow:'today', noout:'today', issue:'today', expense:'expenses', summary:'summary', newmgr:'alerts', test:'alerts' };
-const ALERT_ICON = { late:'⏰', noshow:'🚫', noout:'⌛', issue:'⚠️', expense:'🧾', summary:'📊', newmgr:'👋', test:'🔔' };
+const ALERT_TAB = { late:'today', noshow:'today', noout:'today', issue:'today', expense:'expenses', summary:'summary', newmgr:'alerts', test:'alerts', rem:'remnums' };
+const ALERT_ICON = { late:'⏰', noshow:'🚫', noout:'⌛', issue:'⚠️', expense:'🧾', summary:'📊', newmgr:'👋', test:'🔔', rem:'✍️' };
 function htmlText(h){ const m=String(h||'').match(/<p>([\s\S]*?)<\/p>/); const d=document.createElement('div'); d.innerHTML=m?m[1]:''; return (d.textContent||'').trim().slice(0,300); }
 async function queueMail(id, src){
   const mail={ to:cleanList(src.to||[]), cc:cleanList(src.cc||[]), message:{ subject:src.subject, html:src.html }, kind:src.kind||'', createdAt:Date.now() };
@@ -1587,7 +1593,7 @@ async function alertCheckout(c){
   if(!iss.length && !bad.length) return;
   const r=alertRecipients(c.office);
   await queueMail('issue-'+c.id, { ...r, office:c.office, kind:'issue', subject:`Issue reported: ${c.eventName} (${c.personName})`,
-    html:mailShell('Issue reported at check-out', shiftTable(c, row2('Issues',iss.map(esc).join('<br>'))+row2('Booth gear',bad.join('<br>'))+row2('Equipment tonight',esc(EQUIP_WHERE[c.equipWhere]||'')+(c.equipNote?' – '+esc(c.equipNote):''))+row2('Leads / appts',`${num(c.leads)} / ${num(c.appts)}`))) });
+    html:mailShell('Issue reported at check-out', shiftTable(c, row2('Issues',iss.map(esc).join('<br>'))+row2('Booth gear',bad.join('<br>'))+row2('Equipment tonight',esc(EQUIP_WHERE[c.equipWhere]||'')+(c.equipNote?' – '+esc(c.equipNote):''))+row2('Leads / opps',`${num(c.leads)} / ${num(c.appts)}`))) });
 }
 async function alertExpenseSubmitted(x){
   const r=alertRecipients(x.office||(person(x.personId)||{}).office||'');
@@ -1619,6 +1625,7 @@ async function sweepAlerts(){
         html:mailShell('Shift ended without a check-out', `<p>${esc(c.personName)} checked in at ${fmtClock(c.inAt)} but hasn’t checked out, and the shift ended at <b>${esc(fmt12(s.day.stop))}</b>. Results and equipment status are missing.</p>`+shiftTable(c)) });
     }
   }
+  try{ await remReminderSweep(); }catch(e){ console.warn('rem reminder',e); }
   // Weekly activation summary: Monday 8 am, covering last Monday–Sunday, all regions.
   const now=new Date();
   if(now.getDay()===SUMMARY_SEND.dow && now.getHours()>=SUMMARY_SEND.hour && S.etacc!==null && S.evalsLoaded){
@@ -1741,14 +1748,14 @@ function shortcutCard(){
   const ios=`<ol class="small" style="margin:4px 0 0 18px;padding:0"><li>Open this page in <b>Safari</b>.</li><li>Tap the <b>Share</b> button (square with an arrow).</li><li>Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.</li></ol>`;
   const and=`<ol class="small" style="margin:4px 0 0 18px;padding:0"><li>Open this page in <b>Chrome</b>.</li><li>Tap the <b>⋮</b> menu (top right).</li><li>Tap <b>Add to Home screen</b> (or <b>Install app</b>), then <b>Add</b>.</li></ol>`;
   return `<div class="card" style="border-color:var(--aqua)"><div class="row"><h2 style="margin:0;flex:1">📲 Add Event Check-In to your home screen</h2><button class="btn sm" data-act="hideShortcut">Hide</button></div>
-    <div class="small muted" style="margin:4px 0">One tap to check in at every show, like an app.</div>
+    <div class="small muted" style="margin:4px 0">One tap to check in at every event, like an app.</div>
     ${PHONE_OS==='ios'?ios:PHONE_OS==='android'?and:`<b class="small">iPhone</b>${ios}<b class="small">Android</b>${and}`}</div>`;
 }
 
 /* ---------------- HOW-TO GUIDES ---------------- */
 const GUIDES = {
   marketer: { title:'Marketer guide: checking in and out', sections:[
-    ['Before your first show', [
+    ['Before your first event', [
       'Open the check-in link from your schedule email (or the one your manager texted you).',
       'Add it to your home screen so it opens like an app (see “Add to your home screen” below).',
       'Install the ADP app on your phone. The check-in page has buttons for the App Store and Google Play.',
@@ -1763,10 +1770,10 @@ const GUIDES = {
       'Clock in on ADP, tick <b>I’ve clocked in on ADP</b>, then tap <b>Check in</b>.' ]],
     ['Checking out (end of your shift)', [
       'Tap <b>Check out</b> on your shift.',
-      'Enter <b>leads</b> and <b>appointments set</b> (use 0 if none) and foot traffic.',
+      'Enter <b>leads</b> and <b>opps</b> (appointments set) (use 0 if none) and foot traffic.',
       'Enter giveaways and print you used.',
       'Tell us what happened to each piece of booth gear (returned good, needs repair, damaged, missing, or keeping it).',
-      '<b>Where is the event equipment tonight?</b> (required): kept at your home, returned to the office, left at the venue for a multi-day show, or handed to another marketer (say who).',
+      '<b>Where is the event equipment tonight?</b> (required): kept at your home, returned to the office, left at the venue for a multi-day event, or handed to another marketer (say who).',
       'Report any issues: your manager is alerted right away.',
       'Clock out on ADP, tick <b>I’ve clocked out on ADP</b>, then tap <b>Check out</b>.' ]],
     ['Bad signal at the venue', [
@@ -1811,12 +1818,12 @@ const GUIDES = {
       'Approve or return <b>Expense reports</b>. Approved reports go to Accounts Payable as a PDF with receipts.',
       'Approve timecards in ADP on pay-period Sundays; the ADP Timecards page flags shifts to check.',
       'The <b>Event Activation Summary</b> emails automatically on Monday mornings to Paula, Trevor, Angelique and Chris, including cost per lead.',
-      '<b>Cost per Lead</b> shows what each event cost (booth fee, wages, mileage, per diem, hotel, other) against its leads and appointments, by region and office, and flags events over target. Download it for Excel.',
+      '<b>Cost per Lead</b> shows what each event cost (booth fee, wages, mileage, per diem, hotel, other) against its leads and opps, by region and office, and flags events over target. Download it for Excel.',
       'Submit your own expense report every Monday for the week before.',
       'So leadership can see how the hub is being used, it records which sections you open and key actions you take (like starting your day or approving an expense report). It never records what you type.' ]],
     ['Scorecard and reports', [
       'The <b>🏆 Event Marketing Scorecard</b> on the home page shows last week’s shows: opps against goal, cost per opp, set and cancel rates, by region. Switch to <b>Month to date</b> for sales and $/MAR. The date at the top shows when it was last updated.',
-      'Show cost, opps and goals come from the Tradeshow Master that Paula or Trevor upload each Monday. Until it’s uploaded, the scorecard uses the hub’s own check-out results and ETACC goals.',
+      'Event cost, opps and goals come from the Tradeshow Master that Paula or Trevor upload each Monday. Until it’s uploaded, the scorecard uses the hub’s own check-out results and ETACC goals.',
       'Paula, Trevor, Angelique and Chris enter cancels, meets, labor and expenses each Monday on <b>REM weekly numbers</b>, and sales month to date at month end.',
       'Red cells missed their target. Use the region selector to see your division, region or office, and <b>Download</b> to get a spreadsheet.' ]],
     ['Equipment', [
@@ -1843,7 +1850,7 @@ function quickAdd(scope, key){
 function extraTasks(scope, key){ const m=mgrDoc(), log=((scope==='day'?m.days:m.weeks)||{})[key]||{}; return (log.extra||[]).map(x=>Object.assign({ group:'Added for '+(scope==='day'?'today':'this week'), oneTime:true, scope, key }, x)); }
 
 /* =====================================================================
-   COST PER LEAD: what each event cost vs. the leads and appointments it
+   COST PER LEAD: what each event cost vs. the leads and opps it
    produced. Costs: booth/contract fee (ETACC), marketer wages, mileage,
    per diem, phone and misc (approved expense reports or the evaluation's
    actual costs), and hotel nights (ETACC estimate).
@@ -1905,17 +1912,17 @@ function costView(){
   const rows=costRows(r.from,r.to), T=costTotals(rows), RD=ratesDoc();
   const grp=keyf=>{ const g={}; rows.forEach(x=>{ const k=keyf(x)||'(none)'; (g[k]=g[k]||[]).push(x); }); return Object.entries(g).map(([k,list])=>[k,costTotals(list)]).sort((a,b)=>(b[1].cpl??0)-(a[1].cpl??0)); };
   const kpi=(n,l,warn)=>`<div class="kpi ${warn?'warn':''}"><b>${n}</b><span>${l}</span></div>`;
-  const gtable=(title,list)=>`<div class="card"><h2>${title}</h2><table><thead><tr><th></th><th>Events</th><th style="text-align:right">Cost</th><th style="text-align:right">Leads</th><th style="text-align:right">Appts</th><th style="text-align:right">Cost / lead</th><th style="text-align:right">Cost / appt</th></tr></thead><tbody>${list.map(([k,o])=>`<tr><td><b>${esc(k)}</b></td><td>${o.events}</td><td style="text-align:right">${$0(o.total)}</td><td style="text-align:right">${o.leads}</td><td style="text-align:right">${o.appts}</td><td style="text-align:right">${$0(o.cpl)}</td><td style="text-align:right">${$0(o.cpa)}</td></tr>`).join('')}</tbody></table></div>`;
+  const gtable=(title,list)=>`<div class="card"><h2>${title}</h2><table><thead><tr><th></th><th>Events</th><th style="text-align:right">Cost</th><th style="text-align:right">Leads</th><th style="text-align:right">Opps</th><th style="text-align:right">Cost / lead</th><th style="text-align:right">Cost / opp</th></tr></thead><tbody>${list.map(([k,o])=>`<tr><td><b>${esc(k)}</b></td><td>${o.events}</td><td style="text-align:right">${$0(o.total)}</td><td style="text-align:right">${o.leads}</td><td style="text-align:right">${o.appts}</td><td style="text-align:right">${$0(o.cpl)}</td><td style="text-align:right">${$0(o.cpa)}</td></tr>`).join('')}</tbody></table></div>`;
   const breakdown=x=>[['Booth fee',x.cost.fee],['Wages',x.cost.labor,x.est.labor],['Mileage',x.cost.mileage],['Per diem',x.cost.perDiem],['Hotel (est.)',x.cost.hotel],['Phone',x.cost.phone],['Other',x.cost.misc]].filter(y=>y[1]>0).map(([l,v])=>`${l} ${$0(v)}`).join(' · ');
   return `<div class="row" style="margin-bottom:10px">${presets.map(([l,f,to])=>`<button class="btn sm ${r.from===f&&r.to===to?'primary':''}" data-act="costRange" data-f="${f}" data-t="${to}" data-l="${esc(l)}">${esc(l)}</button>`).join('')}
     <input type="date" data-act="costFrom" value="${r.from}"> – <input type="date" data-act="costTo" value="${r.to}"><span class="spacer"></span>${scopePicker()}</div>
-  <div class="kpis">${kpi(T.events,'Events')}${kpi($0(T.total),'Total cost')}${kpi(T.leads,'Leads')}${kpi(T.appts,'Appointments')}${kpi($0(T.cpl),'Cost per lead', T.cpl>num(RD.cplTarget))}${kpi($0(T.cpa),'Cost per appointment', T.cpa>num(RD.cpaTarget))}</div>
-  <div class="small muted" style="margin:-4px 0 12px">Targets: ${$0(num(RD.cplTarget||DEFAULT_CPL_TARGET))} per lead, ${$0(num(RD.cpaTarget||DEFAULT_CPA_TARGET))} per appointment. ${esc(fmtLong(r.from))} – ${esc(fmtLong(r.to))} · ${esc(scopeLabel())}.</div>
+  <div class="kpis">${kpi(T.events,'Events')}${kpi($0(T.total),'Total cost')}${kpi(T.leads,'Leads')}${kpi(T.appts,'Opps')}${kpi($0(T.cpl),'Cost per lead', T.cpl>num(RD.cplTarget))}${kpi($0(T.cpa),'Cost per opp', T.cpa>num(RD.cpaTarget))}</div>
+  <div class="small muted" style="margin:-4px 0 12px">Targets: ${$0(num(RD.cplTarget||DEFAULT_CPL_TARGET))} per lead, ${$0(num(RD.cpaTarget||DEFAULT_CPA_TARGET))} per opp. ${esc(fmtLong(r.from))} – ${esc(fmtLong(r.to))} · ${esc(scopeLabel())}.</div>
   ${gtable('By region', grp(x=>regionOf(x.e.office)))}${gtable('By office', grp(x=>x.e.office))}
   <div class="card"><div class="row"><h2 style="margin:0;flex:1">Events (highest cost per lead first)</h2><button class="btn sm" data-act="costCsv">⬇ Download (Excel/CSV)</button></div>
-    ${rows.length?`<table><thead><tr><th>Event</th><th>Office</th><th>Dates</th><th style="text-align:right">Cost</th><th style="text-align:right">Leads</th><th style="text-align:right">Appts</th><th style="text-align:right">Cost / lead</th><th style="text-align:right">Cost / appt</th></tr></thead><tbody>
+    ${rows.length?`<table><thead><tr><th>Event</th><th>Office</th><th>Dates</th><th style="text-align:right">Cost</th><th style="text-align:right">Leads</th><th style="text-align:right">Opps</th><th style="text-align:right">Cost / lead</th><th style="text-align:right">Cost / opp</th></tr></thead><tbody>
     ${rows.map(x=>`<tr ${costFlag(x)?'style="background:#fdf1ef"':''}><td><b>${esc(x.e.name)}</b>${costFlag(x)?' <span class="pill p-red">over target</span>':''}<div class="small muted">${breakdown(x)}${x.noFee?' · <span style="color:var(--warn)">no ETACC fee found</span>':''}${x.pendingReports?' · <span style="color:var(--warn)">expense reports not yet approved</span>':''}</div></td><td class="small">${esc(x.e.office||'')}</td><td class="small">${fmtMD(x.e.start)}${x.e.end&&x.e.end!==x.e.start?'–'+fmtMD(x.e.end):''}</td><td style="text-align:right">${$0(x.total)}</td><td style="text-align:right">${x.leads}</td><td style="text-align:right">${x.appts}</td><td style="text-align:right"><b>${$0(x.cpl)}</b></td><td style="text-align:right">${$0(x.cpa)}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">No events with costs or leads in this range.</p>'}
-    <div class="small muted" style="margin-top:8px">Costs: booth fee from ETACC; wages from the evaluation’s actual labor cost, or paid hours × pay rate (from the office clock-in when they picked up equipment); mileage, per diem, phone and other from the evaluation’s actual costs, or approved expense reports; hotel = ETACC hotel nights × $${HOTEL_EST} (estimate). Leads and appointments come from check-outs.</div></div>
+    <div class="small muted" style="margin-top:8px">Costs: booth fee from ETACC; wages from the evaluation’s actual labor cost, or paid hours × pay rate (from the office clock-in when they picked up equipment); mileage, per diem, phone and other from the evaluation’s actual costs, or approved expense reports; hotel = ETACC hotel nights × $${HOTEL_EST} (estimate). Leads and opps come from check-outs.</div></div>
   ${ratesCard()}`;
 }
 function ratesCard(){
@@ -1924,7 +1931,7 @@ function ratesCard(){
   return `<div class="card"><details ${ui.ratesOpen?'open':''}><summary style="cursor:pointer"><b>💲 Pay rates & targets</b> <span class="small muted">(only Paula and Trevor can see and edit)</span></summary>
     <div class="fields" style="margin-top:10px"><div class="field"><label>Default hourly pay</label><input type="number" step="0.01" min="0" data-rate="__default" value="${esc(RD.default??DEFAULT_PAY)}"></div>
       <div class="field"><label>Target cost per lead</label><input type="number" step="1" min="0" data-rate="__cpl" value="${esc(RD.cplTarget??DEFAULT_CPL_TARGET)}"></div>
-      <div class="field"><label>Target cost per appointment</label><input type="number" step="1" min="0" data-rate="__cpa" value="${esc(RD.cpaTarget??DEFAULT_CPA_TARGET)}"></div></div>
+      <div class="field"><label>Target cost per opp</label><input type="number" step="1" min="0" data-rate="__cpa" value="${esc(RD.cpaTarget??DEFAULT_CPA_TARGET)}"></div></div>
     <div class="row" style="margin:10px 0"><button class="btn sm" data-act="ratesFile">⬆ Upload pay rates (Excel or CSV)</button><input type="file" id="ratesFile" accept=".xlsx,.xls,.csv" style="display:none"><span class="small muted">Columns: Employee ID (or Name) and Pay Rate. Leave a rate blank to use the default.</span></div>
     <table><thead><tr><th>Marketer</th><th>Office</th><th>Employee ID</th><th style="width:140px">Hourly pay</th></tr></thead><tbody>${roster.map(p=>`<tr><td>${esc(p.name)}</td><td class="small">${esc(p.office||'')}</td><td class="small">${esc(p.empId||'')}</td><td><input type="number" step="0.01" min="0" data-rate="${esc(rateKey(p))}" value="${esc((RD.rates||{})[rateKey(p)]??'')}" placeholder="${esc(RD.default??DEFAULT_PAY)}"></td></tr>`).join('')}</tbody></table>
     <div class="row" style="margin-top:10px"><button class="btn primary" data-act="ratesSave" ${ui.busy?'disabled':''}>${ui.busy?'Saving…':'Save rates & targets'}</button>${ui.ratesMsg?`<span class="small">${esc(ui.ratesMsg)}</span>`:''}</div></details></div>`;
@@ -2028,7 +2035,7 @@ function scMiss(k,v){ const T=scTargets(); if(v===null||v===undefined) return fa
   if(k==='pctGoal') return v*100<T.pctGoal; if(k==='cpo') return v>T.cpo; if(k==='allIn') return v>num(ratesDoc().cpaTarget||DEFAULT_CPA_TARGET); if(k==='setRate') return v*100<T.setRate; if(k==='cancelRate') return v*100>T.cancelRate; return false; }
 function scCell(k,v,txt){ return `<td class="num ${scMiss(k,v)?'scred':''}">${txt}</td>`; }
 function scReportLine(){ const R=showReport(); if(!R) return `<span style="color:var(--warn)">No Tradeshow Master uploaded yet, so shows, cost, opps and goals come from the hub (ETACC + check-outs).</span>`;
-  return `Tradeshow Master: <b>${esc(R.fileName||'uploaded file')}</b> · ${R.count||R.rows.length} shows · uploaded ${fmtStamp(R.uploadedAt)}${R.by?' by '+esc(R.by):''}.`; }
+  return `Tradeshow Master: <b>${esc(R.fileName||'uploaded file')}</b> · ${R.count||R.rows.length} events · uploaded ${fmtStamp(R.uploadedAt)}${R.by?' by '+esc(R.by):''}.`; }
 /* ---------------- Hub user activity (leaders only) ----------------
    Records which hub sections signed-in managers open and key actions they take (never what they type),
    one small document per manager per day: peHubActivity/{yyyy-mm-dd}_{email key}
@@ -2240,7 +2247,7 @@ const TOUR = [
   ['📍','Checking in a marketer','Marketers check themselves in with their event’s link. Copy it from <b>Today’s Activity</b> or the schedule and text it to them. You can also check someone in from <b>Check-in</b> if their phone won’t cooperate.'],
   ['🧾','Approving expenses','Each Monday, open <b>Expense reports</b>, review your team’s reports and approve or return them. Approved reports go to Accounts Payable automatically. Submit your own report the same day.'],
   ['🔎','Finding anything','Use the <b>search box</b> at the top to jump to an event, marketer, piece of equipment or page. On a phone, the menu at the bottom gets you Home, My day, Check-in, Events and Alerts.'],
-  ['❓','Help on every page','Tap <b>? Help</b> next to a page title to see how that page works. The <b>🏆 Scorecard</b> on the home page shows how last week’s shows did.'] ];
+  ['❓','Help on every page','Tap <b>? Help</b> next to a page title to see how that page works. The <b>🏆 Scorecard</b> on the home page shows how last week’s events did.'] ];
 function tourDone(){ const m=mgrDoc(); return !!(m.tourDone) || lsGet('peHub.tourDone.'+String((S.user&&S.user.email)||'').toLowerCase())==='1'; }
 function tourOverlay(){
   if(ui.tour===undefined || ui.tour===null) return ''; const i=ui.tour, s=TOUR[i];
@@ -2332,11 +2339,76 @@ function welcomeOverlay(){
     <div class="wquote"><span>💡 Today’s thought</span>“${esc(quoteOfDay())}”</div>
     <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-act="welcomeClose">Just take me to the hub</button></div></div></div>`;
 }
+/* ---------- Undo after delete (the “Are you sure?” stays too) ---------- */
+function showUndo(label, fn){ clearTimeout(showUndo.t); ui.undo={ label, fn }; showUndo.t=setTimeout(()=>{ ui.undo=null; render(); }, 12000); }
+function undoToast(){ return ui.undo?`<div class="undotoast" role="status"><span>${esc(ui.undo.label)}</span><button class="btn sm" data-act="undo">↶ Undo</button><button class="btn sm" data-act="undoClose" aria-label="Dismiss">✕</button></div>`:''; }
+/* ---------------- Recognition: top marketers and regions ---------------- */
+function topMarketers(from,to){
+  const by={};
+  Object.values(S.checkins).filter(c=>c.status==='out' && c.date>=from && c.date<=to && inOffice(c.office||'')).forEach(c=>{
+    const k=c.personId||c.personName; const o=by[k]=by[k]||{ name:c.personName||personName(c.personId), office:c.office||'', opps:0, leads:0, hrs:0, events:new Set() };
+    o.opps+=num(c.appts); o.leads+=num(c.leads); o.hrs+=hoursOf(c); o.events.add(c.eventName||''); });
+  return Object.values(by).filter(x=>x.opps>0||x.leads>0).sort((a,b)=>(b.opps-a.opps)||(b.leads-a.leads)).slice(0,5);
+}
+function regionAwards(D, prev){
+  const R=D.rows.filter(r=>r.shows>0), out=[];
+  const best=(list,f,better)=>list.filter(r=>f(r)!==null&&f(r)!==undefined).sort((a,b)=>better(f(a),f(b)))[0];
+  const g=best(R.filter(r=>r.goal>0), r=>r.pctGoal, (a,b)=>b-a); if(g) out.push(['🎯','Best to goal',g,`${scPct(g.pctGoal)} of goal (${g.opps} of ${g.goal} opps)`]);
+  const m=best(R, r=>r.opps, (a,b)=>b-a); if(m&&m.opps) out.push(['🔥','Most opps',m,`${m.opps} opps from ${m.shows} event${m.shows===1?'':'s'}`]);
+  const c=best(R.filter(r=>r.opps>=3 && r.cost>0), r=>r.cpo, (a,b)=>a-b); if(c) out.push(['💰','Best cost per opp',c,`${scMoney(c.cpo)} per opp`]);
+  const s=best(R.filter(r=>(r.opps+r.unset)>=5 && r.setRate>=0.5), r=>r.setRate, (a,b)=>b-a); if(s) out.push(['📈','Best set rate',s,`${scPct(s.setRate)} of leads set`]);
+  if(prev){ const pm={}; prev.rows.forEach(r=>pm[r.region]=r); const imp=R.filter(r=>r.pctGoal!==null && pm[r.region] && pm[r.region].pctGoal!==null).map(r=>({ r, d:r.pctGoal-pm[r.region].pctGoal })).sort((a,b)=>b.d-a.d)[0];
+    if(imp && imp.d>0) out.push(['🚀','Most improved',imp.r,`+${Math.round(imp.d*100)} pts to goal vs. the week before`]); }
+  return out;
+}
+function scDataFor(ws, view){ const kw=ui.scWeek, kv=ui.scView; ui.scWeek=ws; ui.scView=view||'week'; try{ return scData(); } finally{ ui.scWeek=kw; ui.scView=kv; } }
+function recognitionCard(D){
+  if(D.P.view!=='week') return '';
+  const tops=topMarketers(D.P.from,D.P.to), prev=scDataFor(addDays(D.P.ws,-7)), aw=regionAwards(D, prev);
+  if(!tops.length && !aw.length) return '';
+  const medal=['🥇','🥈','🥉','4','5'];
+  return `<div class="card recog"><h2 style="margin-top:0">🌟 Recognition <span class="small muted">${fmtMD(D.P.ws)}–${fmtMD(D.P.we)}</span></h2><div class="grid2">
+    <div><h3 style="margin-top:0">Top booths: marketers</h3>${tops.length?`<table><tbody>${tops.map((x,i)=>`<tr><td style="width:34px;font-size:20px;text-align:center">${medal[i]}</td><td><b>${esc(x.name)}</b><div class="small muted">${esc(x.office)}${[...x.events].filter(Boolean).length?' · '+esc([...x.events].filter(Boolean).slice(0,2).join(', ')):''}</div></td><td class="num" style="text-align:right"><b>${x.opps}</b> opps<div class="small muted">${x.leads} leads${x.hrs?` · ${round1(x.opps/x.hrs)}/hr`:''}</div></td></tr>`).join('')}</tbody></table>`:'<div class="muted small">No check-out results yet this week.</div>'}
+      <div class="small muted">From marketer check-outs.</div></div>
+    <div><h3 style="margin-top:0">Region shout-outs</h3>${aw.length?aw.map(([ic,l,r,why])=>`<div class="award"><span class="ic">${ic}</span><div><b>${esc(l)}: ${esc(r.name)}</b><div class="small">${esc(r.supervisor)} · ${esc(why)}</div></div></div>`).join(''):'<div class="muted small">Not enough results yet this week.</div>'}</div></div></div>`;
+}
+function recognitionEmailHtml(D){
+  const tops=topMarketers(D.P.from,D.P.to), aw=regionAwards(D, scDataFor(addDays(D.P.ws,-7)));
+  if(!tops.length && !aw.length) return '';
+  const F='font:13px Helvetica Neue,Helvetica,Arial,sans-serif;';
+  return `<h3 style="font:600 15px Helvetica Neue,Helvetica,Arial,sans-serif;color:#007C88;margin:16px 0 4px">🌟 Recognition</h3>
+    ${tops.length?`<p style="${F}margin:4px 0"><b>Top booths:</b> ${tops.slice(0,3).map((x,i)=>`${['🥇','🥈','🥉'][i]} ${esc(x.name)} (${esc(x.office)}, ${x.opps} opps)`).join(' · ')}</p>`:''}
+    ${aw.length?`<ul style="${F}margin:4px 0 10px;padding-left:18px">${aw.map(([ic,l,r,why])=>`<li>${ic} <b>${esc(l)}:</b> ${esc(r.name)} (${esc(r.supervisor)}): ${esc(why)}</li>`).join('')}</ul>`:''}`;
+}
+function scorecardEmailHtml(){
+  const ws=addDays(mondayOf(todayIso()),-7), D=scDataFor(ws,'week'), t=D.total, F='font:13px Helvetica Neue,Helvetica,Arial,sans-serif;';
+  const td=`padding:5px 8px;border:1px solid #d9dbdc;${F}`, red=(k,v)=>scMiss(k,v)?'color:#c0392b;font-weight:700;':'';
+  const worst=D.rows.filter(r=>r.pctGoal!==null).sort((a,b)=>a.pctGoal-b.pctGoal).slice(0,3);
+  const kpi=(n,l,st)=>`<td style="${td}text-align:center"><div style="font:700 18px Helvetica Neue,Helvetica,Arial,sans-serif;${st||''}">${n}</div><div style="${F}color:#5a6760">${l}</div></td>`;
+  return `<h3 style="font:600 15px Helvetica Neue,Helvetica,Arial,sans-serif;color:#007C88;margin:16px 0 4px">🏆 Event Marketing Scorecard: last week</h3>
+    <table style="border-collapse:collapse;margin:6px 0 8px"><tr>${kpi(t.opps+(t.goal?' / '+t.goal:''),'Opps vs goal',red('pctGoal',t.pctGoal))}${kpi(scPct(t.pctGoal),'To goal',red('pctGoal',t.pctGoal))}${kpi(scMoney(t.cpo),'Cost per opp',red('cpo',t.cpo))}${kpi(scPct(t.setRate),'Set rate',red('setRate',t.setRate))}${kpi(scPct(t.cancelRate),'Cancel rate',red('cancelRate',t.cancelRate))}</tr></table>
+    ${worst.length?`<p style="${F}margin:4px 0"><b>Furthest behind:</b> ${worst.map(r=>`${esc(r.name)} ${scPct(r.pctGoal)}`).join(' · ')}</p>`:''}
+    <p style="${F}margin:4px 0;color:#5a6760">${t.shows} event${t.shows===1?'':'s'} · ${scUpdatedLine(true)}. Open the hub for the full scorecard by region.</p>`+recognitionEmailHtml(D);
+}
+// Monday 11 am: remind division leaders about regions still missing last week's REM numbers (copy Paula).
+async function remReminderSweep(){
+  if(S.mode!=='live' || !S.user || !S.scLoaded) return;
+  const now=new Date(); if(now.getDay()!==1 || now.getHours()<11) return;
+  const ws=addDays(mondayOf(todayIso()),-7), M=scManual();
+  for(const d of ORG){
+    const miss=Object.entries(d.regions).filter(([r])=>{ const e=M[`w_${ws}_${r}`]; return !(e&&(scHas(e.cancels)||scHas(e.meets))); });
+    if(!miss.length) continue;
+    const to=[d.leader.email], cc=[PAULA].filter(e=>e!==d.leader.email);
+    await queueMail(`remmiss-${ws}-${d.division}`, { to, cc, kind:'rem', subject:`REM numbers still needed: week of ${fmtMD(ws)} (${miss.length} region${miss.length===1?'':'s'})`,
+      html:mailShell('REM weekly numbers still needed', `<p>Hi ${esc(d.leader.name.split(' ')[0])},</p><p>These ${d.division} Division regions don’t have last week’s numbers yet (week of <b>${fmtLong(ws)}</b>):</p><ul>${miss.map(([r,x])=>`<li><b>${esc(REGION_NAMES[r]||r)}</b> (${esc(x.name)})</li>`).join('')}</ul><p>Open the hub → Leader tools → <b>REM weekly numbers</b> to enter cancels, meets, labor and expenses.</p>`),
+      text:`${miss.length} region${miss.length===1?'':'s'} still need last week’s REM numbers.` });
+  }
+}
 function scBanner(){
   if(!S.user) return '';
   const kw=ui.scWeek, kv=ui.scView; ui.scWeek=null; ui.scView='week'; const D=scData(), t=D.total, P=D.P; ui.scWeek=kw; ui.scView=kv;
   const st=(v,l,miss)=>`<div class="scb-stat ${miss?'miss':''}"><b>${v}</b><span>${l}</span></div>`;
-  return `<a class="scbanner" href="#scorecard" data-tab="scorecard"><div class="ic">🏆</div><div class="scb-main"><h2>Event Marketing Scorecard</h2><p>Last week (${fmtMD(P.ws)}–${fmtMD(P.we)}) · ${t.shows} show${t.shows===1?'':'s'} · opps, goals, cost per opp and REM numbers by region</p><p class="scb-upd">🕒 ${scUpdatedLine(true)}</p></div>
+  return `<a class="scbanner" href="#scorecard" data-tab="scorecard"><div class="ic">🏆</div><div class="scb-main"><h2>Event Marketing Scorecard</h2><p>Last week (${fmtMD(P.ws)}–${fmtMD(P.we)}) · ${t.shows} event${t.shows===1?'':'s'} · opps, goals, cost per opp and REM numbers by region</p><p class="scb-upd">🕒 ${scUpdatedLine(true)}</p></div>
     <div class="scb-stats">${st(t.opps+(t.goal?' / '+t.goal:''),'Opps vs goal',scMiss('pctGoal',t.pctGoal))}${st(scPct(t.pctGoal),'To goal',scMiss('pctGoal',t.pctGoal))}${st(scMoney(t.cpo),'Cost / opp',scMiss('cpo',t.cpo))}${st(scPct(t.setRate),'Set rate',scMiss('setRate',t.setRate))}</div><span class="go">Open scorecard ↗</span></a>`;
 }
 function scorecardView(){
@@ -2345,7 +2417,7 @@ function scorecardView(){
   const kpi=(l,v,sub,miss)=>`<div class="kpi ${miss?'warn':''}"><b>${v}</b><span>${l}</span>${sub?`<small>${sub}</small>`:''}</div>`;
   const t=D.total, worst=D.rows.filter(r=>r.pctGoal!==null).sort((a,b)=>a.pctGoal-b.pctGoal)[0];
   const missing=D.rows.filter(r=>r.shows && !scHas(r.cancels) && !scHas(r.meets));
-  const head=`<tr><th>Region</th><th>Supervisor</th><th class="num">Shows</th><th class="num">Show cost</th><th class="num">Opps</th><th class="num">Unset</th><th class="num">Goal</th><th class="num">% to goal</th><th class="num">Cost / opp</th><th class="num">Set rate</th><th class="num">Cancels</th><th class="num">Cancel rate</th><th class="num">Meets</th><th class="num">Labor</th><th class="num">Expenses</th><th class="num">All-in / opp</th>${mtd?'<th class="num">Sales MTD</th><th class="num">$/MAR</th>':''}</tr>`;
+  const head=`<tr><th>Region</th><th>Supervisor</th><th class="num">Events</th><th class="num">Event cost</th><th class="num">Opps</th><th class="num">Unset</th><th class="num">Goal</th><th class="num">% to goal</th><th class="num">Cost / opp</th><th class="num">Set rate</th><th class="num">Cancels</th><th class="num">Cancel rate</th><th class="num">Meets</th><th class="num">Labor</th><th class="num">Expenses</th><th class="num">All-in / opp</th>${mtd?'<th class="num">Sales MTD</th><th class="num">$/MAR</th>':''}</tr>`;
   const src=(v,s)=>`${scMoney(v)}${s==='hub'&&v?'<sup title="From the hub (pay rates and expense reports). The REM’s number replaces it once entered." style="color:var(--ink-soft)">h</sup>':''}`;
   const row=(r,lbl,sup,cls)=>`<tr class="${cls||''}"><td><b>${esc(lbl)}</b></td><td class="small">${esc(sup||'')}</td><td class="num">${r.shows}</td><td class="num">${scMoney(r.cost)}</td><td class="num">${r.opps}</td><td class="num">${r.unset}</td><td class="num">${r.goal||'—'}</td>${scCell('pctGoal',r.pctGoal,scPct(r.pctGoal))}${scCell('cpo',r.cpo,scMoney(r.cpo))}${scCell('setRate',r.setRate,scPct(r.setRate))}
     <td class="num">${r.cancels??'—'}</td>${scCell('cancelRate',r.cancelRate,scPct(r.cancelRate))}<td class="num">${r.meets??'—'}</td><td class="num">${src(r.labor,r.laborSrc)}</td><td class="num">${src(r.expenses,r.expSrc)}</td>${scCell('allIn',r.allIn,scMoney(r.allIn))}${mtd?`<td class="num">${scMoney(r.sales)}</td><td class="num">${r.mar===null?(scHas(r.sales)&&r.sales<=0?'n/a':'—'):(Math.round(r.mar*1000)/10)+'%'}</td>`:''}</tr>`;
@@ -2358,19 +2430,20 @@ function scorecardView(){
       <span class="spacer"></span>${isRemUser()?'<button class="btn sm primary" data-tab="remnums">✍️ REM weekly numbers</button>':''}<button class="btn sm" data-act="scCsv">⬇ Download (Excel/CSV)</button>${scopePicker()}</div>
     <div class="card"><div class="small" style="margin-bottom:4px">🕒 ${scUpdatedLine(false)}</div><div class="row" style="gap:8px;flex-wrap:wrap"><span class="small">${scReportLine()}</span><span class="spacer"></span>${lead?`<button class="btn sm" data-act="srFile">⬆ Upload Tradeshow Master</button><input type="file" id="srFile" accept=".xlsx,.xls,.csv" style="display:none">`:''}</div>${ui.srMsg?`<div class="small" style="margin-top:6px">${esc(ui.srMsg)}</div>`:''}</div>
     <div class="card"><h2 style="margin-top:0">🏆 Event Marketing Scorecard <span class="small muted">${esc(scopeLabel())}</span></h2>
-      <p class="small" style="margin:4px 0 10px">${t.shows} show${t.shows===1?'':'s'} produced <b>${t.opps} opps against a goal of ${t.goal||'—'}${t.pctGoal!==null?` (${scPct(t.pctGoal)} to goal)`:''}</b> on ${scMoney(t.cost)} in show cost${t.cpo!==null?`, about <b>${scMoney(t.cpo)} per opp</b>`:''}.${worst?` Furthest behind: <b>${esc(worst.name)}</b> at ${scPct(worst.pctGoal)} to goal.`:''}</p>
-      ${t.zero?`<div class="notice" style="margin:0 0 8px">${t.zero} of ${t.shows} shows show 0 opps. Check whether those results are entered before discussing them.</div>`:''}
+      <p class="small" style="margin:4px 0 10px">${t.shows} event${t.shows===1?'':'s'} produced <b>${t.opps} opps against a goal of ${t.goal||'—'}${t.pctGoal!==null?` (${scPct(t.pctGoal)} to goal)`:''}</b> on ${scMoney(t.cost)} in event cost${t.cpo!==null?`, about <b>${scMoney(t.cpo)} per opp</b>`:''}.${worst?` Furthest behind: <b>${esc(worst.name)}</b> at ${scPct(worst.pctGoal)} to goal.`:''}</p>
+      ${t.zero?`<div class="notice" style="margin:0 0 8px">${t.zero} of ${t.shows} events show 0 opps. Check whether those results are entered before discussing them.</div>`:''}
       ${!mtd&&missing.length&&isRemUser()?`<div class="notice" style="margin:0 0 8px">Waiting on REM numbers for: ${missing.map(r=>`<b>${esc(r.name)}</b> (${esc(r.supervisor)})`).join(', ')}.</div>`:''}
-      <div class="kpis">${kpi('Actual opps',t.opps,`Goal ${t.goal||'—'} · ${scPct(t.pctGoal)} to goal`,scMiss('pctGoal',t.pctGoal))}${kpi('Show cost',scMoney(t.cost),`${t.shows} shows`)}${kpi('Cost per opp',scMoney(t.cpo),`Target ${$0(T.cpo)} or less`,scMiss('cpo',t.cpo))}${kpi('Opps set rate',scPct(t.setRate),`${t.unset} unset · target ${T.setRate}%`,scMiss('setRate',t.setRate))}${kpi('Cancel rate',scPct(t.cancelRate),`${t.cancels??'—'} cancels · target ${T.cancelRate}% or less`,scMiss('cancelRate',t.cancelRate))}${kpi('Meets',t.meets??'—','Entered by REMs')}${mtd?kpi('Sales (MTD)',scMoney(t.sales),t.mar!==null?`$/MAR ${(Math.round(t.mar*1000)/10)}%`:'Entered by REMs'):kpi('All-in cost / opp',scMoney(t.allIn),'Show cost + labor + expenses',scMiss('allIn',t.allIn))}</div></div>
+      <div class="kpis">${kpi('Actual opps',t.opps,`Goal ${t.goal||'—'} · ${scPct(t.pctGoal)} to goal`,scMiss('pctGoal',t.pctGoal))}${kpi('Event cost',scMoney(t.cost),`${t.shows} shows`)}${kpi('Cost per opp',scMoney(t.cpo),`Target ${$0(T.cpo)} or less`,scMiss('cpo',t.cpo))}${kpi('Opps set rate',scPct(t.setRate),`${t.unset} unset · target ${T.setRate}%`,scMiss('setRate',t.setRate))}${kpi('Cancel rate',scPct(t.cancelRate),`${t.cancels??'—'} cancels · target ${T.cancelRate}% or less`,scMiss('cancelRate',t.cancelRate))}${kpi('Meets',t.meets??'—','Entered by REMs')}${mtd?kpi('Sales (MTD)',scMoney(t.sales),t.mar!==null?`$/MAR ${(Math.round(t.mar*1000)/10)}%`:'Entered by REMs'):kpi('All-in cost / opp',scMoney(t.allIn),'Event cost + labor + expenses',scMiss('allIn',t.allIn))}</div></div>
+    ${recognitionCard(D)}
     <div class="card"><h2 style="margin-top:0">By region</h2><div class="small muted" style="margin-bottom:6px">Cancels, meets, labor, expenses and sales come from the <b>REM weekly numbers</b> form. <sup>h</sup> = labor or expenses from the hub until the REM enters them. Red = missed target.</div>
       <div style="overflow-x:auto"><table class="sctable"><thead>${head}</thead><tbody>${regionRows}${row(t,'Total','All regions in view','sctotal')}</tbody></table></div></div>
-    <div class="card"><h2 style="margin-top:0">Shows (${D.shows.length})</h2>${D.shows.length?`<div style="overflow-x:auto"><table class="sctable"><thead><tr><th>Show</th><th>Region</th><th class="num">Show cost</th><th class="num">Opps</th><th class="num">Unset</th><th class="num">Goal</th><th class="num">% to goal</th><th class="num">Cost / opp</th></tr></thead><tbody>${showRows}</tbody></table></div>`:'<div class="muted">No shows started in this period.</div>'}
+    <div class="card"><h2 style="margin-top:0">Events (${D.shows.length})</h2>${D.shows.length?`<div style="overflow-x:auto"><table class="sctable"><thead><tr><th>Show</th><th>Region</th><th class="num">Event cost</th><th class="num">Opps</th><th class="num">Unset</th><th class="num">Goal</th><th class="num">% to goal</th><th class="num">Cost / opp</th></tr></thead><tbody>${showRows}</tbody></table></div>`:'<div class="muted">No events started in this period.</div>'}
       ${D.left.length?`<div class="small muted" style="margin-top:8px">Left out (longer than a week): ${D.left.map(e=>esc(e.name)).join('; ')}.</div>`:''}
-      <div class="small muted" style="margin-top:8px">Shows count in the period their first day falls in (weeks run Mon–Sun). ${showReport()?'Show cost, opps, unset and goal are from the Tradeshow Master (Sunrooms shows only).':'Opps = appointments set at check-out; unset = leads not set; goal = ETACC Target Opps; show cost = ETACC fee.'}</div></div>
+      <div class="small muted" style="margin-top:8px">Events count in the period their first day falls in (weeks run Mon–Sun). ${showReport()?'Event cost, opps, unset and goal are from the Tradeshow Master (Sunrooms events only).':'Opps = appointments set at check-out; unset = leads not set; goal = ETACC Target Opps; event cost = ETACC fee.'}</div></div>
     ${lead?`<div class="card"><details ${ui.scTOpen?'open':''}><summary style="cursor:pointer"><b>🎯 Scorecard targets</b> <span class="small muted">(Paula and Trevor)</span></summary><div class="fields" style="margin-top:10px">
-      <div class="field"><label>% to opps goal (at least)</label><input type="number" data-sct="pctGoal" value="${T.pctGoal}"></div><div class="field"><label>Cost per opp (show cost, at most $)</label><input type="number" data-sct="cpo" value="${T.cpo}"></div>
+      <div class="field"><label>% to opps goal (at least)</label><input type="number" data-sct="pctGoal" value="${T.pctGoal}"></div><div class="field"><label>Cost per opp (event cost, at most $)</label><input type="number" data-sct="cpo" value="${T.cpo}"></div>
       <div class="field"><label>Set rate (at least %)</label><input type="number" data-sct="setRate" value="${T.setRate}"></div><div class="field"><label>Cancel rate (at most %)</label><input type="number" data-sct="cancelRate" value="${T.cancelRate}"></div></div>
-      <div class="small muted">All-in cost per opp uses the Cost per Lead page’s appointment target (${$0(num(ratesDoc().cpaTarget||DEFAULT_CPA_TARGET))}).</div>
+      <div class="small muted">All-in cost per opp uses the Cost per Lead page’s cost-per-opp target (${$0(num(ratesDoc().cpaTarget||DEFAULT_CPA_TARGET))}).</div>
       <div class="row" style="margin-top:8px"><button class="btn primary sm" data-act="scTSave">Save targets</button>${ui.scTMsg?`<span class="small">${esc(ui.scTMsg)}</span>`:''}</div></details></div>`:''}`;
 }
 /* ---------- REM weekly numbers form (replaces the "Event Marketing Weekly Numbers" Jotform) ---------- */
@@ -2429,11 +2502,11 @@ async function importShowReport(file){
     const br=String(C.branch?r[C.branch]:'').trim().toUpperCase(), first=scDateCell(r[C.first]); if(!first){ skipped++; return; }
     rows.push({ region:SC_BRANCH_SPLIT[br]||reg, branch:br, office:scOfficeFor(br), code:String(C.code?r[C.code]:'').trim(), first, last:C.last?scDateCell(r[C.last]):'', days:C.days?scNum(r[C.days]):0,
       name:String(r[C.name]||'').trim(), cost:C.cost?scNum(r[C.cost]):0, opps:C.opps?scNum(r[C.opps]):0, unset:C.unset?scNum(r[C.unset]):0, goal:C.goal?scNum(r[C.goal]):0 }); });
-  if(!rows.length) throw new Error('No Sunrooms shows found in the scorecard regions.');
+  if(!rows.length) throw new Error('No Sunrooms events found in the scorecard regions.');
   const meta={ fileName:file.name, sheet:name, count:rows.length, uploadedAt:Date.now(), by:(S.user&&S.user.email)||'', chunks:Math.ceil(rows.length/400) };
   if(S.mode==='live'){ const {fsM,db}=DB.fb; for(let i=0;i<meta.chunks;i++) await fsM.setDoc(fsM.doc(db,'peHubShowReport','rows_'+i), { rows:rows.slice(i*400,(i+1)*400) }); await fsM.setDoc(fsM.doc(db,'peHubShowReport','meta'), meta); }
   S.showReport=Object.assign({}, meta, { rows }); if(S.mode!=='live') localSave();
-  return `Loaded ${rows.length} shows from “${name}” (${skipped} other rows skipped: other product lines, non-show events or regions).`;
+  return `Loaded ${rows.length} events from “${name}” (${skipped} other rows skipped: other product lines, non-show events or regions).`;
 }
 function showReportFromDocs(docs){ const meta=docs.meta; if(!meta) return null; const rows=[]; for(let i=0;i<(meta.chunks||0);i++) (docs['rows_'+i]&&docs['rows_'+i].rows||[]).forEach(r=>rows.push(r)); return Object.assign({}, meta, { rows }); }
 // Jotform "Event Marketing Weekly Numbers" export → peHubScorecard
@@ -2466,10 +2539,10 @@ async function saveScTargets(){
 }
 function scCsv(){
   const D=scData(), mtd=D.P.view==='mtd';
-  const head=['Region','Supervisor','Shows','Show cost','Actual opps','Unset opps','Opps goal','% to goal','Cost per opp','Set rate %','Cancels','Cancel rate %','Meets','Labor','Expenses','Total cost','All-in cost per opp',...(mtd?['Sales MTD','$/MAR %']:[])];
+  const head=['Region','Supervisor','Events','Event cost','Actual opps','Unset opps','Opps goal','% to goal','Cost per opp','Set rate %','Cancels','Cancel rate %','Meets','Labor','Expenses','Total cost','All-in cost per opp',...(mtd?['Sales MTD','$/MAR %']:[])];
   const f=v=>v===null||v===undefined?'':(Math.round(v*100)/100), p=v=>v===null||v===undefined?'':Math.round(v*1000)/10;
   const line=(r,a,b)=>[a,b,r.shows,f(r.cost),r.opps,r.unset,r.goal,p(r.pctGoal),f(r.cpo),p(r.setRate),r.cancels??'',p(r.cancelRate),r.meets??'',f(r.labor),f(r.expenses),f(r.total),f(r.allIn),...(mtd?[r.sales??'',p(r.mar)]:[])];
-  const lines=[head, ...D.rows.map(r=>line(r,r.name,r.supervisor)), ...D.divs.map(d=>line(d,d.division+' Division',d.leader)), line(D.total,'Total','All regions in view'), [], ['Show','Office','Region','First date','Last date','Show cost','Opps','Unset','Goal'], ...D.shows.map(x=>[x.name,x.office,REGION_NAMES[x.region]||x.region,x.start,x.end,x.fee,x.opps,x.unset,x.goal])];
+  const lines=[head, ...D.rows.map(r=>line(r,r.name,r.supervisor)), ...D.divs.map(d=>line(d,d.division+' Division',d.leader)), line(D.total,'Total','All regions in view'), [], ['Show','Office','Region','First date','Last date','Event cost','Opps','Unset','Goal'], ...D.shows.map(x=>[x.name,x.office,REGION_NAMES[x.region]||x.region,x.start,x.end,x.fee,x.opps,x.unset,x.goal])];
   const csv=lines.map(l=>l.map(v=>{ v=String(v??''); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(',')).join('\r\n');
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'})); a.download=`event-scorecard_${mtd?'mtd-through-'+D.P.to:'week-of-'+D.P.ws}.csv`; a.click();
 }
@@ -2480,7 +2553,7 @@ async function saveScManual(id, field, value){
 }
 function costCsv(){
   const r=costRange(), rows=costRows(r.from,r.to);
-  const head=['Event','Office','Region','Start','End','Booth fee','Wages','Mileage','Per diem','Hotel (est.)','Phone','Other','Total cost','Leads','Appointments','Cost per lead','Cost per appointment','Paid hours'];
+  const head=['Event','Office','Region','Start','End','Booth fee','Wages','Mileage','Per diem','Hotel (est.)','Phone','Other','Total cost','Leads','Opps','Cost per lead','Cost per opp','Paid hours'];
   const lines=[head, ...rows.map(x=>[x.e.name,x.e.office,regionOf(x.e.office),x.e.start,x.e.end||x.e.start,x.cost.fee,x.cost.labor.toFixed(2),x.cost.mileage,x.cost.perDiem,x.cost.hotel,x.cost.phone,x.cost.misc,x.total,x.leads,x.appts,x.cpl===null?'':x.cpl.toFixed(2),x.cpa===null?'':x.cpa.toFixed(2),x.hrs.toFixed(1)])];
   const csv=lines.map(l=>l.map(v=>{ v=String(v??''); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(',')).join('\r\n');
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'})); a.download=`cost-per-lead_${r.from}_to_${r.to}.csv`; a.click();
@@ -2493,8 +2566,8 @@ function costSummaryHtml(from, to){
   const byOff={}; rows.forEach(x=>{ (byOff[x.e.office||'(none)']=byOff[x.e.office||'(none)']||[]).push(x); });
   const flagged=rows.filter(costFlag);
   return `<h3 style="font:600 15px Helvetica Neue,Helvetica,Arial,sans-serif;color:#007C88;margin:16px 0 4px">Cost per lead</h3>
-    <p style="${F}">Total cost <b>${$0(T.total)}</b> · <b>${T.leads}</b> leads · <b>${T.appts}</b> appointments · <b>${$0(T.cpl)}</b> per lead · <b>${$0(T.cpa)}</b> per appointment.</p>
-    <table style="border-collapse:collapse;width:100%;margin:6px 0 10px"><tr>${['Office','Events','Cost','Leads','Appts','Cost/lead','Cost/appt'].map(h=>`<th style="${th}">${h}</th>`).join('')}</tr>
+    <p style="${F}">Total cost <b>${$0(T.total)}</b> · <b>${T.leads}</b> leads · <b>${T.appts}</b> opps · <b>${$0(T.cpl)}</b> per lead · <b>${$0(T.cpa)}</b> per opp.</p>
+    <table style="border-collapse:collapse;width:100%;margin:6px 0 10px"><tr>${['Office','Events','Cost','Leads','Opps','Cost/lead','Cost/opp'].map(h=>`<th style="${th}">${h}</th>`).join('')}</tr>
     ${Object.entries(byOff).sort().map(([k,l])=>{ const o=costTotals(l); return `<tr><td style="${td}">${esc(k)}</td><td style="${td}">${o.events}</td><td style="${td}">${$0(o.total)}</td><td style="${td}">${o.leads}</td><td style="${td}">${o.appts}</td><td style="${td}">${$0(o.cpl)}</td><td style="${td}">${$0(o.cpa)}</td></tr>`; }).join('')}</table>
     ${flagged.length?`<p style="${F}"><b>Over target (${flagged.length}):</b> ${flagged.map(x=>`${esc(x.e.name)} (${esc(x.e.office||'')}): ${$0(x.total)}, ${x.leads} leads, ${$0(x.cpl)}/lead`).join('; ')}.</p>`:''}
     <p style="${F}color:#5a6760">Hotel is an ETACC estimate; costs update as evaluations and expense reports are approved.</p>`;
@@ -2582,7 +2655,7 @@ async function initDB(){
         if(REM_USERS.includes(String(u.email||'').toLowerCase())) unsubs.push(F.onSnapshot(F.query(F.collection(db,'mail'), F.orderBy('createdAt','desc'), F.limit(25)), snap=>{ const a=[]; snap.forEach(d=>a.push(d.data())); S.mailRecent=a; render(); }, err=>console.warn('mail log',err)));
         unsubs.push(F.onSnapshot(F.query(F.collection(db,'peHubAlerts'), F.where('createdAt','>=',Date.now()-14*864e5)), snap=>{ const m={}; snap.forEach(d=>m[d.id]=Object.assign({id:d.id},d.data())); S.alerts=m; render(); }, err=>console.warn('alerts',err)));
         unsubs.push(F.onSnapshot(F.collection(db,'peHubShowReport'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.showReport=showReportFromDocs(m); render(); }, err=>console.warn('showReport',err)));
-        unsubs.push(F.onSnapshot(F.collection(db,'peHubScorecard'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.scManual=m; render(); }, err=>console.warn('scorecard',err)));
+        unsubs.push(F.onSnapshot(F.collection(db,'peHubScorecard'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.scManual=m; S.scLoaded=true; render(); }, err=>console.warn('scorecard',err)));
         unsubs.push(F.onSnapshot(F.doc(db,'peHubRates','main'), snap=>{ S.rates=snap.exists()?snap.data():null; render(); }, err=>console.warn('rates',err)));
         unsubs.push(F.onSnapshot(F.collection(db,'peHubEvals'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.evals=m; S.evalsLoaded=true; render(); }, err=>console.warn('evals',err)));
       }
@@ -2688,7 +2761,7 @@ function render(){
   const keep=captureInputs();
   document.body.classList.toggle('marketer', MARKETER_MODE);
   if(!ui.tourT && S.user){ ui.tourT=setTimeout(()=>{ maybeStartTour(); if(ui.tour!=null){ markWelcomed(); render(); } else if(S.user && !MARKETER_MODE && (S.mode==='live'||ui.forceWelcome) && welcomeDue()){ ui.welcomeBack=welcomedToday(); ui.welcome=true; markWelcomed(); touchSeen.at=0; touchSeen(); render(); } else touchSeen(); },3000); }
-  app.innerHTML = `<div class="wrap">${header()}${searchBox()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}${bottomNav()}${tourOverlay()}${welcomeOverlay()}`;
+  app.innerHTML = `<div class="wrap">${header()}${searchBox()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}${bottomNav()}${tourOverlay()}${welcomeOverlay()}${undoToast()}`;
   stackTables(app); document.body.classList.toggle('hasnav', !!(S.user && !MARKETER_MODE)); if(ui.tourT && !ui.welcome) touchSeen();
   restoreInputs(keep);
   // lazy-load any photos now on screen
@@ -2743,14 +2816,14 @@ function tilesView(){
     checkin:()=>tile('checkin','Marketers check in at the booth and check out with results.', 'Start or end a shift'),
     assets:()=>tile('assets','Inventory, barcode check-out and returns, transfers and the annual count.', `${gear.length} items · ${out} out${overdue?` · ${overdue} overdue`:''}${repair?` · ${repair} in repair`:''}${low?` · ${low} to reorder`:''}`, overdue||low?'warn':'', (overdue+low)||''),
     evals:()=>tile('evals','Manager post-event evaluations, pre-filled from check-outs.', due?`${due} waiting for evaluation`:'All caught up', due?'warn':'', due||''),
-    costs:()=>S.user?(()=>{ const rows=costRows(addDays(t,-27),t), C=costTotals(rows), f=rows.filter(costFlag).length; return tile('costs','What each event cost against the leads and appointments it brought in.', C.leads?`${$0(C.cpl)} per lead · last 4 weeks`:'No results in the last 4 weeks', f?'warn':'', f?`${f} over target`:''); })():'',
+    costs:()=>S.user?(()=>{ const rows=costRows(addDays(t,-27),t), C=costTotals(rows), f=rows.filter(costFlag).length; return tile('costs','What each event cost against the leads and opps it brought in.', C.leads?`${$0(C.cpl)} per lead · last 4 weeks`:'No results in the last 4 weeks', f?'warn':'', f?`${f} over target`:''); })():'',
     expenses:()=>{ const w=Object.values(S.expenses).filter(x=>x.status==='submitted' && (!x.office||inOffice(x.office))).length; return tile('expenses','Weekly expense reports: mileage, per diem and receipts. Approve and send to accounting.', S.user?(w?`${w} waiting for approval`:'Nothing waiting'):'Sign in to review', w?'warn':'', w||''); },
     adp:()=>{ const f=adpRows(mondayOf(t)).filter(x=>x.flag).length; return tile('adp','Compare this week’s check-ins with ADP, then approve timecards.', f?`${f} shift${f===1?'':'s'} to double-check`:'Approve timecards', f?'warn':'', f||''); },
     travel:()=>{ const n=travelNeeds().length; return tile('travel','Book and manage team hotels in Navan.', n?`${n} event${n===1?'':'s'} may need hotels`:'Book hotels', n?'warn':''); } };
   const MINI={ today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Equipment'], evals:['📝','Evaluations'], costs:['💲','Cost per Lead'], expenses:['🧾','Expense Reports'], adp:['⏱️','ADP timecards'], travel:['🏨','Navan travel'] };
   const mini=(k)=>{ const [ic,l]=MINI[k]; const [c,soft]=TC[k]||['var(--aqua)','#e0f4f6']; return `<div class="mini" data-tab="${k}" role="button" tabindex="0" style="--tc:${c};--tcs:${soft}"><span class="ic">${ic}</span><span class="mt"><b>${esc(l)}</b></span></div>`; };
   const link=(u,ic,l,sub,c,soft)=>`<a class="mini" href="${u}" target="_blank" rel="noopener" style="--tc:${c};--tcs:${soft}"><span class="ic">${ic}</span><span class="mt"><b>${l} ↗</b><small>${sub}</small></span></a>`;
-  const links=`${link(LINKS.pcms,'📇','PCMS','Leads & appointments','#000','#ededed')}${link(LINKS.tableau,'📊','Tableau','Reports & dashboards','var(--gray)','#eeeeef')}<div class="mini" data-tab="guide" role="button" tabindex="0" style="--tc:var(--gray);--tcs:#eeeeef"><span class="ic">📖</span><span class="mt"><b>How-to guides</b><small>Step by step</small></span></div>`;
+  const links=`${link(LINKS.pcms,'📇','PCMS','Leads & opps','#000','#ededed')}${link(LINKS.tableau,'📊','Tableau','Reports & dashboards','var(--gray)','#eeeeef')}<div class="mini" data-tab="guide" role="button" tabindex="0" style="--tc:var(--gray);--tcs:#eeeeef"><span class="ic">📖</span><span class="mt"><b>How-to guides</b><small>Step by step</small></span></div>`;
   const banners=`<div class="banners"><a class="teamsbanner" href="${TEAMS_HUB_URL}" target="_blank" rel="noopener"><div class="ic">👥</div><div style="flex:1"><h2>Team Resource Hub</h2><p>Guides, forms, standards and announcements in Microsoft Teams.</p></div><span class="go">Open in Teams ↗</span></a>
   <a class="teamsbanner trainbanner" href="#training" data-tab="training"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products, booth setup and standards.</p></div><span class="go">Open ↗</span></a></div>`;
   if(!S.user) return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span>${scopePicker()}</div>${banners}<div class="tiles">${TOOL_ORDER.map(k=>T[k]()).join('')}</div>${leaderCard()}</div>`;
@@ -2832,7 +2905,7 @@ function homeView(){
     <div class="kpi"><b>${cnt('out')}</b><span>Checked out</span></div>
     <div class="kpi ${cnt('late')?'alert':''}"><b>${cnt('late')}</b><span>Late / missed check-in</span></div>
     <div class="kpi"><b>${leads}</b><span>Leads reported</span></div>
-    <div class="kpi"><b>${appts}</b><span>Appointments set</span></div>
+    <div class="kpi"><b>${appts}</b><span>Opps (appointments set)</span></div>
     <div class="kpi ${gearOut.some(g=>g.overdue)?'warn':''}"><b>${gearOut.length}</b><span>Booth gear out${gearOut.some(g=>g.overdue)?` (${gearOut.filter(g=>g.overdue).length} overdue)`:''}</span></div>
     <div class="kpi ${due?'warn':''}"><b>${due}</b><span>Evaluations due</span></div>
   </div>
@@ -2898,7 +2971,7 @@ function shiftCard(s){
     <div class="muted">${fmtLong(s.day.date)} · ${timeRange(s.day)}${s.ev.office?' · '+esc(s.ev.office):''}</div>
     ${addr?`<div class="small"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}" target="_blank" rel="noopener">${esc(addr)}</a></div>`:''}
     ${(det.booth||s.ev.boothNumber||s.ev.boothLocation)?`<div class="small">Booth: ${esc([s.ev.boothNumber,s.ev.boothLocation,det.booth].filter(Boolean).join(' · '))}</div>`:''}
-    ${c&&c.status==='out'?`<div class="small" style="margin-top:6px">${num(c.leads)} leads · ${num(c.appts)} appointments · ${round1(hoursOf(c))} hours. Thanks!</div>`:''}
+    ${c&&c.status==='out'?`<div class="small" style="margin-top:6px">${num(c.leads)} leads · ${num(c.appts)} opps · ${round1(hoursOf(c))} hours. Thanks!</div>`:''}
     <div style="margin-top:10px">${canIn?`<button class="btn big primary" data-act="openIn" data-day="${esc(s.dayId)}" data-pid="${esc(s.personId)}">📍 Check in</button>`:canOut?`<button class="btn big primary" data-act="openOut" data-cid="${c.id}">✅ Check out</button>`:(!c&&s.day.date>today?'<span class="small muted">Check-in opens on the day of the shift.</span>':'')}</div></div>`;
 }
 function findShift(dId,pid){
@@ -2929,7 +3002,7 @@ function checkOutPanel(p){
   return `<div class="panel"><h2>Check out · ${esc(c.eventName)}</h2><div class="sub">${esc(c.personName)} · checked in ${fmtStamp(c.inAt)} · about ${hrs} h so far</div>
     <div class="fields">
       <div class="field"><label>Leads <span style="color:var(--red)">*</span></label><input type="number" min="0" inputmode="numeric" data-keep="out-leads" value="${esc(p.leads??'')}"></div>
-      <div class="field"><label>Appointments set <span style="color:var(--red)">*</span></label><input type="number" min="0" inputmode="numeric" data-keep="out-appts" value="${esc(p.appts??'')}"></div>
+      <div class="field"><label>Opps (appointments set) <span style="color:var(--red)">*</span></label><input type="number" min="0" inputmode="numeric" data-keep="out-appts" value="${esc(p.appts??'')}"></div>
       <div class="field"><label>Foot traffic</label><select data-keep="out-traffic"><option value="">Select…</option>${['Low','Medium','High'].map(x=>`<option ${p.traffic===x?'selected':''}>${x}</option>`).join('')}</select></div>
     </div>
     ${cons.length?`<h3>Giveaways & print used</h3><div class="fields">${cons.map(a=>`<div class="field"><label class="small">${esc(a.name)}</label><input type="number" min="0" inputmode="numeric" data-keep="use-${a.id}" placeholder="0"></div>`).join('')}</div>`:''}
@@ -2964,7 +3037,7 @@ async function submitIn(){
     try{ await logAsset(p.gear.flatMap(id=>expandKits([id])).map(x=>({ type:'checkout', assetId:x, personId:p.pid, personName:me.name||'', eventKey:s.ev.key, eventName:s.ev.name, cid:p.cid }))); }catch(err){ console.error('asset log',err); }
     ui.lastSms=`${me.name||''}: checked in at ${s.ev.name} at ${new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}.`;
     alertLateCheckin(S.checkins[p.cid]||{ id:p.cid, personName:me.name||'', eventName:s.ev.name, office:s.ev.office||'', venueName:s.ev.venueName||'', date:s.day.date, shiftStart:s.day.start||'', shiftStop:s.day.stop||'', inAt:Date.now() });
-    ui.panel=null; ui.scanMsg=null; ui.notice=ui.queued?'Saved on your phone. Your check-in will send when you have signal. Remember to clock out on ADP at the end of your shift.':'You’re checked in. Have a great show! Remember to clock out on ADP at the end of your shift.'; ui.noticeKind='ok';
+    ui.panel=null; ui.scanMsg=null; ui.notice=ui.queued?'Saved on your phone. Your check-in will send when you have signal. Remember to clock out on ADP at the end of your shift.':'You’re checked in. Have a great event! Remember to clock out on ADP at the end of your shift.'; ui.noticeKind='ok';
   }catch(e){ console.error(e); p.err = e.code==='permission-denied' ? 'The database refused this check-in. It may already exist, or the hub rules aren’t published yet. Tell your manager.' : 'Couldn’t save: '+(e.message||e.code)+'. Check your signal and try again.'; }
   ui.busy=false; render();
 }
@@ -2975,7 +3048,7 @@ async function submitOut(){
   p.leads=leads; p.appts=appts; p.traffic=v('out-traffic');
   p.adpOut=!!v('adp-out');
   if(!p.adpOut){ p.err='Please clock out on ADP, then tick “I’ve clocked out on ADP.”'; render(); return; }
-  if(leads==='' || appts===''){ p.err='Enter your leads and appointments (use 0 if none).'; render(); return; }
+  if(leads==='' || appts===''){ p.err='Enter your leads and opps (use 0 if none).'; render(); return; }
   p.equipWhere=v('out-equip')||''; p.equipNote=v('out-equip-note')||'';
   if(!p.equipWhere){ p.err='Tell us where the event equipment is tonight.'; render(); return; }
   if(p.equipWhere==='handoff' && !p.equipNote.trim()){ p.err='Enter who you handed the equipment to.'; render(); return; }
@@ -3035,14 +3108,14 @@ function evalForm(e){
   const ta=(k,label)=>`<div class="field"><label>${label}</label><textarea data-ef="${k}">${esc(d[k]||'')}</textarea></div>`;
   return `<div class="row" style="margin-bottom:10px"><button class="btn sm" data-act="evalBack">◀ All evaluations</button><span class="spacer"></span>${m?`<a class="btn sm" href="${ETACC_URL}#event=${encodeURIComponent(m.id)}" target="_blank" rel="noopener">Open in ETACC ↗</a>`:''}</div>
   <div class="card"><h2>${esc(e.name)}</h2><div class="sub">${esc(e.office||'')} · ${fmtLong(e.start)}${e.end&&e.end!==e.start?' – '+fmtLong(e.end):''}${e.venueName?' · '+esc(e.venueName):''}<br>${m?`Linked to ETACC event${m.postEventEvalCompleted?' (evaluation already marked complete in ETACC)':''}.`:S.user?'<span style="color:var(--warn)">No matching ETACC event found by name and date. This evaluation will save in the hub only.</span>':''}${saved?`<br>Last saved ${fmtStamp(saved.savedAt)} by ${esc(saved.savedBy)}.`:''}</div>
-  <div class="kpis"><div class="kpi"><b>${r.cs.length}</b><span>Check-ins</span></div><div class="kpi"><b>${r.leads}</b><span>Leads</span></div><div class="kpi"><b>${r.appts}</b><span>Appointments</span></div><div class="kpi"><b>${round1(r.hrs)}</b><span>Hours worked</span></div><div class="kpi"><b>${r.lph}</b><span>Leads per hour</span></div></div>
+  <div class="kpis"><div class="kpi"><b>${r.cs.length}</b><span>Check-ins</span></div><div class="kpi"><b>${r.leads}</b><span>Leads</span></div><div class="kpi"><b>${r.appts}</b><span>Opps</span></div><div class="kpi"><b>${round1(r.hrs)}</b><span>Hours worked</span></div><div class="kpi"><b>${r.lph}</b><span>Leads per hour</span></div></div>
   <h3>Marketer check-ins</h3>${r.cs.length?`<table><thead><tr><th>Date</th><th>Marketer</th><th>In / out</th><th>Results</th><th>Photos</th></tr></thead><tbody>${r.cs.sort((a,b)=>a.date.localeCompare(b.date)||(a.inAt-b.inAt)).map(c=>`<tr><td>${fmtMD(c.date)}</td><td>${esc(c.personName)}${c.unscheduled?' <span class="pill p-warn">unscheduled</span>':''}</td><td class="small">${fmtClock(c.inAt)}${c.inLoc?` <a href="${mapLink(c.inLoc)}" target="_blank" rel="noopener">📍</a>`:''} – ${c.outAt?fmtClock(c.outAt):'<span style="color:var(--warn)">no check-out</span>'}</td><td class="small">${c.status==='out'?`${num(c.leads)} leads · ${num(c.appts)} appts${c.traffic?' · '+esc(c.traffic)+' traffic':''}`:''}${c.notes?`<div class="muted">${esc(c.notes)}</div>`:''}${(c.issues||[]).length||c.issueText?`<div style="color:var(--red)">${esc([...(c.issues||[]),c.issueText].filter(Boolean).join('; '))}</div>`:''}</td><td><div class="thumbs">${[c.inPhoto,c.outPhoto].filter(Boolean).map(id=>photoImg(id)).join('')}</div></td></tr>`).join('')}</tbody></table>`:'<p class="muted">No marketer check-ins were recorded for this event.</p>'}
   </div>
   <div class="card"><h2>Post-event evaluation</h2><div class="sub">Same fields as ETACC’s Post-Event Evaluation. Pre-filled from check-outs; edit anything before saving.</div>
     <div class="fields">
       <div class="field"><label>Event activation status</label><select data-ef="eventActivationStatus"><option value="">Select…</option>${['Activated','Not Activated','Canceled by Event Organizer'].map(x=>`<option ${d.eventActivationStatus===x?'selected':''}>${x}</option>`).join('')}</select></div>
       <div class="field" style="grid-column:1/-1"><label>Reason not activated <span class="small muted">(required if not activated or canceled)</span></label><textarea data-ef="notActivatedReason" placeholder="Why the event wasn’t worked: organizer canceled, weather, no staff available, booth not provided…">${esc(d.notActivatedReason||'')}</textarea></div>
-      ${inp('numberOfLeads','Number of leads','number')}${inp('totalAppointments','Total appointments','number')}${inp('leadsPerHour','Leads per hour','number')}${inp('totalCallToSets','Total call to sets','number')}
+      ${inp('numberOfLeads','Number of leads','number')}${inp('totalAppointments','Total opps','number')}${inp('leadsPerHour','Leads per hour','number')}${inp('totalCallToSets','Total call to sets','number')}
       ${rate('overallEventRating','Overall event organization (1–5)')}${rate('staffComplianceRating','Staff compliance with booth expectations (1–5)')}
     </div>
     <div class="grid" style="margin-top:12px">${inp('whoWorkedEvent','Who worked the event?')}${ta('issuesEncountered','Did you encounter any issues?')}${ta('whatWentWell','What went well?')}${ta('notesForNextYear','Notes for next year')}${ta('roiNotes','ROI notes')}</div>
@@ -3073,7 +3146,7 @@ function detailPanel(){
       ${c.officePickup?`<tr><th>Equipment</th><td>Picked up at the office · clocked in on ADP at ${esc(fmtTime(c.officeClockIn)||c.officeClockIn)}</td></tr>`:''}
       <tr><th>ADP</th><td>${c.adpIn?'✓ Confirmed clock-in':'<span style="color:var(--warn)">Clock-in not confirmed</span>'}${c.status==='out'?(c.adpOut?' · ✓ Confirmed clock-out':' · <span style="color:var(--warn)">Clock-out not confirmed</span>'):''}</td></tr>
       <tr><th>Checked out</th><td>${c.outAt?fmtStamp(c.outAt)+(c.outLoc?` · <a href="${mapLink(c.outLoc)}" target="_blank" rel="noopener">location</a>`:'')+` · ${round1(hoursOf(c))} h`:'<span class="muted">Not yet</span>'}</td></tr>
-      ${c.status==='out'?`<tr><th>Results</th><td>${num(c.leads)} leads · ${num(c.appts)} appointments${c.traffic?' · '+esc(c.traffic)+' traffic':''}</td></tr>`:''}
+      ${c.status==='out'?`<tr><th>Results</th><td>${num(c.leads)} leads · ${num(c.appts)} opps${c.traffic?' · '+esc(c.traffic)+' traffic':''}</td></tr>`:''}
       ${c.equipWhere?`<tr><th>Equipment tonight</th><td>${esc(EQUIP_WHERE[c.equipWhere]||'')}${c.equipNote?' – '+esc(c.equipNote):''}</td></tr>`:''}
       ${(c.assetsOut||[]).length?`<tr><th>Gear</th><td>${c.assetsOut.map(id=>{ const k=(c.assetConditions||{})[id]; return esc(assetName(id))+(c.status!=='out'?'':k==='keep'?' <span style="color:var(--warn)">still with marketer</span>':k==='Missing'?' <span style="color:var(--red)">missing</span>':(c.assetsReturned||[]).includes(id)?` ✓ returned${k&&k!=='Good'?' – '+esc(k.toLowerCase()):''}`:''); }).join('<br>')}</td></tr>`:''}
       ${Object.keys(c.consumables||{}).length?`<tr><th>Used</th><td>${Object.entries(c.consumables).map(([id,n])=>`${n} × ${esc(assetName(id))}`).join('<br>')}</td></tr>`:''}
@@ -3129,7 +3202,7 @@ document.addEventListener('click', async ev=>{
   if(a==='expNew'){ const me=person(ui.me); if(!me) return; ui.exp=newExpense(me.id); ui.expErr=''; render(); window.scrollTo(0,0); return; }
   if(a==='expClose'){ ui.exp=null; ui.expErr=''; render(); return; }
   if(a==='expAdd'){ const x=ui.exp, L=t.dataset.list; x[L]=x[L]||[]; x[L].push(L==='trips'?{ id:uid(), date:'', eventKey:'', showCode:'', from:'Home', to:'', officeFirst:false, miles:'' }:L==='stays'?{ id:uid(), eventKey:'', showCode:'', checkIn:'', checkOut:'', meals:{} }:{ id:uid(), date:'', category:'', eventKey:'', desc:'', amount:'' }); render(); return; }
-  if(a==='expDel'){ ui.exp[t.dataset.list].splice(+t.dataset.i,1); if(t.dataset.list==='trips') syncCommuteDays(ui.exp); render(); return; }
+  if(a==='expDel'){ if(!confirm('Remove this line from the report?')) return; const L=t.dataset.list, I=+t.dataset.i, row=ui.exp[L][I]; showUndo('Line removed.', ()=>{ if(ui.exp){ ui.exp[L].splice(I,0,row); if(L==='trips') syncCommuteDays(ui.exp); } }); ui.exp[t.dataset.list].splice(+t.dataset.i,1); if(t.dataset.list==='trips') syncCommuteDays(ui.exp); render(); return; }
   if(a==='expSave'||a==='expSubmit'){ const x=ui.exp;
     if(a==='expSubmit'){ const err=expValidate(x); if(err){ ui.expErr=err; render(); return; } x.status='submitted'; x.submittedAt=Date.now(); x.history=[...(x.history||[]), { at:Date.now(), by:x.personName, action:'Submitted' }]; }
     ui.busy=true; ui.expErr=''; render();
@@ -3151,6 +3224,8 @@ document.addEventListener('click', async ev=>{
   if(a==='scView'){ ui.scView=t.dataset.v; render(); return; }
   if(a==='scWk'){ const n=+t.dataset.n, last=addDays(mondayOf(todayIso()),-7); ui.scWeek = n===0 ? last : addDays(ui.scWeek||last, n); render(); return; }
   if(a==='scCsv'){ scCsv(); return; }
+  if(a==='undo'){ const u=ui.undo; ui.undo=null; clearTimeout(showUndo.t); if(u){ await guard(async()=>{ await u.fn(); }); } render(); return; }
+  if(a==='undoClose'){ ui.undo=null; render(); return; }
   if(a==='sgo'){ searchGo(+t.dataset.i); return; }
   if(a==='pageHelp'){ pageHelp(); return; }
   if(a==='welcomeClose'){ if(ev.target.closest('.tourbox') && t.classList.contains('tourbg')) return; ui.welcome=false; render(); return; }
@@ -3176,14 +3251,14 @@ document.addEventListener('click', async ev=>{
     if(rep==='once'){ const coll=sc==='day'?'days':'weeks', all=Object.assign({}, m[coll]||{}), rec=Object.assign({}, all[key]||{}); rec.extra=[...(rec.extra||[]), { id:'x_'+uid(), text }]; all[key]=rec; await guard(()=>saveMgr({ [coll]:all })); }
     else await guard(()=>saveMgr({ tasks:[...(m.tasks||[]), { id:'t_'+uid(), text, when:rep, group:'My tasks' }] }));
     return; }
-  if(a==='qDel'){ const sc=t.dataset.scope, key=t.dataset.key, coll=sc==='day'?'days':'weeks', m=mgrDoc(), all=Object.assign({}, m[coll]||{}), rec=Object.assign({}, all[key]||{}); rec.extra=(rec.extra||[]).filter(x=>x.id!==t.dataset.id); all[key]=rec; await guard(()=>saveMgr({ [coll]:all })); return; }
+  if(a==='qDel'){ if(!confirm('Remove this task?')) return; const sc=t.dataset.scope, key=t.dataset.key, coll=sc==='day'?'days':'weeks', m=mgrDoc(), prevColl=JSON.parse(JSON.stringify(m[coll]||{})); showUndo('Task removed.', ()=>saveMgr({ [coll]:prevColl })); const all=Object.assign({}, m[coll]||{}), rec=Object.assign({}, all[key]||{}); rec.extra=(rec.extra||[]).filter(x=>x.id!==t.dataset.id); all[key]=rec; await guard(()=>saveMgr({ [coll]:all })); return; }
   if(a==='hideShortcut'){ lsSet('peHub.shortcutHidden','1'); render(); return; }
   if(a==='alertSave'){ const vals=[...document.querySelectorAll('[data-alert]')].map(el=>({ kind:el.dataset.alert, key:el.dataset.key, value:el.value })); const ccEl=document.querySelector('[data-alertcc]'); if(ccEl) vals.ccDivision=ccEl.checked; ui.busy=true; render(); try{ await saveAlertCfg(vals); ui.alertMsg='Saved.'; }catch(e){ ui.alertMsg='Couldn’t save: '+(e.code||e.message); } ui.busy=false; render(); return; }
   if(a==='alertTest'){ const ok=await queueMail('test-'+Date.now(), { to:[(S.user&&S.user.email)||PAULA], kind:'test', subject:'Event Hub test alert', html:mailShell('Test alert','<p>If you’re reading this, automatic alerts are working.</p>') }); ui.alertMsg=ok?'Test queued: check your inbox in a minute.':'Couldn’t queue the test email.'; render(); return; }
   if(a==='backCheckin'){ ui.tab='checkin'; history.replaceState(null,'',location.pathname+location.search); render(); return; }
   if(a==='tAdd'){ ui.tForm={}; render(); return; }
   if(a==='tEdit'){ ui.tForm={ id:t.dataset.id }; render(); return; }
-  if(a==='tDel'){ if(!confirm('Delete this training item?')) return; const id=ui.tForm.id; ui.tForm=null; if(S.training){ S.training.removed=[...new Set([...(S.training.removed||[]), id])]; } else S.training={ items:DEFAULT_TRAINING, removed:[id] }; await guard(()=>saveTraining(trainingItems().filter(y=>y.id!==id))); return; }
+  if(a==='tDel'){ if(!confirm('Delete this training item?')) return; const id=ui.tForm.id; { const pi=JSON.parse(JSON.stringify(trainingItems())), pr=((S.training&&S.training.removed)||[]).slice(); showUndo('Training item deleted.', async()=>{ if(S.training) S.training.removed=pr; await saveTraining(pi); }); } ui.tForm=null; if(S.training){ S.training.removed=[...new Set([...(S.training.removed||[]), id])]; } else S.training={ items:DEFAULT_TRAINING, removed:[id] }; await guard(()=>saveTraining(trainingItems().filter(y=>y.id!==id))); return; }
   if(a==='tMove'){ const items=trainingItems().slice(), i=items.findIndex(y=>y.id===t.dataset.id), j=i+(+t.dataset.n); if(j<0||j>=items.length) return; [items[i],items[j]]=[items[j],items[i]]; await guard(()=>saveTraining(items)); return; }
   if(a==='tOpen'){ openTrainingFile(t.dataset.id); return; }
   if(a==='sumRange'){ ui.sumRange={ from:t.dataset.f, to:t.dataset.t, label:t.dataset.l }; ui.sumNote=''; render(); return; }
@@ -3196,7 +3271,7 @@ document.addEventListener('click', async ev=>{
   if(a==='mgrWk'){ const n=+t.dataset.n; ui.mgrWeek = n===0 ? workWeekStart(todayIso()) : addDays(ui.mgrWeek||workWeekStart(todayIso()), n); render(); return; }
   if(a==='mgrEdit'){ ui.mgrEditOpen=true; render(); return; }
   if(a==='mtAdd'){ const tasks=[...(mgrDoc().tasks||[]), { id:'t_'+uid(), text:'New task', when:'dow:'+parseIso(todayIso()).getDay(), group:'' }]; await guard(()=>saveMgr({ tasks })); return; }
-  if(a==='mtDel'){ if(!confirm('Remove this task from your list?')) return; const m=mgrDoc(); await guard(()=>saveMgr({ tasks:(m.tasks||[]).filter(x=>x.id!==t.dataset.id), removedTasks:[...new Set([...(m.removedTasks||[]), t.dataset.id])] })); return; }
+  if(a==='mtDel'){ if(!confirm('Remove this task from your list?')) return; const m=mgrDoc(); { const pt=JSON.parse(JSON.stringify(m.tasks||[])), pr=(m.removedTasks||[]).slice(); showUndo('Task removed.', ()=>saveMgr({ tasks:pt, removedTasks:pr })); } await guard(()=>saveMgr({ tasks:(m.tasks||[]).filter(x=>x.id!==t.dataset.id), removedTasks:[...new Set([...(m.removedTasks||[]), t.dataset.id])] })); return; }
   if(a==='mtReset'){ if(!confirm('Replace your task list with the team’s standard weekly cadence?')) return; await guard(()=>saveMgr({ removedTasks:[], tasks:JSON.parse(JSON.stringify(DEFAULT_MGR_TASKS)) })); return; }
   if(a==='adpWk'){ const n=+t.dataset.n; ui.adpWeek = n===0 ? mondayOf(todayIso()) : addDays(ui.adpWeek||mondayOf(todayIso()), n); render(); return; }
   if(a==='scopeToggle'){ ui.scopeOpen=!ui.scopeOpen; render(); return; }
@@ -3207,7 +3282,7 @@ document.addEventListener('click', async ev=>{
   if(a==='av'){ ui.av=t.dataset.v; ui.audit=null; ui.scanMsg=null; render(); return; }
   if(a==='addAsset'){ ui.item=null; ui.scanMsg=null; ui.assetForm={ code:t.dataset.code||'' }; render(); return; }
   if(a==='editAsset'){ ui.assetForm={id:t.dataset.aid}; ui.item=null; render(); return; }
-  if(a==='retireAsset'){ if(!confirm('Retire this item? It disappears from lists but stays in past records.')) return; const id=ui.assetForm.id; const list=S.assets.map(x=>x.id===id?Object.assign({},x,{retired:true}):x).map(x=>x.kind==='kit'?Object.assign({},x,{contents:(x.contents||[]).filter(c=>c!==id)}):x); await guard(()=>saveAssets(list)); ui.assetForm=null; render(); return; }
+  if(a==='retireAsset'){ if(!confirm('Retire this item? It disappears from lists but stays in past records.')) return; const id=ui.assetForm.id; { const prev=JSON.parse(JSON.stringify(S.assets)); showUndo('Item retired.', ()=>saveAssets(prev)); } const list=S.assets.map(x=>x.id===id?Object.assign({},x,{retired:true}):x).map(x=>x.kind==='kit'?Object.assign({},x,{contents:(x.contents||[]).filter(c=>c!==id)}):x); await guard(()=>saveAssets(list)); ui.assetForm=null; render(); return; }
   if(a==='labels'){ printLabels(ui.labelSel||[]); return; }
   if(a==='labelsAll'){ printLabels([...document.querySelectorAll('input[data-sel]')].map(x=>x.dataset.sel)); return; }
   if(a==='labelOne'){ printLabels([t.dataset.aid]); return; }
@@ -3231,7 +3306,7 @@ document.addEventListener('click', async ev=>{
   if(a==='auditClose'){ const au=Object.assign({ id:ui.audit }, S.audits[ui.audit]); const lost=(document.querySelector('[data-keep="auditLost"]')||{}).checked; const miss=auditItems(au).filter(isGear).filter(x=>!stOf(x).audits[ui.audit]);
     if(!confirm(`Close “${au.name}”?${lost&&miss.length?` ${miss.length} item(s) will be marked Lost.`:''}`)) return;
     await guard(async()=>{ if(lost) await logAsset(miss.map(x=>({ type:'status', assetId:x.id, status:'lost', note:`Not found in ${au.name}` }))); await saveAudit(ui.audit,{ closedAt:Date.now(), closedBy:(S.user&&S.user.email)||'' }); }); return; }
-  if(a==='deleteCheckin'){ if(!confirm('Delete this check-in? The marketer can then check in again.')) return; const id=ui.detail.cid; await guard(async()=>{ if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.deleteDoc(fsM.doc(db,'peHubCheckins',id)); } else { delete S.checkins[id]; localSave(); } }); ui.detail=null; render(); return; }
+  if(a==='deleteCheckin'){ if(!confirm('Delete this check-in? The marketer can then check in again.')) return; const id=ui.detail.cid, keep=JSON.parse(JSON.stringify(S.checkins[id]||null)); if(keep) showUndo('Check-in deleted.', async()=>{ if(S.mode==='live'){ const {fsM,db}=DB.fb; const d=Object.assign({},keep); delete d.id; await fsM.setDoc(fsM.doc(db,'peHubCheckins',id), d); } else { S.checkins[id]=keep; localSave(); } }); await guard(async()=>{ if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.deleteDoc(fsM.doc(db,'peHubCheckins',id)); } else { delete S.checkins[id]; localSave(); } }); ui.detail=null; render(); return; }
   if(a==='evalBack'){ ui.evalKey=null; ui.evalDraft=null; render(); return; }
   if(a==='saveEval'){ const e=S.sched.events.find(x=>x.key===ui.evalKey); readEvalDraft();
     if(ui.evalDraft.eventActivationStatus && ui.evalDraft.eventActivationStatus!=='Activated' && !String(ui.evalDraft.notActivatedReason||'').trim()){ ui.notice='Please enter the reason this event wasn’t activated.'; ui.noticeKind='err'; render(); window.scrollTo(0,0); return; }

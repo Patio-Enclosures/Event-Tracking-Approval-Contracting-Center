@@ -347,7 +347,7 @@ async function initCloud(){
   try{
     const base = `https://www.gstatic.com/firebasejs/${FB_VER}/`;
     const [appM, authM, fsM] = await Promise.all([import(base+'firebase-app.js'), import(base+'firebase-auth.js'), import(base+'firebase-firestore.js')]);
-    const app = appM.initializeApp(FIREBASE_CONFIG, 'pe-marketer-schedule');
+    const app = appM.initializeApp(FIREBASE_CONFIG)  /* default app: shares the sign-in with the hub and ETACC (same site, same Firebase project) */;
     const auth = authM.getAuth(app), db = fsM.getFirestore(app);
     cloud.fb = { authM, fsM, auth, db };
     authM.onAuthStateChanged(auth, u=>{ cloud.user = u; cloud.authErr=''; if(u && DOCS.every(n=>cloud.loaded[n])) cloud.dirty = unsavedDocs().length>0; render(); });

@@ -181,6 +181,10 @@ table.extab th{font-size:11px}table.meals{width:auto;margin:6px 0}table.meals td
   .label{height:1in;padding:0.06in 0.1in;overflow:hidden;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;font:9px Arial,sans-serif}
   .label svg{height:0.55in;max-width:2.4in}.label .ln{font-weight:700;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:2.45in}.label .lt{font-size:7px;color:#555}
 }
+.notice.signal{background:#C8102E;color:#fff;border:2px solid #8B0A1F;font-weight:700;animation:sigflash 1.2s ease-in-out infinite}
+.notice.signal a,.notice.signal b{color:#fff}
+@keyframes sigflash{0%,100%{background:#C8102E;box-shadow:0 0 0 0 rgba(200,16,46,.6)}50%{background:#8B0A1F;box-shadow:0 0 0 6px rgba(200,16,46,0)}}
+@media (prefers-reduced-motion:reduce){.notice.signal{animation:none}}
 </style>
 </head>
 <body>
@@ -1627,7 +1631,7 @@ function withSignal(p){
 }
 function offlineBanner(){
   if(navigator.onLine && !ui.queued) return '';
-  return `<div class="notice warn">📶 ${navigator.onLine?'Weak signal: what you saved is stored on this phone and will send automatically when the signal improves. Keep this page open, or open it again later.':'You’re offline. You can still check in and out: it’s saved on this phone and sends automatically when you have signal again.'}
+  return `<div class="notice signal" role="alert">📶 ${navigator.onLine?'Weak signal: what you saved is stored on this phone and will send automatically when the signal improves. Keep this page open, or open it again later.':'You’re offline. You can still check in and out: it’s saved on this phone and sends automatically when you have signal again.'}
     ${ui.lastSms?`<div style="margin-top:6px"><a class="btn sm" href="sms:?&body=${encodeURIComponent(ui.lastSms)}">💬 Backup: text my manager</a></div>`:''}</div>`;
 }
 window.addEventListener('online', ()=>{ setTimeout(()=>{ ui.queued=false; render(); }, 6000); render(); });

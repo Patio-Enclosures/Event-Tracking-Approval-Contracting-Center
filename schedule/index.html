@@ -378,7 +378,7 @@ function isoOf(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.get
 function todayIso(){ return isoOf(new Date()); }
 function parseIso(s){ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
 function addDays(iso,n){ const d=parseIso(iso); d.setDate(d.getDate()+n); return isoOf(d); }
-function sundayOf(iso){ const d=parseIso(iso); d.setDate(d.getDate()-d.getDay()); return isoOf(d); }
+function sundayOf(iso){ const d=parseIso(iso); d.setDate(d.getDate()-((d.getDay()+6)%7)); return isoOf(d); } // week start: Monday (name kept for existing calls)
 function weekDays(){ return [0,1,2,3,4,5,6].map(i=>addDays(ui.weekStart,i)); }
 // Viewing / emailing range: 1–8 weeks starting with the selected week. Building, PBS limits and
 // the assign area stay one week at a time.
@@ -827,7 +827,7 @@ function buildHtml(days, weekShifts, weekEvents, label){
     <div class="days7">
       ${days.map((d,i)=>`
         <div class="daycol">
-          <h3>${DOW[i].slice(0,3)} ${fmtMD(d)}</h3>
+          <h3>${DOW[parseIso(d).getDay()].slice(0,3)} ${fmtMD(d)}</h3>
           ${weekShifts[i].map(s=>shiftCard(s)).join('') || '<div class="hint">No events</div>'}
         </div>`).join('')}
     </div>
@@ -885,10 +885,10 @@ function gridHtml(days, me){
   if(!list.length) return `<div class="empty">Nobody is scheduled this week yet.</div>`;
   const visKeys = new Set(visibleEvents().map(e=>e.key));
   const mobile = me ? `<div class="mylist">${days.map((d,i)=>{ const sh=allShiftsFor(me.id,d).filter(s=>visKeys.has(s.ev.key));
-      return `<div class="myday ${sh.length?'':'offday'}"><div class="dl"><b>${DOW[i].slice(0,3)}</b> ${fmtMD(d)}</div><div>${sh.length ? sh.map(s=>`<div class="cellshift"><div class="t">${esc(timeRange(s.day))}</div><div class="n">${esc(s.ev.name)}</div><div class="v">${esc(s.ev.venueName||'')}</div></div>`).join('') : 'Off'}</div></div>`; }).join('')}
+      return `<div class="myday ${sh.length?'':'offday'}"><div class="dl"><b>${DOW[parseIso(d).getDay()].slice(0,3)}</b> ${fmtMD(d)}</div><div>${sh.length ? sh.map(s=>`<div class="cellshift"><div class="t">${esc(timeRange(s.day))}</div><div class="n">${esc(s.ev.name)}</div><div class="v">${esc(s.ev.venueName||'')}</div></div>`).join('') : 'Off'}</div></div>`; }).join('')}
       <div class="mytot">${(()=>{ const h=weekHoursFor(me.id), m=pbsMax(me); return `${+h.toFixed(1)} hrs scheduled${m!==null?` · PBS up to ${m}`:''}`; })()}</div></div>` : '';
   return `${mobile}<div class="gridwrap ${me?'me':''}"><table class="grid">
-    <thead><tr><th class="emp">Employee</th>${days.map((d,i)=>`<th>${DOW[i]}<span class="d">${fmtMD(d)}</span></th>`).join('')}<th class="hrs">Hours<span class="d">sched / PBS</span></th></tr></thead>
+    <thead><tr><th class="emp">Employee</th>${days.map((d,i)=>`<th>${DOW[parseIso(d).getDay()]}<span class="d">${fmtMD(d)}</span></th>`).join('')}<th class="hrs">Hours<span class="d">sched / PBS</span></th></tr></thead>
     <tbody>${list.map(p=>{
       let hrs=0;
       const cells = days.map(d=>{

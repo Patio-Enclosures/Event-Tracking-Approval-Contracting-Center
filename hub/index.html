@@ -55,6 +55,31 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 @media (max-width:560px){.scbanner{padding:14px;gap:12px}.scbanner .ic{width:48px;height:48px;font-size:26px}.scbanner h2{font-size:19px}.scbanner .go{width:100%;text-align:center}.scb-stat{min-width:0;padding:6px}.scb-stat b{font-size:16px}}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media (max-width:800px){.grid2{grid-template-columns:1fr}}
 .actbar{display:grid;grid-template-columns:170px 1fr 40px;gap:8px;align-items:center;margin:5px 0;font-size:13.5px}.actbar div{background:#eef0f0;border-radius:6px;height:12px;overflow:hidden}.actbar i{display:block;height:100%;background:var(--aqua)}.actbar b{text-align:right}
+.homeh{font-size:15px;margin:18px 0 8px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em}.homeh .small{text-transform:none;letter-spacing:0}
+.todo .todogrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px}.todog{border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff}
+.todoh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;font-size:14px}.todoi{display:flex;flex-direction:column;padding:6px 8px;border-radius:8px;cursor:pointer;border-left:3px solid var(--gold);margin:3px 0;background:#fafafa}
+.todoi:hover{background:#f0f7f8}.todoi.red{border-left-color:var(--red)}.todoi b{font-size:13.5px}.todoi span{font-size:12px;color:var(--ink-soft)}
+.scb-upd{margin-top:6px!important;font-size:12.5px!important;color:var(--gold)!important}
+.searchwrap{position:relative;margin:10px auto 12px;max-width:980px}.searchwrap input{width:100%;font-size:16px;padding:11px 14px;border:2px solid var(--line);border-radius:12px}.searchwrap input:focus{border-color:var(--aqua);outline:none}
+.searchres{position:absolute;z-index:60;left:0;right:0;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.15);max-height:60vh;overflow:auto}
+.sres{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;border-bottom:1px solid #f1f1f1}.sres.sel,.sres:hover{background:#e0f4f6}.sres .ic{font-size:20px}.sres .st{flex:1;min-width:0;display:flex;flex-direction:column}.sres small{color:var(--ink-soft)}.sres .sk{font-size:11px;color:var(--ink-soft);text-transform:uppercase}
+.bottomnav{display:none}
+@media (max-width:700px){ body.hasnav{padding-bottom:72px}
+  .bottomnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:70;background:#fff;border-top:2px solid var(--aqua);padding:4px 2px calc(4px + env(safe-area-inset-bottom))}
+  .bn{flex:1;background:none;border:0;display:flex;flex-direction:column;align-items:center;font-size:11px;color:var(--ink-soft);padding:4px 0;min-height:52px}.bn .bi{font-size:21px;position:relative}.bn .bi i{position:absolute;top:-4px;right:-12px;background:var(--red);color:#fff;font-style:normal;font-size:10px;border-radius:9px;padding:0 5px;font-weight:700}.bn.on{color:#000;font-weight:700}.bn.on .bi{transform:scale(1.1)}
+  table.stack thead{display:none} table.stack,table.stack tbody,table.stack tr,table.stack td{display:block;width:100%} table.stack tr{border:1px solid var(--line);border-radius:10px;margin:0 0 10px;padding:6px 8px;background:#fff}
+  table.stack td{display:flex;justify-content:space-between;gap:12px;text-align:right!important;border:0!important;padding:4px 2px!important;white-space:normal!important}
+  table.stack td::before{content:attr(data-label);font-weight:600;color:var(--ink-soft);text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.02em}
+  table.stack td:first-child{display:block;text-align:left!important;font-size:15px;border-bottom:1px solid #eee!important;padding-bottom:6px!important}table.stack td:first-child::before{display:none}
+  table.stack td[data-label=""]::before{display:none}
+  table.stack.wide tr:not(.open) td:nth-child(n+6){display:none}
+  table.stack.wide tr{cursor:pointer;position:relative} table.stack.wide tr::after{content:'Show all ▾';display:block;text-align:center;font-size:12px;color:var(--aqua-ink);font-weight:700;padding-top:4px} table.stack.wide tr.open::after{content:'Show less ▴'} .sctable td.scred{background:#fde2e2}
+}
+.helpbtn{border-color:var(--aqua);color:var(--aqua-ink);font-weight:700}
+.guide h3.flash{background:#fef0dc;border-radius:6px;padding:4px 6px;animation:gflash 2s ease 1}@keyframes gflash{0%{background:#F99D1C}100%{background:#fef0dc}}
+.tourbg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
+.tourbox{background:#fff;border-radius:16px;max-width:460px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35);border-top:6px solid var(--aqua)}.tourbox h2{margin:6px 0 8px}.tourbox p{color:var(--ink-soft);line-height:1.5}
+.touric{font-size:40px}.tourstep{font-size:12px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em}.tourdots{display:flex;gap:6px;justify-content:center;margin:12px 0}.tourdots i{width:8px;height:8px;border-radius:50%;background:#ddd}.tourdots i.on{background:var(--aqua)}
 .minis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 16px}
 @media (max-width:760px){.minis{grid-template-columns:1fr 1fr}}
 .mini{position:relative;display:flex;align-items:center;gap:10px;background:var(--surface);border:2px solid var(--tc,var(--line));border-radius:12px;padding:10px 12px;cursor:pointer;text-decoration:none;color:inherit;min-height:60px}
@@ -1229,7 +1254,7 @@ function mgrBar(){
   const working=isWorkDay(t), nWork=workWeekDates(ws).length;
   const dayStarted=((m.days||{})[t]||{}).started, weekStarted=((m.weeks||{})[ws]||{}).started;
   return `<div class="mgrbar"><button class="btn big primary" data-act="startWeek">▶ ${weekStarted?'My week':'Start my week'}<small>Mon–Sun · ${nWork} work days · ${w.n}/${w.total} done</small></button>
-    <button class="btn big ${working?'primary':''}" data-act="startDay">☀️ ${dayStarted?'My day':'Start my day'}<small>${working?`${d.n}/${d.total} done today${flexOf(t)==='work'?' · flex work day':''}`:(flexOf(t)==='off'?'Flex day off':'Day off')}</small></button>${(()=>{ const n=attentionCount(); return n?`<button class="btn big" data-tab="myday" style="border-color:var(--gold);grid-column:1/-1">⚑ ${n} event item${n===1?'':'s'} need attention<small>Schedule · decisions · deadlines · contract releases</small></button>`:''; })()}</div>`;
+    <button class="btn big ${working?'primary':''}" data-act="startDay">☀️ ${dayStarted?'My day':'Start my day'}<small>${working?`${d.n}/${d.total} done today${flexOf(t)==='work'?' · flex work day':''}`:(flexOf(t)==='off'?'Flex day off':'Day off')}</small></button></div>`;
 }
 /* ---------- Events needing attention (My day / My week) ---------- */
 // Uses ETACC events (dashboardEvents) for the offices in the scope picker, plus the schedule for staffing.
@@ -1274,7 +1299,7 @@ function myDayView(){
   const off=!isWorkDay(t);
   return `${off?`<div class="notice">Today is ${flexOf(t)==='off'?'your flex day off':'a day off'}. ${ev.length?`There ${ev.length===1?'is an event':'are '+ev.length+' events'} today. `:''}<button class="btn sm" data-act="flexSet" data-date="${t}" data-v="${flexOf(t)==='off'?'':'work'}">Make today a ${flexOf(t)==='off'?'regular':'flex'} work day</button></div>`:''}
   <div class="row" style="margin-bottom:10px"><b>${fmtLong(t)}</b>${flexOf(t)==='work'?' <span class="pill p-blue">Flex work day</span>':''}${started?`<span class="small muted">Started ${fmtClock(started)}</span>`:''}<span class="spacer"></span><button class="btn sm" data-act="startWeek">▶ My week</button><button class="btn sm" data-act="mgrEdit">✎ Edit my tasks</button>${scopePicker()}</div>
-    ${attentionCard()}
+    ${todoCard()}
     <div class="card"><h2>Today’s checklist <span class="small muted">${d.n} of ${d.total} done</span></h2><div class="prog"><span style="width:${d.total?Math.round(d.n/d.total*100):100}%"></span></div>${d.html}</div>
     <div class="card"><h2>Events today (${ev.length})</h2>${ev.length?`<table><tbody>${ev.map(e=>{ const sh=shiftsOn(t).filter(s=>s.ev.key===e.key); return `<tr><td><b>${esc(e.name)}</b><div class="small muted">${esc(e.office)}${e.venueName?' · '+esc(e.venueName):''}</div></td><td class="small">${sh.length} marketer${sh.length===1?'':'s'} · ${sh.filter(s=>s.c).length} checked in</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No events today.</p>'}</div>`;
 }
@@ -1282,7 +1307,7 @@ function myWeekView(){
   const ws=ui.mgrWeek||workWeekStart(todayIso()), dates=workWeekDates(ws), w=weekChecklist(ws), started=((mgrDoc().weeks||{})[ws]||{}).started;
   return `<div class="row" style="margin-bottom:10px"><b>Week of ${fmtLong(ws)} – ${fmtLong(dates[dates.length-1])}</b>${started?`<span class="small muted">Started ${fmtStamp(started)}</span>`:''}<span class="spacer"></span>
     <button class="btn sm" data-act="mgrWk" data-n="-7">◀</button>${ws!==workWeekStart(todayIso())?'<button class="btn sm" data-act="mgrWk" data-n="0">This week</button>':''}<button class="btn sm" data-act="mgrWk" data-n="7">▶</button><button class="btn sm" data-act="startDay">☀️ My day</button><button class="btn sm" data-act="mgrEdit">✎ Edit my tasks</button>${scopePicker()}</div>
-    ${attentionCard()}
+    ${todoCard()}
     <div class="card"><h2>This week’s checklist <span class="small muted">${w.n} of ${w.total} done</span></h2><div class="prog"><span style="width:${w.total?Math.round(w.n/w.total*100):100}%"></span></div>${w.html}</div>
     <div class="small muted" style="margin:-4px 0 10px">Typical work days: ${WEEK_ORDER.filter(i=>workDays().includes(i)).map(i=>DOW_NAMES[i].slice(0,3)).join(', ')}. Use a <b>flex day</b> to work a day off when there’s an event, or take a work day off. Tasks from a day off move to your next work day.</div>
     <div class="weekgrid">${weekDates(ws).map(d=>{ const work=isWorkDay(d), f=flexOf(d), typical=workDays().includes(parseIso(d).getDay());
@@ -1784,6 +1809,11 @@ const GUIDES = {
       '<b>Cost per Lead</b> shows what each event cost (booth fee, wages, mileage, per diem, hotel, other) against its leads and appointments, by region and office, and flags events over target. Download it for Excel.',
       'Submit your own expense report every Monday for the week before.',
       'So leadership can see how the hub is being used, it records which sections you open and key actions you take (like starting your day or approving an expense report). It never records what you type.' ]],
+    ['Scorecard and reports', [
+      'The <b>🏆 Event Marketing Scorecard</b> on the home page shows last week’s shows: opps against goal, cost per opp, set and cancel rates, by region. Switch to <b>Month to date</b> for sales and $/MAR. The date at the top shows when it was last updated.',
+      'Show cost, opps and goals come from the Tradeshow Master that Paula or Trevor upload each Monday. Until it’s uploaded, the scorecard uses the hub’s own check-out results and ETACC goals.',
+      'Paula, Trevor, Angelique and Chris enter cancels, meets, labor and expenses each Monday on <b>REM weekly numbers</b>, and sales month to date at month end.',
+      'Red cells missed their target. Use the region selector to see your division, region or office, and <b>Download</b> to get a spreadsheet.' ]],
     ['Equipment', [
       '<b>Asset Inventory</b>: scan barcodes to check gear out, return it, or transfer it between offices; track condition and repairs.',
       'Marketers report where equipment is every night at check-out (home, office, venue or handed off).',
@@ -1796,7 +1826,7 @@ function guideView(){
   const which=ui.guide || (MARKETER_MODE||!S.user ? 'marketer' : 'manager'), g=GUIDES[which];
   return `${MARKETER_MODE?'<div class="row" style="margin-bottom:10px"><button class="btn" data-act="backCheckin">◀ Back to check-in</button></div>':''}
   <div class="row" style="margin-bottom:10px">${Object.entries(GUIDES).map(([k,x])=>`<button class="btn ${k===which?'primary':''}" data-act="guidePick" data-g="${k}">${k==='marketer'?'📱 Marketers':'🧭 Managers'}</button>`).join('')}<span class="spacer"></span><button class="btn" data-act="guidePrint">🖨️ Print</button></div>
-  <div class="card guide" id="guideBody"><h2>${esc(g.title)}</h2>${g.sections.map(([h,items])=>`<h3>${esc(h)}</h3><ol>${items.map(i=>`<li>${i}</li>`).join('')}</ol>`).join('')}</div>`;
+  <div class="card guide" id="guideBody"><h2>${esc(g.title)}</h2>${which==='manager'&&S.user?'<button class="btn sm primary" data-act="tourStart" style="margin-bottom:8px">▶ Take the 1-minute tour</button>':''}${g.sections.map(([h,items])=>`<h3 data-gsec="${esc(h)}" class="${ui.guideSec===h?'flash':''}">${esc(h)}</h3><ol>${items.map(i=>`<li>${i}</li>`).join('')}</ol>`).join('')}</div>`;
 }
 /* ---------------- quick-add tasks on My day / My week ---------------- */
 function quickAdd(scope, key){
@@ -2023,7 +2053,7 @@ function actTrack(kind, key){
 function actOnRender(){
   if(!S.user || MARKETER_MODE) { actLastTab=null; return; }
   if(!actSessionSent){ actSessionSent=true; actTrack('session'); }
-  const tab=ui.tab||'home'; if(tab!==actLastTab){ actLastTab=tab; actTrack('view', tab); }
+  const tab=ui.tab||'home'; if(tab!==actLastTab){ actLastTab=tab; actTrack('view', tab); bumpToolUse(tab); }
 }
 function actKnownManagers(){
   const m={}, add=(email,name,where)=>{ email=String(email||'').trim().toLowerCase(); if(!/@/.test(email)) return; const x=m[email]=m[email]||{ email, name:'', where:new Set() }; if(name&&!x.name) x.name=name; if(where) x.where.add(where); };
@@ -2080,11 +2110,146 @@ async function actCleanup(){
   if(S.mode!=='live' || !isRemUser() || actCleanup.done) return; actCleanup.done=true;
   try{ const {fsM,db}=DB.fb, cutoff=addDays(todayIso(),-ACT_KEEP_DAYS); const snap=await fsM.getDocs(fsM.query(fsM.collection(db,'peHubActivity'), fsM.where('day','<',cutoff), fsM.limit(300))); for(const d of snap.docs) await fsM.deleteDoc(d.ref); }catch(e){ console.warn('activity cleanup',e.code||e.message); }
 }
+/* ================= Ease-of-use layer: home by role, one to-do list, search, phone menu, tour, page help ================= */
+// ---- Scorecard "last updated" ----
+function scLastUpdated(){
+  const R=showReport(), M=scManual(); let rem=0, remBy='';
+  Object.values(M).forEach(d=>{ if(num(d.updatedAt)>rem){ rem=num(d.updatedAt); remBy=d.updatedBy||''; } });
+  const at=Math.max(R?num(R.uploadedAt):0, rem);
+  return { at, report:R?num(R.uploadedAt):0, reportBy:R?(R.by||''):'', rem, remBy };
+}
+function scUpdatedLine(short){
+  const u=scLastUpdated();
+  if(!u.at) return short?'Live from check-outs':'Last updated: live from hub check-outs (no Tradeshow Master or REM numbers yet)';
+  if(short) return 'Updated '+fmtStamp(u.at);
+  return `Last updated <b>${fmtStamp(u.at)}</b>${u.report?` · Tradeshow Master ${fmtStamp(u.report)}`:''}${u.rem?` · REM numbers ${fmtStamp(u.rem)}`:''}`;
+}
+// ---- One to-do list ----
+function todoGroups(){
+  if(!S.user) return [];
+  const t=todayIso(), G=[]; const add=(key,ic,title,tab,items,btn)=>{ if(items.length) G.push({ key, ic, title, tab, items, btn }); };
+  // alerts
+  add('alerts','🔔','New alerts','alerts', unreadAlerts().map(a=>({ text:a.subject||'Alert', sub:a.text||'', act:'alOpen', id:a.id, red:true })), 'See alerts');
+  // today’s check-ins
+  const sh=shiftsOn(t).filter(s=>inOffice(s.ev.office)), late=sh.filter(s=>['late','noout'].includes(shiftStatus(s).k));
+  add('late','⏰','Late or missing check-ins today','today', late.map(s=>({ text:personName(s.personId), sub:`${s.ev.name} · ${timeRange(s.day)} · ${shiftStatus(s).label}`, red:true })), 'Open Today’s Activity');
+  // staffing
+  add('staff','🗓️','Events that need marketers','schedule', needsStaffing().map(x=>({ text:x.e.name, sub:`${x.e.office||''} · ${fmtLong(x.e.start)} · ${x.open.length} of ${x.total} day${x.total===1?'':'s'} unstaffed`, red:x.e.start<=addDays(t,7) })), 'Open the schedule');
+  // ETACC
+  const A=attentionData();
+  add('deadlines','⏳','Approaching deadlines','events', A.deadlines.map(d=>({ text:d.x.eventName||'', sub:`${d.x.branch||''} · ${d.what} ${fmtMD(d.date)}`, red:d.late||d.date<=addDays(t,3) })), 'Open ETACC');
+  add('release','📨','Expected contract releases','events', A.release.map(d=>({ text:d.x.eventName||'', sub:`${d.x.branch||''} · ${d.date<t?'Released':d.date===t?'Releases today':'Expected'} ${fmtMD(d.date)}: register right away`, red:d.date<=t })), 'Open ETACC');
+  add('decide','🤔','Events that need a decision','events', A.decide.map(d=>({ text:d.x.eventName||'', sub:`${d.x.branch||''} · ${fmtLong(d.x.startDate)} · decide by ${fmtMD(d.date)}` })), 'Open ETACC');
+  // evaluations
+  add('evals','📝','Evaluations to complete','evals', evalsDue().filter(e=>!evalDone(e)).map(e=>({ text:e.name, sub:`${e.office||''} · ended ${fmtMD(e.end||e.start)}`, red:(e.end||e.start)<=addDays(t,-7) })), 'Open evaluations');
+  // expenses
+  add('exp','🧾','Expense reports to approve','expenses', Object.values(S.expenses).filter(x=>x.status==='submitted' && (!x.office||inOffice(x.office))).map(x=>({ text:x.personName||'', sub:`Week of ${fmtMD(x.weekStart)} · ${money2((x.totals||expCalc(x)).total)}` })), 'Open expense reports');
+  // ADP
+  const adp=adpRows(mondayOf(t)).filter(x=>x.flag); add('adp','⏱️','Timecards to double-check','adp', adp.map(x=>({ text:personName(x.s.personId), sub:`${x.s.ev.name} · ${fmtMD(x.d)} · ${x.issues.join(', ')}` })), 'Open ADP check');
+  // equipment
+  const gear=scopedAssets().filter(isGear).map(a=>[a,stOf(a)]).filter(([a,s])=>s.overdue), low=scopedAssets().filter(isLow);
+  add('gear','📦','Equipment overdue or low','assets', [...gear.map(([a,s])=>({ text:a.name||'Item', sub:'Overdue for return', red:true })), ...low.map(a=>({ text:a.name||'Item', sub:`Low stock: ${stOf(a).qty} left` }))], 'Open equipment');
+  // hotels
+  add('hotels','🏨','Upcoming events that may need hotels','travel', travelNeeds().map(x=>({ text:x.e.name, sub:`${x.e.office||''} · ${fmtLong(x.e.start)}${x.hotelNights?` · ${x.hotelNights} hotel night${x.hotelNights===1?'':'s'}`:''}${x.borrowed.length?` · ${x.borrowed.length} borrowed marketer${x.borrowed.length===1?'':'s'}`:''}` })), 'Open Navan travel');
+  // REM numbers (leaders only)
+  if(isRemUser()){ const P={ view:'week', ws:addDays(mondayOf(t),-7) }, M=scManual(), miss=[]; ORG.forEach(d=>Object.entries(d.regions).forEach(([r,x])=>{ const e=M[`w_${P.ws}_${r}`]; if(!(e&&(scHas(e.cancels)||scHas(e.meets)))) miss.push({ text:REGION_NAMES[r]||r, sub:`${x.name} · week of ${fmtMD(P.ws)}` }); })); add('rem','✍️','REM numbers missing for last week','remnums', miss, 'Enter REM numbers'); }
+  return G;
+}
+function todoCount(G){ return (G||todoGroups()).reduce((n,g)=>n+g.items.length,0); }
+function todoCard(opts){
+  if(!S.user) return '';
+  const o=opts||{}, G=todoGroups(), n=todoCount(G), lim=o.compact?3:6;
+  if(!n) return `<div class="card todo"><h2 style="margin:0">✅ Nothing needs your attention</h2><div class="small muted">${esc(scopeLabel())}</div></div>`;
+  const shown=o.compact?G.slice(0,4):G;
+  return `<div class="card todo"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">⚑ Needs your attention <span class="pill p-warn">${n}</span></h2><span class="small muted">${esc(scopeLabel())}</span><span class="spacer"></span>${o.compact?`<button class="btn sm primary" data-tab="myday">See everything</button>`:''}</div>
+    <div class="todogrid">${shown.map(g=>`<div class="todog"><div class="todoh"><span>${g.ic} <b>${esc(g.title)}</b> <span class="pill ${g.items.some(i=>i.red)?'p-red':'p-warn'}">${g.items.length}</span></span><button class="btn sm" ${g.key==='alerts'?'data-tab="alerts"':`data-tab="${g.tab}"`}>${esc(g.btn)}</button></div>
+      ${g.items.slice(0,lim).map(i=>`<div class="todoi ${i.red?'red':''}" ${i.act?`data-act="${i.act}" data-id="${esc(i.id)}"`:`data-tab="${g.tab}"`} role="button" tabindex="0"><b>${esc(i.text)}</b><span>${esc(i.sub||'')}</span></div>`).join('')}
+      ${g.items.length>lim?`<div class="small muted" style="padding:2px 8px">…and ${g.items.length-lim} more</div>`:''}</div>`).join('')}</div>
+    ${o.compact&&G.length>4?`<div class="small muted" style="margin-top:6px">${G.length-4} more group${G.length-4===1?'':'s'} on My day.</div>`:''}</div>`;
+}
+// ---- Usage-ordered tools (this device) ----
+const TOOL_ORDER = ['today','events','schedule','checkin','evals','expenses','assets','costs','adp','travel'];
+function toolUse(){ try{ return JSON.parse(lsGet('peHub.toolUse')||'{}'); }catch(e){ return {}; } }
+function bumpToolUse(tab){ if(!TOOL_ORDER.includes(tab)) return; const u=toolUse(); u[tab]=(u[tab]||0)+1; try{ lsSet('peHub.toolUse', JSON.stringify(u)); }catch(e){} }
+function toolsByUse(){ const u=toolUse(); return TOOL_ORDER.slice().sort((a,b)=>((u[b]||0)-(u[a]||0)) || (TOOL_ORDER.indexOf(a)-TOOL_ORDER.indexOf(b))); }
+// ---- Search / jump to ----
+function searchIndex(q){
+  q=String(q||'').trim().toLowerCase(); if(q.length<2) return [];
+  const out=[], has=s=>String(s||'').toLowerCase().includes(q);
+  Object.entries(SECTIONS).forEach(([k,[ic,l]])=>{ if(k==='remnums'||k==='activity'||k==='alerts'){ if(!isRemUser() && k!=='alerts') return; } if(has(l)) out.push({ kind:'Page', ic, text:l, tab:k }); });
+  [['PCMS','📇',LINKS.pcms],['Tableau','📊',LINKS.tableau],['Navan','🏨',NAVAN_URL],['ADP','⏱️',null],['Teams Resource Hub','👥',TEAMS_HUB_URL]].forEach(([l,ic,u])=>{ if(has(l)) out.push(u?{ kind:'Link', ic, text:l, url:u }:{ kind:'Page', ic, text:l, tab:'adp' }); });
+  Object.entries(GUIDES).forEach(([gk,g])=>g.sections.forEach(([h,items])=>{ if(has(h) || items.some(has)) out.push({ kind:'How-to', ic:'📖', text:h, sub:g.title, guide:gk, sec:h }); }));
+  const t=todayIso();
+  liveEvents().filter(e=>has(e.name)||has(e.venueName)||has(e.office)).sort((a,b)=>Math.abs(daysBetween(t,a.start))-Math.abs(daysBetween(t,b.start))).slice(0,8).forEach(e=>{ const next=(e.days.find(d=>d.date>=t)||e.days[e.days.length-1]||{}).date||e.start; out.push({ kind:'Event', ic:'📅', text:e.name, sub:`${e.office||''} · ${fmtMD(e.start)}${e.end&&e.end!==e.start?'–'+fmtMD(e.end):''}`, tab:'today', date:next }); });
+  (S.etacc||[]).filter(x=>(has(x.eventName)||has(x.branch)) && !liveEvents().some(e=>normName(e.name)===normName(x.eventName))).slice(0,5).forEach(x=>out.push({ kind:'ETACC', ic:'📋', text:x.eventName, sub:`${x.branch||''} · ${x.startDate?fmtMD(x.startDate):'no date'} · ${({researching:'Researching',execute:'Submitted for Approval',submitted:'Submitted for Contract',declined:'Declined',not_pursuing:'Not Pursuing'})[x.status]||x.status||''}`, tab:'events' }));
+  (S.sched.roster||[]).filter(p=>has(p.name)).slice(0,6).forEach(p=>out.push({ kind:'Marketer', ic:'🧑', text:p.name, sub:[p.office,p.phone].filter(Boolean).join(' · '), tab:'today' }));
+  (S.assets||[]).filter(a=>!a.retired && (has(a.name)||has(a.code)||has(a.barcode))).slice(0,6).forEach(a=>out.push({ kind:'Equipment', ic:'📦', text:a.name, sub:[a.code||a.barcode,a.office].filter(Boolean).join(' · '), item:a.id }));
+  return out.slice(0,14);
+}
+function searchResHtml(){
+  if(!ui.q || ui.q.trim().length<2) return '';
+  const res=searchIndex(ui.q);
+  return `<div class="searchres" role="listbox">${res.length?res.map((r,i)=>`<div class="sres ${i===(ui.qSel||0)?'sel':''}" data-act="sgo" data-i="${i}" role="option"><span class="ic">${r.ic}</span><span class="st"><b>${esc(r.text)}</b>${r.sub?`<small>${esc(r.sub)}</small>`:''}</span><span class="sk">${esc(r.kind)}</span></div>`).join(''):'<div class="small muted" style="padding:10px">No matches.</div>'}</div>`;
+}
+function searchBox(){
+  if(!S.user || MARKETER_MODE) return '';
+  return `<div class="searchwrap"><input type="search" id="hubSearch" placeholder="🔎 Search events, marketers, equipment, pages…" value="${esc(ui.q||'')}" autocomplete="off" aria-label="Search the hub"><div id="searchOut">${searchResHtml()}</div></div>`;
+}
+function searchRefresh(){ const o=document.getElementById('searchOut'); if(o) o.innerHTML=searchResHtml(); }
+document.addEventListener('input', ev=>{ if(ev.target.id==='hubSearch'){ ui.q=ev.target.value; ui.qSel=0; searchRefresh(); } });
+document.addEventListener('keydown', ev=>{ if(ev.target.id!=='hubSearch') return; const n=searchIndex(ui.q).length;
+  if(ev.key==='ArrowDown'){ ev.preventDefault(); ui.qSel=Math.min(n-1,(ui.qSel||0)+1); searchRefresh(); }
+  else if(ev.key==='ArrowUp'){ ev.preventDefault(); ui.qSel=Math.max(0,(ui.qSel||0)-1); searchRefresh(); }
+  else if(ev.key==='Enter'){ ev.preventDefault(); if(n) searchGo(ui.qSel||0); }
+  else if(ev.key==='Escape'){ ui.q=''; ev.target.value=''; searchRefresh(); } });
+function searchGo(i){
+  const r=searchIndex(ui.q)[i]; if(!r) return; ui.q=''; ui.qSel=0;
+  if(r.url){ window.open(r.url,'_blank','noopener'); render(); return; }
+  if(r.guide){ ui.guide=r.guide; ui.guideSec=r.sec; ui.tab='guide'; }
+  else if(r.item){ ui.tab='assets'; ui.item=r.item; }
+  else { ui.tab=r.tab; if(r.date){ ui.date=r.date; } }
+  history.pushState(null,'','#'+ui.tab); render(); window.scrollTo(0,0);
+  if(r.guide) setTimeout(()=>{ const el=document.querySelector('[data-gsec="'+CSS.escape(r.sec)+'"]'); el&&el.scrollIntoView({behavior:'smooth',block:'start'}); },60);
+}
+// ---- Phone bottom menu ----
+function bottomNav(){
+  if(!S.user || MARKETER_MODE) return '';
+  const n=unreadAlerts().length, todo=todoCount(), cur=ui.tab||'home';
+  const it=(tab,ic,l,badge)=>`<button class="bn ${cur===tab?'on':''}" data-tab="${tab}"><span class="bi">${ic}${badge?`<i>${badge}</i>`:''}</span><span>${l}</span></button>`;
+  return `<nav class="bottomnav">${it('home','🏠','Home')}${it('myday','☀️','My day',todo)}${it('checkin','📍','Check-in')}${it('events','📅','Events')}${it('alerts','🔔','Alerts',n)}</nav>`;
+}
+// ---- Phone-friendly tables: label each cell with its column heading ----
+function stackTables(root){
+  root.querySelectorAll('table').forEach(tb=>{ const ths=[...tb.querySelectorAll('thead th')]; if(ths.length<4) return; tb.classList.add('stack'); if(ths.length>7) tb.classList.add('wide');
+    const labels=ths.map(th=>th.textContent.trim()); tb.querySelectorAll('tbody tr').forEach(tr=>[...tr.children].forEach((td,i)=>{ if(!td.hasAttribute('data-label')) td.setAttribute('data-label', labels[i]||''); })); });
+}
+// ---- Page help (“?”) ----
+const HELP_FOR = { today:['manager','During events'], schedule:['manager','Scheduling marketers'], events:['manager','Your routine'], myday:['manager','Your routine'], myweek:['manager','Your routine'], evals:['manager','After events'], expenses:['manager','After events'], costs:['manager','After events'], adp:['manager','After events'], assets:['manager','Equipment'], travel:['manager','Scheduling marketers'], scorecard:['manager','Scorecard and reports'], remnums:['manager','Scorecard and reports'], activity:['manager','Scorecard and reports'], checkin:['marketer','Checking in (when you start working the booth)'], summary:['manager','Scorecard and reports'], training:['manager','Getting started'] };
+function helpBtn(){ const h=HELP_FOR[ui.tab]; return h?`<button class="btn sm helpbtn" data-act="pageHelp" title="How this page works">? Help</button>`:''; }
+function pageHelp(){ const h=HELP_FOR[ui.tab]; if(!h) return; ui.guide=h[0]; ui.guideSec=h[1]; ui.tab='guide'; history.pushState(null,'','#guide'); render(); setTimeout(()=>{ const el=document.querySelector('[data-gsec="'+CSS.escape(h[1])+'"]'); if(el){ el.scrollIntoView({behavior:'smooth',block:'start'}); el.classList.add('flash'); } },60); }
+// ---- First-time tour ----
+const TOUR = [
+  ['👋','Welcome to the Event Activity Hub','Everything for running events lives here: your daily checklist, check-ins, events, expenses, equipment and the scorecard. This 1-minute tour shows the basics. You can reopen it anytime from How-to guides.'],
+  ['☀️','Start your day','Tap <b>Start my day</b> (or <b>Start my week</b> on Mondays) at the top of the home page. You get a checklist for the day, and anything that needs you is listed above it.'],
+  ['⚑','Needs your attention','One list collects everything waiting on you: late check-ins, events that need marketers, ETACC deadlines and contract releases, evaluations, expense reports, timecards, equipment and hotels. Tap any item to go straight to it. It drops off once it’s done.'],
+  ['📍','Checking in a marketer','Marketers check themselves in with their event’s link. Copy it from <b>Today’s Activity</b> or the schedule and text it to them. You can also check someone in from <b>Check-in</b> if their phone won’t cooperate.'],
+  ['🧾','Approving expenses','Each Monday, open <b>Expense reports</b>, review your team’s reports and approve or return them. Approved reports go to Accounts Payable automatically. Submit your own report the same day.'],
+  ['🔎','Finding anything','Use the <b>search box</b> at the top to jump to an event, marketer, piece of equipment or page. On a phone, the menu at the bottom gets you Home, My day, Check-in, Events and Alerts.'],
+  ['❓','Help on every page','Tap <b>? Help</b> next to a page title to see how that page works. The <b>🏆 Scorecard</b> on the home page shows how last week’s shows did.'] ];
+function tourDone(){ const m=mgrDoc(); return !!(m.tourDone) || lsGet('peHub.tourDone.'+String((S.user&&S.user.email)||'').toLowerCase())==='1'; }
+function tourOverlay(){
+  if(ui.tour===undefined || ui.tour===null) return ''; const i=ui.tour, s=TOUR[i];
+  return `<div class="tourbg"><div class="tourbox" role="dialog" aria-label="Hub tour"><div class="tourstep">Step ${i+1} of ${TOUR.length}</div><div class="touric">${s[0]}</div><h2>${s[1]}</h2><p>${s[2]}</p>
+    <div class="tourdots">${TOUR.map((_,k)=>`<i class="${k===i?'on':''}"></i>`).join('')}</div>
+    <div class="row" style="justify-content:space-between"><button class="btn sm" data-act="tourEnd">Skip tour</button><span>${i?'<button class="btn" data-act="tourBack">Back</button>':''} <button class="btn primary" data-act="${i===TOUR.length-1?'tourEnd':'tourNext'}">${i===TOUR.length-1?'Got it':'Next'}</button></span></div></div></div>`;
+}
+async function tourFinish(){ ui.tour=null; try{ lsSet('peHub.tourDone.'+String((S.user&&S.user.email)||'').toLowerCase(),'1'); }catch(e){} render(); try{ await saveMgr({ tourDone:Date.now() }); }catch(e){} }
+function maybeStartTour(){ if(S.user && !MARKETER_MODE && !DEMO && S.mode==='live' && ui.tour==null && !ui.tourChecked && S.mgrLoaded!==false){ ui.tourChecked=true; if(!tourDone()) ui.tour=0; } }
 function scBanner(){
   if(!S.user) return '';
   const kw=ui.scWeek, kv=ui.scView; ui.scWeek=null; ui.scView='week'; const D=scData(), t=D.total, P=D.P; ui.scWeek=kw; ui.scView=kv;
   const st=(v,l,miss)=>`<div class="scb-stat ${miss?'miss':''}"><b>${v}</b><span>${l}</span></div>`;
-  return `<a class="scbanner" href="#scorecard" data-tab="scorecard"><div class="ic">🏆</div><div class="scb-main"><h2>Event Marketing Scorecard</h2><p>Last week (${fmtMD(P.ws)}–${fmtMD(P.we)}) · ${t.shows} show${t.shows===1?'':'s'} · opps, goals, cost per opp and REM numbers by region</p></div>
+  return `<a class="scbanner" href="#scorecard" data-tab="scorecard"><div class="ic">🏆</div><div class="scb-main"><h2>Event Marketing Scorecard</h2><p>Last week (${fmtMD(P.ws)}–${fmtMD(P.we)}) · ${t.shows} show${t.shows===1?'':'s'} · opps, goals, cost per opp and REM numbers by region</p><p class="scb-upd">🕒 ${scUpdatedLine(true)}</p></div>
     <div class="scb-stats">${st(t.opps+(t.goal?' / '+t.goal:''),'Opps vs goal',scMiss('pctGoal',t.pctGoal))}${st(scPct(t.pctGoal),'To goal',scMiss('pctGoal',t.pctGoal))}${st(scMoney(t.cpo),'Cost / opp',scMiss('cpo',t.cpo))}${st(scPct(t.setRate),'Set rate',scMiss('setRate',t.setRate))}</div><span class="go">Open scorecard ↗</span></a>`;
 }
 function scorecardView(){
@@ -2104,7 +2269,7 @@ function scorecardView(){
       <div class="seg"><button class="btn sm ${mtd?'':'primary'}" data-act="scView" data-v="week">Week</button><button class="btn sm ${mtd?'primary':''}" data-act="scView" data-v="mtd">Month to date</button></div>
       <button class="btn sm" data-act="scWk" data-n="-7">◀</button><b>${esc(P.label)}</b><button class="btn sm" data-act="scWk" data-n="7">▶</button>${wk!==addDays(mondayOf(todayIso()),-7)?'<button class="btn sm" data-act="scWk" data-n="0">Last week</button>':''}
       <span class="spacer"></span>${isRemUser()?'<button class="btn sm primary" data-tab="remnums">✍️ REM weekly numbers</button>':''}<button class="btn sm" data-act="scCsv">⬇ Download (Excel/CSV)</button>${scopePicker()}</div>
-    <div class="card"><div class="row" style="gap:8px;flex-wrap:wrap"><span class="small">${scReportLine()}</span><span class="spacer"></span>${lead?`<button class="btn sm" data-act="srFile">⬆ Upload Tradeshow Master</button><input type="file" id="srFile" accept=".xlsx,.xls,.csv" style="display:none">`:''}</div>${ui.srMsg?`<div class="small" style="margin-top:6px">${esc(ui.srMsg)}</div>`:''}</div>
+    <div class="card"><div class="small" style="margin-bottom:4px">🕒 ${scUpdatedLine(false)}</div><div class="row" style="gap:8px;flex-wrap:wrap"><span class="small">${scReportLine()}</span><span class="spacer"></span>${lead?`<button class="btn sm" data-act="srFile">⬆ Upload Tradeshow Master</button><input type="file" id="srFile" accept=".xlsx,.xls,.csv" style="display:none">`:''}</div>${ui.srMsg?`<div class="small" style="margin-top:6px">${esc(ui.srMsg)}</div>`:''}</div>
     <div class="card"><h2 style="margin-top:0">🏆 Event Marketing Scorecard <span class="small muted">${esc(scopeLabel())}</span></h2>
       <p class="small" style="margin:4px 0 10px">${t.shows} show${t.shows===1?'':'s'} produced <b>${t.opps} opps against a goal of ${t.goal||'—'}${t.pctGoal!==null?` (${scPct(t.pctGoal)} to goal)`:''}</b> on ${scMoney(t.cost)} in show cost${t.cpo!==null?`, about <b>${scMoney(t.cpo)} per opp</b>`:''}.${worst?` Furthest behind: <b>${esc(worst.name)}</b> at ${scPct(worst.pctGoal)} to goal.`:''}</p>
       ${t.zero?`<div class="notice" style="margin:0 0 8px">${t.zero} of ${t.shows} shows show 0 opps. Check whether those results are entered before discussing them.</div>`:''}
@@ -2435,7 +2600,9 @@ function render(){
   actOnRender();
   const keep=captureInputs();
   document.body.classList.toggle('marketer', MARKETER_MODE);
-  app.innerHTML = `<div class="wrap">${header()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}`;
+  if(!ui.tourT && S.user){ ui.tourT=setTimeout(()=>{ maybeStartTour(); if(ui.tour!=null) render(); },5000); }
+  app.innerHTML = `<div class="wrap">${header()}${searchBox()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}${bottomNav()}${tourOverlay()}`;
+  stackTables(app); document.body.classList.toggle('hasnav', !!(S.user && !MARKETER_MODE));
   restoreInputs(keep);
   // lazy-load any photos now on screen
   app.querySelectorAll('img[data-photo]').forEach(im=>{ const id=im.dataset.photo; if(ui.photoCache[id]===undefined) getPhoto(id); });
@@ -2459,7 +2626,7 @@ const SECTIONS={ today:['📋','Today’s Activity'], events:['📅','Events (ET
 function tabs(){
   if(ui.tab==='home' || !SECTIONS[ui.tab]) return '';
   const [ic,l]=SECTIONS[ui.tab];
-  return `<div class="crumb"><button class="btn" data-tab="home">◀ Back to Hub</button><b>${ic} ${esc(l)}</b></div>`;
+  return `<div class="crumb"><button class="btn" data-tab="home">◀ Back to Hub</button><b>${ic} ${esc(l)}</b><span class="spacer"></span>${helpBtn()}</div>`;
 }
 function needsStaffing(){
   const t=todayIso(), lim=addDays(t,28);
@@ -2482,28 +2649,41 @@ function tilesView(){
   const low=scopedAssets().filter(isLow).length, staff=needsStaffing().length;
   const TC={ today:['var(--aqua)','#e0f4f6'], events:['#000','#ededed'], schedule:['var(--gray)','#eeeeef'], checkin:['var(--aqua)','#e0f4f6'], assets:['var(--gold)','#fef0dc'], evals:['#000','#ededed'], expenses:['var(--gray)','#eeeeef'], travel:['var(--aqua)','#e0f4f6'], adp:['var(--gold)','#fef0dc'], costs:['#000','#ededed'], scorecard:['var(--gold)','#fef0dc'] };
   const tile=(k,desc,stat,cls,flag,flagCls)=>{ const [ic,l]=SECTIONS[k], [c,soft]=TC[k]||['var(--aqua)','#e0f4f6']; return `<div class="tile" data-tab="${k}" role="button" tabindex="0" style="--tc:${c};--tcs:${soft}">${flag?`<span class="flag ${flagCls||''}">${flag}</span>`:''}<div class="ic">${ic}</div><h2>${esc(l)}</h2><p>${desc}</p><div class="stat ${cls||''}">${stat}</div></div>`; };
-  return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span>${scopePicker()}</div>${staffBanner()}
-  ${alertsBanner()}<div class="banners"><a class="teamsbanner" href="${TEAMS_HUB_URL}" target="_blank" rel="noopener"><div class="ic">👥</div><div style="flex:1"><h2>Team Resource Hub</h2><p>Guides, forms, standards and announcements in Microsoft Teams.</p></div><span class="go">Open in Teams ↗</span></a>
-  <a class="teamsbanner trainbanner" href="#training" data-tab="training"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products, booth setup and standards.</p></div><span class="go">Open ↗</span></a></div>
-  ${scBanner()}
-  <div class="row" style="margin:-6px 0 14px"><button class="btn" data-tab="guide">📖 How-to guides</button>${isRemUser()?'<button class="btn" data-tab="alerts">🔔 Alert settings</button>':''}${isRemUser()?'<button class="btn" data-tab="remnums">✍️ REM weekly numbers</button><button class="btn" data-tab="activity">👀 Hub activity</button>':''}</div>
+  const T={
+    today:()=>tile('today','Who’s scheduled, checked in, late or done, with photos and results.', today.length?`${today.length} shifts · ${inNow} working now${late?` · ${late} late`:''}`:'No shifts today', late?'alert':'', late||'', 'alert'),
+    events:()=>tile('events','Track, approve and contract events in ETACC.', `${upcoming} event${upcoming===1?'':'s'} in the next 7 days`),
+    schedule:()=>tile('schedule','Weekly marketer schedule and shift assignments.', staff?`${staff} event${staff===1?'':'s'} need staffing`:'Open the weekly schedule', staff?'warn':'', staff||''),
+    checkin:()=>tile('checkin','Marketers check in at the booth and check out with results.', 'Start or end a shift'),
+    assets:()=>tile('assets','Inventory, barcode check-out and returns, transfers and the annual count.', `${gear.length} items · ${out} out${overdue?` · ${overdue} overdue`:''}${repair?` · ${repair} in repair`:''}${low?` · ${low} to reorder`:''}`, overdue||low?'warn':'', (overdue+low)||''),
+    evals:()=>tile('evals','Manager post-event evaluations, pre-filled from check-outs.', due?`${due} waiting for evaluation`:'All caught up', due?'warn':'', due||''),
+    costs:()=>S.user?(()=>{ const rows=costRows(addDays(t,-27),t), C=costTotals(rows), f=rows.filter(costFlag).length; return tile('costs','What each event cost against the leads and appointments it brought in.', C.leads?`${$0(C.cpl)} per lead · last 4 weeks`:'No results in the last 4 weeks', f?'warn':'', f?`${f} over target`:''); })():'',
+    expenses:()=>{ const w=Object.values(S.expenses).filter(x=>x.status==='submitted' && (!x.office||inOffice(x.office))).length; return tile('expenses','Weekly expense reports: mileage, per diem and receipts. Approve and send to accounting.', S.user?(w?`${w} waiting for approval`:'Nothing waiting'):'Sign in to review', w?'warn':'', w||''); },
+    adp:()=>{ const f=adpRows(mondayOf(t)).filter(x=>x.flag).length; return tile('adp','Compare this week’s check-ins with ADP, then approve timecards.', f?`${f} shift${f===1?'':'s'} to double-check`:'Approve timecards', f?'warn':'', f||''); },
+    travel:()=>{ const n=travelNeeds().length; return tile('travel','Book and manage team hotels in Navan.', n?`${n} event${n===1?'':'s'} may need hotels`:'Book hotels', n?'warn':''); } };
+  const MINI={ today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Equipment'], evals:['📝','Evaluations'], costs:['💲','Cost per Lead'], expenses:['🧾','Expense Reports'], adp:['⏱️','ADP timecards'], travel:['🏨','Navan travel'] };
+  const mini=(k)=>{ const [ic,l]=MINI[k]; const [c,soft]=TC[k]||['var(--aqua)','#e0f4f6']; return `<div class="mini" data-tab="${k}" role="button" tabindex="0" style="--tc:${c};--tcs:${soft}"><span class="ic">${ic}</span><span class="mt"><b>${esc(l)}</b></span></div>`; };
+  const link=(u,ic,l,sub,c,soft)=>`<a class="mini" href="${u}" target="_blank" rel="noopener" style="--tc:${c};--tcs:${soft}"><span class="ic">${ic}</span><span class="mt"><b>${l} ↗</b><small>${sub}</small></span></a>`;
+  const links=`${link(LINKS.pcms,'📇','PCMS','Leads & appointments','#000','#ededed')}${link(LINKS.tableau,'📊','Tableau','Reports & dashboards','var(--gray)','#eeeeef')}<div class="mini" data-tab="guide" role="button" tabindex="0" style="--tc:var(--gray);--tcs:#eeeeef"><span class="ic">📖</span><span class="mt"><b>How-to guides</b><small>Step by step</small></span></div>`;
+  const banners=`<div class="banners"><a class="teamsbanner" href="${TEAMS_HUB_URL}" target="_blank" rel="noopener"><div class="ic">👥</div><div style="flex:1"><h2>Team Resource Hub</h2><p>Guides, forms, standards and announcements in Microsoft Teams.</p></div><span class="go">Open in Teams ↗</span></a>
+  <a class="teamsbanner trainbanner" href="#training" data-tab="training"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products, booth setup and standards.</p></div><span class="go">Open ↗</span></a></div>`;
+  if(!S.user) return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span>${scopePicker()}</div>${banners}<div class="tiles">${TOOL_ORDER.map(k=>T[k]()).join('')}</div>${leaderCard()}</div>`;
+  const order=toolsByUse(), mine=order.slice(0,6), rest=order.slice(6);
+  const leader=isRemUser()?`<h3 class="homeh">Leader tools</h3><div class="minis">
+    <div class="mini" data-tab="remnums" role="button" tabindex="0" style="--tc:var(--gold);--tcs:#fef0dc"><span class="ic">✍️</span><span class="mt"><b>REM weekly numbers</b><small>Cancels, meets, sales</small></span></div>
+    <div class="mini" data-tab="activity" role="button" tabindex="0" style="--tc:#000;--tcs:#ededed"><span class="ic">👀</span><span class="mt"><b>Hub activity</b><small>Who’s using the hub</small></span></div>
+    <div class="mini" data-tab="alerts" role="button" tabindex="0" style="--tc:var(--aqua);--tcs:#e0f4f6"><span class="ic">🔔</span><span class="mt"><b>Alert settings</b><small>Who gets alerts</small></span></div>
+    <div class="mini" data-tab="summary" role="button" tabindex="0" style="--tc:var(--gray);--tcs:#eeeeef"><span class="ic">📊</span><span class="mt"><b>Activation summary</b><small>Monday email</small></span></div></div>`:'';
+  return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span>${scopePicker()}</div>
   ${mgrBar()}
-  <div class="minis">
-    ${(()=>{ const f=adpRows(mondayOf(todayIso())).filter(x=>x.flag).length; return `<div class="mini" data-tab="adp" role="button" tabindex="0" style="--tc:var(--gold);--tcs:#fef0dc"><span class="ic">⏱️</span><span class="mt"><b>ADP</b><small class="${f?'warn':''}">${f?`${f} to double-check`:'Approve timecards'}</small></span>${f?`<span class="flag">${f}</span>`:''}</div>`; })()}
-    ${(()=>{ const n=travelNeeds().length; return `<div class="mini" data-tab="travel" role="button" tabindex="0" style="--tc:var(--aqua);--tcs:#e0f4f6"><span class="ic">🏨</span><span class="mt"><b>Navan</b><small class="${n?'warn':''}">${n?`${n} may need hotels`:'Book hotels'}</small></span></div>`; })()}
-    <a class="mini" href="${LINKS.pcms}" target="_blank" rel="noopener" style="--tc:#000;--tcs:#ededed"><span class="ic">📇</span><span class="mt"><b>PCMS ↗</b><small>Leads & appointments</small></span></a>
-    <a class="mini" href="${LINKS.tableau}" target="_blank" rel="noopener" style="--tc:var(--gray);--tcs:#eeeeef"><span class="ic">📊</span><span class="mt"><b>Tableau ↗</b><small>Reports & dashboards</small></span></a>
-  </div>
-  <div class="tiles">
-    ${tile('today','Who’s scheduled, checked in, late or done, with photos and results.', today.length?`${today.length} shifts · ${inNow} working now${late?` · ${late} late`:''}`:'No shifts today', late?'alert':'', late||'', 'alert')}
-    ${tile('events','Track, approve and contract events in ETACC.', `${upcoming} event${upcoming===1?'':'s'} in the next 7 days`)}
-    ${tile('schedule','Weekly marketer schedule and shift assignments.', staff?`${staff} event${staff===1?'':'s'} need staffing`:'Open the weekly schedule', staff?'warn':'', staff||'')}
-    ${tile('checkin','Marketers check in at the booth and check out with results.', 'Start or end a shift')}
-    ${tile('assets','Inventory, barcode check-out and returns, transfers and the annual count.', `${gear.length} items · ${out} out${overdue?` · ${overdue} overdue`:''}${repair?` · ${repair} in repair`:''}${low?` · ${low} to reorder`:''}`, overdue||low?'warn':'', (overdue+low)||'')}
-    ${tile('evals','Manager post-event evaluations, pre-filled from check-outs.', due?`${due} waiting for evaluation`:'All caught up', due?'warn':'', due||'')}
-    ${S.user?(()=>{ const t=todayIso(), rows=costRows(addDays(t,-27),t), T=costTotals(rows), f=rows.filter(costFlag).length; return tile('costs','What each event cost against the leads and appointments it brought in.', T.leads?`${$0(T.cpl)} per lead · last 4 weeks`:'No results in the last 4 weeks', f?'warn':'', f?`${f} over target`:''); })():''}
-    ${(()=>{ const w=Object.values(S.expenses).filter(x=>x.status==='submitted' && (!x.office||inOffice(x.office))).length; return tile('expenses','Weekly expense reports: mileage, per diem and receipts. Approve and send to accounting.', S.user?(w?`${w} waiting for approval`:'Nothing waiting'):'Sign in to review', w?'warn':'', w||''); })()}
-  </div>${leaderCard()}</div>`;
+  ${todoCard({compact:true})}
+  ${scBanner()}
+  ${leader}
+  <h3 class="homeh">Your tools <span class="small muted">most used first</span></h3>
+  <div class="tiles">${mine.map(k=>T[k]()).join('')}</div>
+  <h3 class="homeh">All tools & links</h3>
+  <div class="minis">${rest.map(mini).join('')}${links}</div>
+  ${banners}
+  ${leaderCard()}</div>`;
 }
 function body(){
   if(!S.schedLoaded) return `<div class="card">Loading…</div>`;
@@ -2823,6 +3003,8 @@ function detailPanel(){
 document.addEventListener('click', async ev=>{
   if(ev.target.matches && ev.target.matches('input[data-sel]')) return;
   if(ui.scopeOpen && !ev.target.closest('.scopewrap')){ ui.scopeOpen=false; render(); }
+  { const tr=ev.target.closest('table.stack.wide tbody tr'); if(tr && window.matchMedia('(max-width:700px)').matches && !ev.target.closest('button,a,input,select,[data-act]')){ tr.classList.toggle('open'); return; } }
+  if(ui.q && !ev.target.closest('.searchwrap')){ ui.q=''; const o=document.getElementById('searchOut'); if(o) o.innerHTML=''; }
   const t=ev.target.closest('[data-act],[data-tab],[data-detail],[data-eval],[data-zoom],[data-item],[data-audit],[data-exp],[data-expview]'); if(!t) return;
   if(t.dataset.act && ACT_KEYS.has(t.dataset.act)) actTrack('action', t.dataset.act);
   if(t.dataset.exp && !t.dataset.act){ const x=S.expenses[t.dataset.exp]; if(x){ ui.exp=JSON.parse(JSON.stringify(x)); ui.expErr=''; render(); window.scrollTo(0,0); } return; }
@@ -2882,6 +3064,12 @@ document.addEventListener('click', async ev=>{
   if(a==='scView'){ ui.scView=t.dataset.v; render(); return; }
   if(a==='scWk'){ const n=+t.dataset.n, last=addDays(mondayOf(todayIso()),-7); ui.scWeek = n===0 ? last : addDays(ui.scWeek||last, n); render(); return; }
   if(a==='scCsv'){ scCsv(); return; }
+  if(a==='sgo'){ searchGo(+t.dataset.i); return; }
+  if(a==='pageHelp'){ pageHelp(); return; }
+  if(a==='tourStart'){ ui.tour=0; render(); return; }
+  if(a==='tourNext'){ ui.tour=Math.min(TOUR.length-1,(ui.tour||0)+1); render(); return; }
+  if(a==='tourBack'){ ui.tour=Math.max(0,(ui.tour||0)-1); render(); return; }
+  if(a==='tourEnd'){ await tourFinish(); return; }
   if(a==='actRange'){ ui.actRange=t.dataset.v; render(); return; }
   if(a==='actCsv'){ actCsv(); return; }
   if(a==='srFile'){ document.getElementById('srFile').click(); return; }

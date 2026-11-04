@@ -23,6 +23,9 @@ h1,h2,h3,b,strong,th{font-weight:700}
 .wrap{max-width:1300px;margin:0 auto;padding:14px}
 header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:-14px -14px 14px;padding:10px 18px;background:#fff;border-bottom:4px solid var(--aqua)}
 .brandlogo{height:64px;width:auto;display:block}
+.homelogo{border:0;background:none;padding:0;margin:0;cursor:pointer;border-radius:6px;line-height:0}
+.homelogo:hover .brandlogo{opacity:.85}
+.homelogo:focus-visible{outline:3px solid var(--aqua);outline-offset:3px}
 @media (max-width:560px){.brandlogo{height:44px}header.top{padding:8px 12px;gap:10px}}
 .brand{background:var(--accent);color:#fff;border-radius:9px;padding:7px 14px;line-height:1.15}
 .brand b{font-size:17px;display:block}.brand span{font-size:10.5px;opacity:.85;text-transform:uppercase;letter-spacing:.09em}
@@ -2778,7 +2781,7 @@ function header(){
   const signin = MARKETER_MODE ? `<a class="small" href="${location.pathname}">Manager view</a>` :
     S.user ? `<div class="signin small">${(()=>{ const n=unreadAlerts().length; return `<button class="btn sm bell" data-tab="alerts" title="Alerts">🔔${n?`<span class="bdot">${n}</span>`:''}</button>`; })()}<span class="muted">${esc(S.user.email)}</span><button class="btn sm" data-act="signOut">Sign out</button></div>` :
     `<form class="signin" data-form="signin"><input type="email" name="email" placeholder="Manager email" data-keep="si-email" autocomplete="username" style="width:170px"><input type="password" name="pw" placeholder="Password" data-keep="si-pw" autocomplete="current-password" style="width:120px"><button class="btn sm primary">Sign in</button><button type="button" class="btn sm" data-act="pwReset" title="Email me a link to set a new password">Forgot password?</button>${S.authErr?`<span class="small" style="color:var(--red)">${esc(S.authErr)}</span>`:''}</form>`;
-  return `<header class="top"><img class="brandlogo" src="pe-logo.png" alt="Patio Enclosures by Great Day Improvements">
+  return `<header class="top"><button type="button" class="homelogo" data-tab="${MARKETER_MODE?'checkin':'home'}" title="${MARKETER_MODE?'Back to check-in':'Back to Hub home'}" aria-label="${MARKETER_MODE?'Back to check-in':'Back to Hub home'}"><img class="brandlogo" src="pe-logo.png" alt="Patio Enclosures by Great Day Improvements"></button>
     <div><h1>${MARKETER_MODE?'Event Check-In':'Event Activity Hub'}</h1><div class="asof">${stat}${S.mode==='local'&&!DEMO?` · not saving to the shared database (${esc(S.err)})`:''}</div></div>
     <div class="spacer"></div>${signin}</header>`;
 }

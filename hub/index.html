@@ -2777,7 +2777,7 @@ function header(){
   const stat = S.mode==='live'?'<span class="cstat live">● Live</span>':S.mode==='connecting'?'<span class="cstat">○ Connecting…</span>':`<span class="cstat local">○ ${DEMO?'Demo data':'This device only'}</span>`;
   const signin = MARKETER_MODE ? `<a class="small" href="${location.pathname}">Manager view</a>` :
     S.user ? `<div class="signin small">${(()=>{ const n=unreadAlerts().length; return `<button class="btn sm bell" data-tab="alerts" title="Alerts">🔔${n?`<span class="bdot">${n}</span>`:''}</button>`; })()}<span class="muted">${esc(S.user.email)}</span><button class="btn sm" data-act="signOut">Sign out</button></div>` :
-    `<form class="signin" data-form="signin"><input type="email" name="email" placeholder="Manager email" data-keep="si-email" autocomplete="username" style="width:170px"><input type="password" name="pw" placeholder="Password" data-keep="si-pw" autocomplete="current-password" style="width:120px"><button class="btn sm primary">Sign in</button>${S.authErr?`<span class="small" style="color:var(--red)">${esc(S.authErr)}</span>`:''}</form>`;
+    `<form class="signin" data-form="signin"><input type="email" name="email" placeholder="Manager email" data-keep="si-email" autocomplete="username" style="width:170px"><input type="password" name="pw" placeholder="Password" data-keep="si-pw" autocomplete="current-password" style="width:120px"><button class="btn sm primary">Sign in</button><button type="button" class="btn sm" data-act="pwReset" title="Email me a link to set a new password">Forgot password?</button>${S.authErr?`<span class="small" style="color:var(--red)">${esc(S.authErr)}</span>`:''}</form>`;
   return `<header class="top"><img class="brandlogo" src="pe-logo.png" alt="Patio Enclosures by Great Day Improvements">
     <div><h1>${MARKETER_MODE?'Event Check-In':'Event Activity Hub'}</h1><div class="asof">${stat}${S.mode==='local'&&!DEMO?` · not saving to the shared database (${esc(S.err)})`:''}</div></div>
     <div class="spacer"></div>${signin}</header>`;
@@ -3253,6 +3253,12 @@ document.addEventListener('click', async ev=>{
     return; }
   if(a==='qDel'){ if(!confirm('Remove this task?')) return; const sc=t.dataset.scope, key=t.dataset.key, coll=sc==='day'?'days':'weeks', m=mgrDoc(), prevColl=JSON.parse(JSON.stringify(m[coll]||{})); showUndo('Task removed.', ()=>saveMgr({ [coll]:prevColl })); const all=Object.assign({}, m[coll]||{}), rec=Object.assign({}, all[key]||{}); rec.extra=(rec.extra||[]).filter(x=>x.id!==t.dataset.id); all[key]=rec; await guard(()=>saveMgr({ [coll]:all })); return; }
   if(a==='hideShortcut'){ lsSet('peHub.shortcutHidden','1'); render(); return; }
+  if(a==='pwReset'){ const em=((document.querySelector('[data-keep="si-email"]')||{}).value||'').trim();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){ S.authErr='Type your work email first, then tap Forgot password.'; render(); return; }
+    if(!DB.fb){ S.authErr='Not connected to the shared database.'; render(); return; }
+    try{ await DB.fb.authM.sendPasswordResetEmail(DB.fb.auth, em); S.authErr=`If ${em} has an account, a reset link is on its way. Check junk mail too.`; }
+    catch(e){ S.authErr = e.code==='auth/user-not-found' ? 'No account found for that email. Ask Paula to set one up.' : `Couldn’t send the reset email: ${e.code||e.message}`; }
+    render(); return; }
   if(a==='alertSave'){ const vals=[...document.querySelectorAll('[data-alert]')].map(el=>({ kind:el.dataset.alert, key:el.dataset.key, value:el.value })); const ccEl=document.querySelector('[data-alertcc]'); if(ccEl) vals.ccDivision=ccEl.checked; ui.busy=true; render(); try{ await saveAlertCfg(vals); ui.alertMsg='Saved.'; }catch(e){ ui.alertMsg='Couldn’t save: '+(e.code||e.message); } ui.busy=false; render(); return; }
   if(a==='alertTest'){ const ok=await queueMail('test-'+Date.now(), { to:[(S.user&&S.user.email)||PAULA], kind:'test', subject:'Event Hub test alert', html:mailShell('Test alert','<p>If you’re reading this, automatic alerts are working.</p>') }); ui.alertMsg=ok?'Test queued: check your inbox in a minute.':'Couldn’t queue the test email.'; render(); return; }
   if(a==='backCheckin'){ ui.tab='checkin'; history.replaceState(null,'',location.pathname+location.search); render(); return; }

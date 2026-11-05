@@ -80,6 +80,10 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .tourbg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
 .tourbox{background:#fff;border-radius:16px;max-width:460px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35);border-top:6px solid var(--aqua)}.tourbox h2{margin:6px 0 8px}.tourbox p{color:var(--ink-soft);line-height:1.5}
 .touric{font-size:40px}.tourstep{font-size:12px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em}.tourdots{display:flex;gap:6px;justify-content:center;margin:12px 0}.tourdots i{width:8px;height:8px;border-radius:50%;background:#ddd}.tourdots i.on{background:var(--aqua)}
+.tourbox.phelp{max-width:620px;text-align:left}.tourbox.phelp h3{margin:14px 0 4px;font-size:15px}.phl{margin:4px 0 0;padding-left:22px;line-height:1.5;color:var(--ink-soft)}.phl li{margin:3px 0}
+.gltab{width:100%;font-size:14px}.gltab td,.gltab th{padding:5px 8px;vertical-align:top}
+.tcontent{margin:4px 0 12px}.space{border:1px solid var(--line,#e2e2e2);border-radius:10px;margin:6px 0;padding:6px 10px;background:#fff}.space summary{cursor:pointer;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.space ul{margin:6px 0 4px 6px;padding-left:18px;line-height:1.5}.space li{margin:3px 0}.spl{display:inline-flex;width:26px;height:26px;border-radius:50%;background:var(--aqua);color:#fff;font-weight:700;align-items:center;justify-content:center;flex:none}
+.layouts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:8px}.layout{border:1px solid var(--line,#e2e2e2);border-radius:10px;padding:8px;background:#fff}.lyimg{border-radius:8px;overflow:hidden;background:#f1f3f3;margin-bottom:6px;position:relative;min-height:40px}.lyimg img{display:block;width:100%;height:auto;cursor:zoom-in}.lyph{display:none}.lyimg.noimg{display:none}.layout ol{margin:4px 0 0;padding-left:20px}.outdoor{display:grid;grid-template-columns:minmax(220px,380px) 1fr;gap:14px;align-items:start}.outdoor .lyimg{display:block}@media (max-width:640px){.outdoor{grid-template-columns:1fr}}
 .viewas{max-width:200px;font-size:13px;padding:4px 6px;border-radius:8px;border:1px solid var(--line,#ccc);background:#fff}.viewasbar{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:#fff4d6;border:2px solid var(--gold,#e0a200);border-radius:12px;padding:10px 14px;margin:10px 0}
 .tourbox.hasimg{max-width:680px}.tourimgwrap{display:block;margin:10px 0 4px;border:1px solid var(--line,#ddd);border-radius:10px;overflow:hidden;background:#f4f6f6}.tourimg{display:block;width:100%;height:auto;max-height:46vh;object-fit:contain;object-position:top}.touric-sm{margin-right:4px}.brandlink{display:block;border-radius:8px;cursor:pointer}.brandlink:focus-visible{outline:3px solid var(--aqua);outline-offset:3px}
 .tourbox.welcome{max-width:560px;border-top-color:var(--gold)}.tourbox{max-height:92vh;overflow:auto}
@@ -279,6 +283,8 @@ const FIREBASE_CONFIG = {
 const FB_VER = '10.12.2';
 const SITE = 'https://patio-enclosures.github.io/Event-Tracking-Approval-Contracting-Center/';
 const ETACC_URL = SITE, SCHEDULE_URL = SITE + 'schedule/';
+// Post-event evaluations are paused: hidden from Needs your attention, the welcome pop-up, My day and the due counts. The Evaluations page still works. Set to false to turn them back on.
+const EVALS_PAUSED = true;
 const INCLUDE_STATUSES = ['Approved','Submitted for Contract'];
 const LATE_MIN = 15;              // minutes after shift start before "Late"
 // ADP stays the time clock: check-in/out reminds marketers to punch there too.
@@ -318,6 +324,42 @@ function adpAppButtons(){
   }
   return `<div class="appbtns">${ios+and}</div><div class="small muted">Get the ADP Mobile app on your phone, or <a href="${ADP_URL}" target="_blank" rel="noopener">use ADP on the web</a>.</div>`;
 }
+/* ---------------- Breaks (policy 3.4 Paid and Unpaid Breaks) ---------------- */
+// Meal breaks: unpaid, duty-free, 30 minutes for shifts over 5 hours; a second for shifts over 10 hours where state law requires it.
+// Rest breaks: paid, duty-free, 15 minutes for every 4 hours worked. Breaks can't be waived, combined, or used to shift start/end times.
+const BREAKS = { mealAfterH:5, mealMin:30, meal2AfterH:10, restEveryH:4, restMin:15 };
+function shiftHours(start, stop){ const a=toMin(start), b=toMin(stop); return (a==null||b==null) ? 0 : (((b-a)%1440)+1440)%1440/60; }
+/* ---------------- Opps goals for a shift ---------------- */
+// The event's ETACC Target Opps is split across every scheduled marketer-hour: each day's team goal and each
+// marketer's shift goal are their share of the event's total scheduled marketer-hours.
+function eventGoalSplit(e){
+  const m=etaccMatch(e), target=m?num(m.forecastedOpps):0; if(!target) return null;
+  let total=0; const days={};
+  (e.days||[]).forEach(d=>{ const id=dayId(e,d); let ph=0; (S.sched.assignments[id]||[]).forEach(pid=>{ const pd=personDay(id,d,pid); ph+=shiftHours(pd.start,pd.stop)||8; }); days[d.date]=ph; total+=ph; });
+  return total ? { target, total, days } : null;
+}
+function shiftGoal(ev, day, personId, dId){
+  const G=eventGoalSplit(ev); if(!G) return null;
+  const pd=dId?personDay(dId,day,personId):day, h=shiftHours(pd.start,pd.stop)||8, dayPH=G.days[day.date]||h;
+  return { target:G.target, nDays:(ev.days||[]).length, dayGoal:G.target*dayPH/G.total, mine:G.target*h/G.total, hours:h, dayPH };
+}
+function goalRound(n){ return n>=1 ? Math.round(n) : Math.round(n*10)/10; }
+function goalNote(g){ if(!g) return '';
+  return `<div class="notice" style="margin:8px 0"><b>🎯 Opps goal:</b> this event’s target is <b>${g.target} opps</b> over ${g.nDays} day${g.nDays===1?'':'s'}. Today’s team goal is <b>${goalRound(g.dayGoal)}</b>, and your goal for this shift is <b>about ${goalRound(g.mine)}</b> (your ${round1(g.hours)} hours of ${round1(g.dayPH)} scheduled marketer-hours today).</div>`; }
+function checkinGoal(c){ const e=S.sched.events.find(x=>x.key===c.eventKey); if(!e) return null; const d=(e.days||[]).find(x=>x.date===c.date); return d ? shiftGoal(e, d, c.personId, dayId(e,d)) : null; }
+function breakPlan(hours){ if(!(hours>0)) return null;
+  return { hours, meals:hours>BREAKS.mealAfterH?1:0, meal2:hours>BREAKS.meal2AfterH, rests:Math.floor(hours/BREAKS.restEveryH) }; }
+function breakText(bp, short){ if(!bp) return '';
+  if(short) return [bp.meals?`${BREAKS.mealMin}m meal${bp.meal2?' (+1 if state law)':''}`:'', bp.rests?`${bp.rests}×${BREAKS.restMin}m rest`:''].filter(Boolean).join(' · ')||'no breaks';
+  const a=[];
+  if(bp.meals) a.push(`one ${BREAKS.mealMin}-minute <b>unpaid</b> meal break${bp.meal2?` (plus a second one if your state requires it for shifts over ${BREAKS.meal2AfterH} hours)`:''}`);
+  if(bp.rests) a.push(`${bp.rests===1?'one':bp.rests} ${BREAKS.restMin}-minute <b>paid</b> rest break${bp.rests===1?'':'s'}`);
+  return a.length ? a.join(' and ') : 'no scheduled breaks (shift is under 4 hours)';
+}
+function breakNote(bp){ if(!bp) return '';
+  return `<div class="notice" style="margin:8px 0"><b>☕ Your breaks today:</b> ${breakText(bp)}. Plan them with your supervisor so the booth stays covered.${bp.meals?' Clock out on ADP for your meal break and back in when you return; you must be fully off duty.':''}${bp.rests?' Rest breaks are paid: stay clocked in.':''} Breaks can’t be skipped, combined, or used to come in late or leave early.</div>`;
+}
+function checkinBreakPlan(c){ const h=shiftHours(c.shiftStart, c.shiftStop)||hoursOf(c)||((Date.now()-c.inAt)/36e5); return breakPlan(h); }
 function adpBox(kind, checked){
   const word = kind==='in' ? 'in' : 'out';
   return `<div class="adpbox"><div class="adpt">⏰ Clock ${word} on ADP</div>
@@ -326,7 +368,7 @@ function adpBox(kind, checked){
     ${adpAppButtons()}
     <label class="chk"><input type="checkbox" data-keep="adp-${word}" ${checked?'checked':''}> <b>I’ve clocked ${word} on ADP</b></label></div>`;
 }
-const ISSUE_TYPES = ['Missing or damaged booth gear','Running low on giveaways / print','Booth location problem','Low foot traffic','Organizer / venue issue','Weather','Other'];
+const ISSUE_TYPES = ['Missing or damaged booth assets','Running low on giveaways / print','Booth location problem','Low foot traffic','Organizer / venue issue','Weather','Other'];
 const EVAL_FIELDS = ['eventActivationStatus','notActivatedReason','numberOfLeads','totalAppointments','leadsPerHour','totalCallToSets','whoWorkedEvent','overallEventRating','staffComplianceRating','issuesEncountered','whatWentWell','notesForNextYear','roiNotes','actualLaborCost','actualPerDiem','actualPhoneCost','actualMileageCost','actualMiscExpenses'];
 
 /* ---------------- state ---------------- */
@@ -602,9 +644,9 @@ function inventoryView(){
     ${mgr?'<button class="btn primary" data-act="addAsset">+ Add item</button>':''}</div>
     ${scanBox('lookup','Scan an item to look it up')}
     <div class="row small" style="margin:8px 0">${sel.length?`<b>${sel.length} selected</b> <button class="btn sm" data-act="labels">🏷 Print ${sel.length} label${sel.length===1?'':'s'}</button> <button class="btn sm" data-act="selNone">Clear</button>`:`<button class="btn sm" data-act="labelsAll">🏷 Print labels for everything shown</button> <span class="muted">or tick items to choose</span>`}</div>
-    <h3>Booth gear & kits (${gear.length})</h3>
+    <h3>Booth assets & kits (${gear.length})</h3>
     ${gear.length?`<table><thead><tr><th style="width:26px"></th><th>Code</th><th>Item</th><th>Office</th><th>Status</th><th>Condition</th><th>Value</th></tr></thead><tbody>${gear.map(a=>{ const s=stOf(a), kit=kitOf(a.id);
-      return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td>${a.kind==='kit'?'🧰 ':''}${esc(a.name)}<div class="small muted">${esc(a.category||'')}${a.kind==='kit'?` · ${(a.contents||[]).length} items`:''}${kit?` · in ${esc(kit.name)}`:''}</div></td><td class="small">${esc(s.office||'Any')}</td><td>${statusPill(a)}</td><td class="small">${esc(s.condition||'')}</td><td class="small">${a.cost?money(a.cost):''}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No booth gear matches.</p>'}
+      return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td>${a.kind==='kit'?'🧰 ':''}${esc(a.name)}<div class="small muted">${esc(a.category||'')}${a.kind==='kit'?` · ${(a.contents||[]).length} items`:''}${kit?` · in ${esc(kit.name)}`:''}</div></td><td class="small">${esc(s.office||'Any')}</td><td>${statusPill(a)}</td><td class="small">${esc(s.condition||'')}</td><td class="small">${a.cost?money(a.cost):''}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No booth assets match.</p>'}
     <h3>Giveaways & print (${cons.length})</h3>
     ${cons.length?`<table><thead><tr><th style="width:26px"></th><th>Code</th><th>Item</th><th>Office</th><th>On hand</th><th>Reorder at</th><th>Used (30 days)</th><th>Last count</th></tr></thead><tbody>${cons.map(a=>{ const s=stOf(a);
       return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td>${esc(a.name)}<div class="small muted">${esc(a.category||'')}</div></td><td class="small">${esc(s.office||'Any')}</td><td>${statusPill(a)}</td><td class="small">${a.reorderAt!==''&&a.reorderAt!=null?esc(a.reorderAt):'—'}</td><td class="small">${usedLast(a,30)}</td><td class="small">${s.lastCount?fmtStamp(s.lastCount):'—'}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No giveaway or print items match.</p>'}
@@ -723,7 +765,7 @@ function assetPanel(){
   const kind=f.kind||a.kind, off=a.office||'';
   const kitPool=S.assets.filter(x=>!x.retired && x.kind==='gear' && x.id!==a.id && (!kitOf(x.id) || kitOf(x.id).id===a.id)).sort((x,y)=>x.name.localeCompare(y.name));
   return `<div class="panel"><h2>${f.id?'Edit item':'Add item'}</h2><form data-form="asset"><div class="fields">
-    <div class="field"><label>Type</label><select name="kind" data-act="akind" ${f.id?'disabled':''}><option value="gear" ${kind==='gear'?'selected':''}>Booth gear (checked out & returned)</option><option value="kit" ${kind==='kit'?'selected':''}>Event kit (a set of gear)</option><option value="consumable" ${kind==='consumable'?'selected':''}>Giveaway / print (used up)</option></select></div>
+    <div class="field"><label>Type</label><select name="kind" data-act="akind" ${f.id?'disabled':''}><option value="gear" ${kind==='gear'?'selected':''}>Booth assets (checked out & returned)</option><option value="kit" ${kind==='kit'?'selected':''}>Event kit (a set of gear)</option><option value="consumable" ${kind==='consumable'?'selected':''}>Giveaway / print (used up)</option></select></div>
     <div class="field"><label>Name</label><input type="text" name="name" required value="${esc(a.name||'')}" placeholder="10x10 tent, Event kit A, Brochures…"></div>
     <div class="field"><label>Category</label><select name="category">${ASSET_CATS.map(c=>`<option ${c===(a.category||(kind==='kit'?'Kit':kind==='consumable'?'Giveaway':''))?'selected':''}>${c}</option>`).join('')}</select></div>
     <div class="field"><label>Barcode / code</label><input type="text" name="code" required value="${esc(a.code||'')}"><span class="small muted">Keep the suggested code, or scan the item’s existing barcode into this box.</span></div>
@@ -1032,7 +1074,7 @@ function expenseReview(x){
     <button class="btn sm" data-act="expPrint">🖨 Print / Save PDF</button> <button class="btn sm" data-act="expEmail">✉ Email accounting</button></div>
     <div class="card">${expenseDoc(x,false)}
     ${x.status==='submitted'?`<div class="foot"><button class="btn danger" data-act="expReturn">Return for changes</button><button class="btn primary" data-act="expApprove">✓ Approve ${money2((x.totals||expCalc(x)).total)}</button></div>`:''}
-    ${x.status==='approved'?`<div class="notice ok" style="margin-top:10px"><b>Approved — send it to Accounts Payable:</b><br>1. <button class="btn sm" data-act="expPrint">🖨 Save as PDF</button> (choose “Save as PDF” as the printer; receipts are included)<br>2. <button class="btn sm" data-act="expEmail">✉ Email ${esc(ACCOUNTING_EMAIL)}</button> and attach that PDF.${x.sentToAP?`<br><span class="small">Marked sent ${fmtStamp(x.sentToAP)}.</span>`:` <button class="btn sm" data-act="expSent">Mark as sent</button>`}</div>`:''}
+    ${x.status==='approved'&&x.sentToAPAuto?`<div class="notice ok" style="margin-top:10px"><b>✉ Emailed to Accounts Payable</b> on ${fmtStamp(x.sentToAP)}, with the report and receipts attached.</div>`:''}${x.status==='approved'&&apAutoOn()&&!x.sentToAP?`<div class="notice" style="margin-top:10px">Not emailed to Accounts Payable yet. <button class="btn sm primary" data-act="expAP">✉ Email it to Accounts Payable now</button></div>`:''}${x.status==='approved'&&!x.sentToAPAuto?`<div class="notice ok" style="margin-top:10px"><b>${apAutoOn()?'Or send it yourself:':'Approved — send it to Accounts Payable:'}</b><br>1. <button class="btn sm" data-act="expPrint">🖨 Save as PDF</button> (choose “Save as PDF” as the printer; receipts are included)<br>2. <button class="btn sm" data-act="expEmail">✉ Email ${esc(ACCOUNTING_EMAIL)}</button> and attach that PDF.${x.sentToAP?`<br><span class="small">Marked sent ${fmtStamp(x.sentToAP)}.</span>`:` <button class="btn sm" data-act="expSent">Mark as sent</button>`}</div>`:''}
     ${hist.length?`<h3>History</h3><table><tbody>${hist.map(h=>`<tr><td class="small" style="width:140px">${fmtStamp(h.at)}</td><td class="small">${esc(h.action)}${h.by?' · '+esc(h.by):''}${h.note?` – ${esc(h.note)}`:''}</td></tr>`).join('')}</tbody></table>`:''}</div>`;
 }
 async function printExpense(x){
@@ -1049,6 +1091,94 @@ function emailExpense(x){
     `Reimbursement: ${x.method==='check'?'Mail check':x.method==='achsetup'?'ACH – first time / bank changed':'ACH on file'}`, `Approved by ${x.approvedBy||''}${x.approvedAt?' on '+fmtStamp(x.approvedAt):''}`, '', 'The full report with receipts is attached as a PDF.'].join('\n');
   location.href=`mailto:${encodeURIComponent(ACCOUNTING_EMAIL)}?subject=${encodeURIComponent(`Expense report – ${x.personName} – week of ${fmtMD(x.weekStart)} – ${money2(c.total)}`)}&body=${encodeURIComponent(body)}`;
 }
+/* ---------------- Approved expense reports → Accounts Payable (automatic email) ---------------- */
+// Turned on in Alert settings once the hub's mailbox works. On approval the hub emails Accounts Payable
+// a PDF of the report with every receipt, split into parts if the files are too big for one email.
+const AP_PART_LIMIT = 850000;   // characters of attachments per email (Firebase limits a message to about 1 MB)
+function apAutoOn(){ return alertCfg().apAuto===true; }
+function pdfText(s){ return String(s??'').replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/[–—]/g,'-').replace(/…/g,'...').replace(/[·•]/g,'-').replace(/→/g,'->').replace(/×/g,'x').replace(/[^\x20-\x7e]/g,'?').replace(/([\\()])/g,'\\$1'); }
+function dataUrlBytes(u){ const b=atob(String(u).split(',')[1]||''), a=new Uint8Array(b.length); for(let i=0;i<b.length;i++) a[i]=b.charCodeAt(i); return a; }
+function bytesB64(a){ let s=''; for(let i=0;i<a.length;i+=0x8000) s+=String.fromCharCode.apply(null, a.subarray(i,i+0x8000)); return btoa(s); }
+function imgSize(u){ return new Promise(r=>{ const i=new Image(); i.onload=()=>r({ w:i.naturalWidth, h:i.naturalHeight }); i.onerror=()=>r(null); i.src=u; }); }
+// Minimal PDF: text pages (Helvetica, US Letter) followed by one page per JPEG receipt.
+async function buildPdf(lines, jpegs){
+  const enc=new TextEncoder(), parts=[], offs=[]; let len=0;
+  const push=x=>{ const b=typeof x==='string'?enc.encode(x):x; parts.push(b); len+=b.length; };
+  const objs=[];  // each: function writing the object body
+  const add=fn=>{ objs.push(fn); return objs.length; };
+  const W=612, H=792, M=50, LH=13, per=Math.floor((H-2*M)/LH);
+  const font=add(()=>push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'));
+  const bold=add(()=>push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'));
+  const pagesId=add(null), kids=[];
+  for(let i=0;i<Math.max(1,lines.length);i+=per){
+    const chunk=lines.slice(i,i+per); let y=H-M, body='BT\n';
+    chunk.forEach(l=>{ const b=l.startsWith('**'), t=b?l.slice(2):l; body+=`/${b?'F2':'F1'} ${b?11:9.5} Tf 1 0 0 1 ${M} ${y} Tm (${pdfText(t)}) Tj\n`; y-=LH; });
+    body+='ET';
+    const cs=add(()=>{ const b=enc.encode(body); push(`<< /Length ${b.length} >>\nstream\n`); push(b); push('\nendstream'); });
+    kids.push(add(()=>push(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${font} 0 R /F2 ${bold} 0 R >> >> /Contents ${cs} 0 R >>`)));
+  }
+  for(const j of jpegs){
+    const bytes=dataUrlBytes(j.data), sz=await imgSize(j.data); if(!sz) continue;
+    const im=add(()=>{ push(`<< /Type /XObject /Subtype /Image /Width ${sz.w} /Height ${sz.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`); push(bytes); push('\nendstream'); });
+    const top=24, sc=Math.min((W-2*M)/sz.w, (H-2*M-top)/sz.h), w=sz.w*sc, h=sz.h*sc, x=(W-w)/2, y=H-M-top-h;
+    const body=`BT /F2 11 Tf 1 0 0 1 ${M} ${H-M} Tm (${pdfText(j.label)}) Tj ET\nq ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm /Im0 Do Q`;
+    const cs=add(()=>{ const b=enc.encode(body); push(`<< /Length ${b.length} >>\nstream\n`); push(b); push('\nendstream'); });
+    kids.push(add(()=>push(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F2 ${bold} 0 R >> /XObject << /Im0 ${im} 0 R >> >> /Contents ${cs} 0 R >>`)));
+  }
+  objs[pagesId-1]=()=>push(`<< /Type /Pages /Kids [${kids.map(k=>k+' 0 R').join(' ')}] /Count ${kids.length} >>`);
+  const cat=add(()=>push(`<< /Type /Catalog /Pages ${pagesId} 0 R >>`));
+  push('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+  objs.forEach((fn,i)=>{ offs[i]=len; push(`${i+1} 0 obj\n`); fn(); push('\nendobj\n'); });
+  const xref=len; push(`xref\n0 ${objs.length+1}\n0000000000 65535 f \n`+offs.map(o=>String(o).padStart(10,'0')+' 00000 n \n').join(''));
+  push(`trailer\n<< /Size ${objs.length+1} /Root ${cat} 0 R >>\nstartxref\n${xref}\n%%EOF`);
+  const out=new Uint8Array(len); let p=0; parts.forEach(b=>{ out.set(b,p); p+=b.length; }); return out;
+}
+function expenseLines(x){
+  const c=expCalc(x), a=x.address||{}, evName=k=>{ const e=S.sched.events.find(v=>v.key===k); return e?e.name:(k==='__other'?'Other':''); };
+  const L=['**GDI Expense Reimbursement - Event Marketing',''];
+  L.push(`Employee: ${x.personName}${x.empId?'  (ID '+x.empId+')':''}  ${x.email||''}`, `Region & branch: ${[x.region,x.office].filter(Boolean).join(' - ')}`,
+    `Accrual period: ${fmtLong(x.weekStart)} - ${fmtLong(x.weekEnd)}`, `Supervisor: ${x.supervisor||''}${x.supervisorEmail?' ('+x.supervisorEmail+')':''}`,
+    `Reimbursement: ${x.method==='check'?'Mail check to '+[a.street,a.line2,a.city,a.state,a.zip].filter(Boolean).join(', '):x.method==='achsetup'?'ACH - first time / bank changed (banking sent separately through the secure form)':'ACH on file'}`,'');
+  if((x.trips||[]).length){ L.push(`**Mileage (GL 73200) - ${money2(x.rate)}/mile`);
+    x.trips.forEach(t=>L.push(`  ${fmtMD(t.date)}  ${evName(t.eventKey)}${t.showCode?' ['+t.showCode+']':''}  ${[t.from,t.to].filter(Boolean).join(' -> ')}  ${round1(num(t.miles))} mi`));
+    L.push(`  Total ${round1(c.totalMiles)} mi - commute ${num(x.commuteDays)} x ${num(x.commuteMiles)} = ${round1(c.nonReimb)} - eligible ${round1(c.eligible)} mi = ${money2(c.mileage)}`,''); }
+  if((x.stays||[]).length){ L.push('**Per diem (GL 73300)');
+    x.stays.forEach(s=>L.push(`  ${evName(s.eventKey)}${s.showCode?' ['+s.showCode+']':''}  ${s.hotel||''}  ${fmtMD(s.checkIn)} - ${fmtMD(s.checkOut)}`));
+    L.push(`  Meals: ${c.b} x $6 + ${c.l} x $12 + ${c.d} x $25 = ${money2(c.perDiem)}`,''); }
+  if((x.misc||[]).length){ L.push('**Reimbursable expenses');
+    x.misc.forEach(r=>L.push(`  ${fmtMD(r.date)}  ${r.category||''}  ${evName(r.eventKey)}${r.showCode?' ['+r.showCode+']':''}  ${r.desc||''}  ${money2(r.amount)}`));
+    L.push(`  Total ${money2(c.misc)}`,''); }
+  L.push('**Totals', `  Mileage (GL 73200): ${money2(c.mileage)}`, `  Per diem (GL 73300): ${money2(c.perDiem)}`, `  Reimbursable expenses: ${money2(c.misc)}`, `**TOTAL REIMBURSEMENT: ${money2(c.total)}`, '');
+  L.push(`${x.certify?'[x]':'[ ]'} Employee certified the report is accurate. Signed: ${x.signature||''}${x.submittedAt?' - submitted '+fmtStamp(x.submittedAt):''}`);
+  if(x.approvedAt) L.push(`Approved by ${x.approvedBy||''} - ${fmtStamp(x.approvedAt)}`);
+  return L.flatMap(l=>{ const out=[]; let s=l; while(s.length>105){ const i=s.lastIndexOf(' ',105); const k=i>20?i:105; out.push(s.slice(0,k)); s='    '+s.slice(k).trim(); } out.push(s); return out; });
+}
+async function sendExpenseToAP(x){
+  const recs=[...(x.stays||[]).map((s,i)=>({ id:s.receipt, label:`Hotel receipt ${i+1}${s.hotel?' - '+s.hotel:''}` })), ...(x.misc||[]).map((r,i)=>({ id:r.receipt, label:`Receipt - ${fmtMD(r.date)} ${r.category||''} ${money2(r.amount)}` }))].filter(r=>r.id);
+  for(const r of recs){ r.data=ui.photoCache[r.id]!==undefined?ui.photoCache[r.id]:await getPhoto(r.id); }
+  const jpg=recs.filter(r=>r.data && /^data:image\/jpe?g/.test(r.data)), other=recs.filter(r=>r.data && !/^data:image\/jpe?g/.test(r.data));
+  // Group receipts into emails that stay under the size limit; the report itself goes in part 1.
+  const groups=[[]]; let size=20000;
+  jpg.forEach(r=>{ const n=r.data.length; if(size+n>AP_PART_LIMIT && groups[groups.length-1].length){ groups.push([]); size=0; } groups[groups.length-1].push(r); size+=n; });
+  const others=[]; other.forEach(r=>{ const n=r.data.length; if(size+n>AP_PART_LIMIT){ groups.push([]); size=0; } (groups[groups.length-1].other=groups[groups.length-1].other||[]).push(r); size+=n; });
+  const c=expCalc(x), base=`Expense report - ${x.personName} - week of ${fmtMD(x.weekStart)}`, fname=s=>s.replace(/[\\/:*?"<>|]+/g,'-');
+  const N=groups.length;
+  for(let i=0;i<N;i++){
+    const g=groups[i], pdf=await buildPdf(i===0?expenseLines(x):[`**${base} - receipts (part ${i+1} of ${N})`], g);
+    const att=[{ filename:fname(`${base}${N>1?` (part ${i+1} of ${N})`:''}.pdf`), content:bytesB64(pdf), encoding:'base64', contentType:'application/pdf' }];
+    (g.other||[]).forEach((r,k)=>{ const m=String(r.data).match(/^data:([^;]+);base64,(.*)$/); if(m) att.push({ filename:fname(`${r.label}${m[1]==='application/pdf'?'.pdf':m[1]==='image/png'?'.png':''}`), content:m[2], encoding:'base64', contentType:m[1] }); });
+    const html=mailShell(`Approved expense report${N>1?` (part ${i+1} of ${N})`:''}`, `<p><b>${esc(x.personName)}</b>${x.empId?' (ID '+esc(x.empId)+')':''} · ${esc([x.region,x.office].filter(Boolean).join(' · '))}</p>
+      <p>Week of ${fmtLong(x.weekStart)} – ${fmtLong(x.weekEnd)} · <b>Total ${money2(c.total)}</b> (mileage GL 73200 ${money2(c.mileage)}, per diem GL 73300 ${money2(c.perDiem)}, reimbursable expenses ${money2(c.misc)})</p>
+      <p>Reimbursement: ${x.method==='check'?'mail check':x.method==='achsetup'?'ACH – first time / bank changed (banking sent separately through the secure form)':'ACH on file'}.</p>
+      <p>Approved by ${esc(x.approvedBy||'')} on ${fmtStamp(x.approvedAt||Date.now())}. ${i===0?`The report${jpg.length||other.length?' and receipts are':' is'} attached${N>1?`; more receipts follow in ${N-1} more email${N>2?'s':''}`:''}.`:'More receipts for this report are attached.'}</p>`);
+    const mail={ to:[ACCOUNTING_EMAIL], cc:cleanList([x.approvedBy]), message:{ subject:`${base} - ${money2(c.total)}${N>1?` (part ${i+1} of ${N})`:''}`, html, attachments:att }, kind:'expAP', createdAt:Date.now() };
+    if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'mail',`ap-${x.id}-${x.approvedAt||0}-${i+1}`), mail); }
+    else { S.mailLog=S.mailLog||{}; S.mailLog[`ap-${x.id}-${i+1}`]=mail; }
+  }
+  const by=(S.user&&S.user.email)||'';
+  await saveExpense(Object.assign({}, S.expenses[x.id]||x, { sentToAP:Date.now(), sentToAPAuto:true, history:[...((S.expenses[x.id]||x).history||[]), { at:Date.now(), by, action:`Emailed to Accounts Payable${N>1?` (${N} emails)`:''}` }] }));
+  return N;
+}
 async function expAction(x, status, note){
   const by=(S.user&&S.user.email)||'';
   const upd=Object.assign({}, x, { status, reviewedBy:by, mgrNote:note||'' }, status==='approved'?{ approvedBy:by, approvedAt:Date.now() }:{});
@@ -1059,6 +1189,129 @@ async function expAction(x, status, note){
 /* ---------------- ADP timecards ---------------- */
 const ADP_MANAGER_URL = 'https://workforcenow.adp.com/';   // where managers approve timecards
 // Every scheduled or checked-in shift in a Mon–Sun pay week, with what to compare against ADP.
+/* ---------------- ADP Time Details upload: compare ADP punches with check-ins ---------------- */
+// Managers export ADP's "Time Details" report (CSV or Excel) and upload it on the ADP Timecards page.
+// The file stays on this device only (never saved to the shared database). People are matched by
+// Employee ID first (the ID in brackets after the name), then by first + last name.
+const ADP_TOL_MIN = 15;      // minutes ADP may start before check-in or end after check-out
+const ADP_HOURS_TOL = 0.5;   // hours ADP may differ from checked-in time
+function adpKey(){ return 'peHub.adpTime.'+String(((S.realUser||S.user)||{}).email||'').toLowerCase(); }
+function adpData(){ if(ui.adpData===undefined){ try{ ui.adpData=JSON.parse(lsGet(adpKey())||'null'); }catch(e){ ui.adpData=null; } } return ui.adpData; }
+function adpSave(d){ ui.adpData=d; try{ if(d) lsSet(adpKey(), JSON.stringify(d)); else localStorage.removeItem(adpKey()); }catch(e){} }
+const MON3={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+function adpParseDT(v){ // "Mar 16, 2026 6:00 PM" | "Mar 16, 2026" | Date | "2026-03-16 18:00"
+  if(v instanceof Date && !isNaN(v)) return { date:isoOf(v), min:v.getHours()*60+v.getMinutes() };
+  const s=String(v||'').trim(); if(!s) return null; let m;
+  if((m=s.match(/^([A-Za-z]{3})[a-z]*\.? (\d{1,2}),? (\d{4})(?:[ ,T]+(\d{1,2}):(\d{2})(?::\d{2})? ?([AaPp][Mm])?)?/))){
+    const d=new Date(+m[3], MON3[m[1].toLowerCase()], +m[2]); let h=m[4]?+m[4]:0; const ap=(m[6]||'').toLowerCase(); if(ap==='pm'&&h<12) h+=12; if(ap==='am'&&h===12) h=0;
+    return { date:isoOf(d), min:h*60+(m[5]?+m[5]:0) }; }
+  if((m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[ ,]+(\d{1,2}):(\d{2})(?::\d{2})? ?([AaPp][Mm])?)?/))){
+    const y=+m[3]<100?2000+ +m[3]:+m[3]; let h=m[4]?+m[4]:0; const ap=(m[6]||'').toLowerCase(); if(ap==='pm'&&h<12) h+=12; if(ap==='am'&&h===12) h=0;
+    return { date:isoOf(new Date(y,+m[1]-1,+m[2])), min:h*60+(m[5]?+m[5]:0) }; }
+  if((m=s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/))) return { date:`${m[1]}-${m[2]}-${m[3]}`, min:m[4]?(+m[4])*60+(+m[5]):0 };
+  return null;
+}
+function csvObjects(text){ // CSV text → array of row objects keyed by the header row
+  const rows=[]; let row=[], f='', q=false; text=String(text).replace(/^\uFEFF/,'');
+  for(let i=0;i<text.length;i++){ const ch=text[i];
+    if(q){ if(ch==='"'){ if(text[i+1]==='"'){ f+='"'; i++; } else q=false; } else f+=ch; }
+    else if(ch==='"') q=true; else if(ch===','){ row.push(f); f=''; } else if(ch==='\n'||ch==='\r'){ if(ch==='\r'&&text[i+1]==='\n') i++; row.push(f); rows.push(row); row=[]; f=''; } else f+=ch; }
+  if(f!==''||row.length){ row.push(f); rows.push(row); }
+  const head=(rows.shift()||[]).map(h=>h.trim());
+  return rows.filter(r=>r.some(x=>x!=='')).map(r=>Object.fromEntries(head.map((h,i)=>[h,r[i]??''])));
+}
+async function importAdpTime(file){
+  let raw;
+  if(/\.csv$/i.test(file.name) || /csv|text/.test(file.type||'')) raw=csvObjects(await file.text());
+  else { await loadXlsxLib(); const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true}); raw=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:false}); }
+  if(!raw.length) throw new Error('That file is empty.');
+  const keys=Object.keys(raw[0]), col=re=>keys.find(k=>re.test(k));
+  const C={ name:col(/^employee\s*name/i)||col(/name/i), job:col(/^job/i), loc:col(/location/i), date:col(/apply\s*date/i)||col(/date/i), applyTo:col(/apply\s*to/i), type:col(/transaction\s*type/i)||col(/type/i),
+    inEx:col(/in\s*exception/i), outEx:col(/out\s*exception/i), hours:col(/^hours/i), start:col(/start\s*date/i)||col(/start/i), end:col(/end\s*date/i)||col(/end/i) };
+  if(!C.name || !C.start || !C.end) throw new Error('This doesn’t look like ADP’s Time Details report. It needs Employee Name and Transaction Start / End Date/Time columns.');
+  const rows=[]; let from=null, to=null;
+  raw.forEach(r=>{ const nm=String(r[C.name]||'').trim(); if(!nm) return;
+    const idm=nm.match(/\(([^)]+)\)\s*$/), name=nm.replace(/\s*\([^)]*\)\s*$/,'').trim();
+    const st=adpParseDT(r[C.start]), en=adpParseDT(r[C.end]), ap=adpParseDT(r[C.date]);
+    const date=(ap&&ap.date)||(st&&st.date); if(!date) return;
+    let sMin=st?st.min:null, eMin=en?en.min:null; if(st&&en&&en.date>st.date) eMin+=1440*Math.round((parseIso(en.date)-parseIso(st.date))/864e5);
+    rows.push({ id:idm?idm[1].trim():'', name, job:C.job?String(r[C.job]||''):'', loc:C.loc?String(r[C.loc]||'').replace(/^Great Day Improvements\//,'').replace(/\/GDI Events$/,''):'', date,
+      type:C.type?String(r[C.type]||''):'', applyTo:C.applyTo?String(r[C.applyTo]||''):'', inEx:C.inEx?String(r[C.inEx]||''):'', outEx:C.outEx?String(r[C.outEx]||''):'',
+      hours:C.hours?num(r[C.hours]):(sMin!=null&&eMin!=null?(eMin-sMin)/60:0), s:sMin, e:eMin });
+    if(!from||date<from) from=date; if(!to||date>to) to=date; });
+  if(!rows.length) throw new Error('No time entries found in that file.');
+  adpSave({ file:file.name, at:Date.now(), from, to, rows });
+  return `Loaded ${rows.length} ADP entries for ${new Set(rows.map(r=>r.id||r.name)).size} people, ${fmtMD(from)} – ${fmtMD(to)}.`;
+}
+const NAME_SFX=new Set(['jr','sr','ii','iii','iv']);
+function adpNameKey(first, last){ const f=normName(first).split(' ')[0]||'', l=normName(last).split(' ').filter(x=>!NAME_SFX.has(x)); return { f, l }; }
+// Roster person for an ADP row: Employee ID, then first name + last name.
+function adpPersonIndex(){
+  const D=adpData(); if(!D) return { byRow:()=>null };
+  if(ui.adpIdx && ui.adpIdx.at===D.at && ui.adpIdx.n===S.sched.roster.length) return ui.adpIdx;
+  const byId={}, R=S.sched.roster||[];
+  R.forEach(p=>{ if(p.empId) byId[String(p.empId).trim().toLowerCase()]=p; });
+  const cache={};
+  const byRow=r=>{ const k=r.id+'|'+r.name; if(k in cache) return cache[k];
+    let p=r.id&&byId[r.id.toLowerCase()];
+    if(!p){ const [last,first]=r.name.split(','); const a=adpNameKey(first||'', last||'');
+      p=R.find(x=>{ const t=normName(x.name).split(' ').filter(y=>!NAME_SFX.has(y)); return t[0]===a.f && a.l.includes(t[t.length-1]); }) || null; }
+    return cache[k]=p||null; };
+  ui.adpIdx={ at:D.at, n:R.length, byRow };
+  return ui.adpIdx;
+}
+function adpDayFor(pid, date){
+  const D=adpData(); if(!D || date<D.from || date>D.to) return null;
+  const I=adpPersonIndex(), segs=D.rows.filter(r=>r.date===date && (I.byRow(r)||{}).id===pid);
+  const worked=segs.filter(r=>/worked/i.test(r.type) && r.s!=null && r.e!=null);
+  return { covered:true, segs, worked, in:worked.length?Math.min(...worked.map(r=>r.s)):null, out:worked.length?Math.max(...worked.map(r=>r.e)):null,
+    hours:Math.round(worked.reduce((t,r)=>t+num(r.hours),0)*100)/100, notes:[...new Set(segs.flatMap(r=>[r.inEx,r.outEx,r.applyTo]).filter(Boolean))] };
+}
+function minLabel(m){ if(m==null) return ''; const h=Math.floor(((m%1440)+1440)%1440/60), mm=((m%60)+60)%60; return `${((h+11)%12)+1}:${pad(mm)}${h>=12?'p':'a'}`; }
+// Wall-clock minutes of a check-in time where the marketer was. New check-ins store their time zone;
+// for older ones the whole-hour time zone difference that best fits the ADP punches is used.
+function wallMin(ms, tzOff){ const d=new Date(ms); return tzOff==null ? d.getHours()*60+d.getMinutes() : Math.floor(((ms/6e4 - tzOff)%1440+1440)%1440); }
+function adpCompare(r){
+  const A=adpDayFor(r.s.personId, r.d); if(!A) return null;
+  const c=r.c, issues=[], info=A.notes.slice();
+  if(!A.worked.length){ if(c) issues.push('No ADP time this day'); return { A, issues, info }; }
+  if(!c){ issues.push('ADP time but no check-in'); return { A, issues, info }; }
+  let shift=0, est=false;
+  if(c.tzOff==null){ const tries=[-180,-120,-60,0,60,120,180]; const cost=h=>(c.inAt&&!c.officePickup?Math.abs(A.in-(wallMin(c.inAt)+h)):0)+(c.outAt?Math.abs(A.out-(wallMin(c.outAt)+h)):0);
+    shift=tries.reduce((b,h)=>cost(h)<cost(b)?h:b,0); est=shift!==0; }
+  const w=ms=>ms?(c.tzOff==null?wallMin(ms)+shift:wallMin(ms,c.tzOff)):null;
+  const start=c.officePickup&&toMin(c.officeClockIn)!=null?toMin(c.officeClockIn):w(c.inAt), end=w(c.outAt);
+  if(start!=null && A.in < start-ADP_TOL_MIN) issues.push(`ADP in ${start-A.in} min before ${c.officePickup?'office clock-in':'check-in'}`);
+  if(start!=null && A.in > start+ADP_TOL_MIN) issues.push(`ADP in ${A.in-start} min after ${c.officePickup?'office clock-in':'check-in'}`);
+  if(end!=null && A.out > end+ADP_TOL_MIN) issues.push(`ADP out ${A.out-end} min after check-out`);
+  if(start!=null && end!=null){ const exp=Math.round(((end-start)-(c.mealTaken===true?BREAKS.mealMin:0))/60*100)/100; if(Math.abs(A.hours-exp)>ADP_HOURS_TOL) issues.push(`ADP ${round1(A.hours)} h vs ${round1(exp)} h checked in`); }
+  if(A.hours>BREAKS.mealAfterH){ const w=A.worked.slice().sort((a,b)=>a.s-b.s); let gap=0; for(let i=1;i<w.length;i++) gap=Math.max(gap, w[i].s-w[i-1].e);
+    if(gap<BREAKS.mealMin-5) issues.push(`No ${BREAKS.mealMin}-min meal break in ADP`); }
+  if(est) info.push('time zone adjusted');
+  return { A, issues, info };
+}
+// ADP time on days with no scheduled shift (for people in the current scope), and ADP names not on the roster.
+function adpExtras(wk){
+  const D=adpData(); if(!D) return { noShift:[], unmatched:[] };
+  const I=adpPersonIndex(), days=datesBetween(wk, addDays(wk,6)), seen={}, noShift=[], un={};
+  D.rows.filter(r=>days.includes(r.date)).forEach(r=>{ const p=I.byRow(r);
+    if(!p){ un[r.id||r.name]=r; return; }
+    if(!inOffice(p.office)) return;
+    const k=p.id+'|'+r.date; if(seen[k]) return; seen[k]=1;
+    if(!shiftsOn(r.date).some(s=>s.personId===p.id)){ const A=adpDayFor(p.id, r.date); if(A && (A.worked.length || A.notes.length)) noShift.push({ p, d:r.date, A }); } });
+  return { noShift:noShift.sort((a,b)=>a.p.name.localeCompare(b.p.name)||a.d.localeCompare(b.d)), unmatched:Object.values(un).sort((a,b)=>a.name.localeCompare(b.name)) };
+}
+function adpUploadCard(wk){
+  const D=adpData(), X=adpExtras(wk), covers=D && !(addDays(wk,6)<D.from || wk>D.to);
+  return `<div class="card"><div class="row" style="gap:8px;flex-wrap:wrap"><h2 style="margin:0">ADP time details</h2><span class="spacer"></span>
+    <label class="btn sm primary">📥 Upload ADP Time Details<input type="file" id="adpFile" accept=".csv,.xlsx,.xls" style="display:none"></label>${D?'<button class="btn sm" data-act="adpClear">Clear</button>':''}</div>
+    <div class="sub">In ADP, run the <b>Time Details</b> report for the pay period and export it (CSV or Excel), then upload it here. The hub lines up each ADP punch with the marketer’s check-in and check-out and flags differences over ${ADP_TOL_MIN} minutes, or over ${ADP_HOURS_TOL*60} minutes in total hours. The file stays on this device only.</div>
+    ${ui.adpMsg?`<div class="notice">${esc(ui.adpMsg)}</div>`:''}
+    ${D?`<div class="small">Loaded <b>${esc(D.file||'ADP file')}</b> · ${fmtMD(D.from)} – ${fmtMD(D.to)} · uploaded ${fmtStamp(D.at)}${covers?'':` · <b style="color:var(--warn)">doesn’t cover the week of ${fmtMD(wk)}</b>`}</div>`:''}
+    ${covers&&X.noShift.length?`<h3>ADP time with no scheduled shift</h3><table><thead><tr><th>Day</th><th>Person</th><th>Office</th><th>ADP in–out</th><th>ADP hours</th><th>Notes</th></tr></thead><tbody>${X.noShift.map(x=>`<tr><td>${fmtLong(x.d)}</td><td>${esc(x.p.name)}</td><td class="small">${esc(x.p.office||'')}</td><td class="small">${x.A.in!=null?minLabel(x.A.in)+' – '+minLabel(x.A.out):'—'}</td><td>${x.A.worked.length?round1(x.A.hours):'—'}</td><td class="small">${esc(x.A.notes.join(', '))}</td></tr>`).join('')}</tbody></table>`:''}
+    ${covers&&X.unmatched.length?`<details style="margin-top:8px"><summary class="small" style="cursor:pointer">${X.unmatched.length} ${X.unmatched.length===1?'person in the ADP file this week isn’t':'people in the ADP file this week aren’t'} on the roster (check their Employee ID)</summary><div class="small" style="margin-top:4px">${X.unmatched.map(r=>`${esc(r.name)}${r.id?' ('+esc(r.id)+')':''}${r.loc?' · '+esc(r.loc):''}`).join('<br>')}</div></details>`:''}
+  </div>`;
+}
 function adpRows(wk){
   const out=[];
   datesBetween(wk, addDays(wk,6)).forEach(d=>shiftsOn(d).filter(s=>inOffice(s.ev.office)).forEach(s=>{
@@ -1069,8 +1322,10 @@ function adpRows(wk){
       if(c && !c.adpIn) issues.push('ADP clock-in not confirmed');
       if(c && c.status==='out' && !c.adpOut) issues.push('ADP clock-out not confirmed');
       if(c && c.status==='in' && (d<todayIso())) issues.push('Never checked out');
+      if(c && c.mealTaken===false) issues.push('Meal break not taken'+(c.mealNote?': '+c.mealNote:''));
     }
-    out.push({ s, c, d, issues, flag:issues.length>0 });
+    const cmp=adpCompare({ s, c, d }); if(cmp) issues.push(...cmp.issues);
+    out.push({ s, c, d, issues, flag:issues.length>0, cmp });
   }));
   return out.sort((a,b)=>personName(a.s.personId).localeCompare(personName(b.s.personId)) || a.d.localeCompare(b.d));
 }
@@ -1080,15 +1335,18 @@ function adpView(){
   const flagged=rows.filter(r=>r.flag).length;
   return `<div class="row" style="margin-bottom:12px"><a class="btn primary big" style="width:auto;text-decoration:none" href="${ADP_MANAGER_URL}" target="_blank" rel="noopener">⏱️ Open ADP to approve timecards ↗</a><span class="spacer"></span>${scopePicker()}</div>
   ${(()=>{ const t=todayIso(), pe=payPeriodEnd(t); return `<div class="notice">Pay period: <b>${fmtLong(addDays(pe,-13))} – ${fmtLong(pe)}</b> · approve timecards by the end of ${pe===t?'<b>today</b>':fmtLong(pe)} · payday ${fmtLong(addDays(pe,5))}</div>`; })()}
+  ${adpUploadCard(wk)}
+  <div class="small" style="margin:-4px 0 12px">🧰 ADP how-tos: ${MGR_TOOLKIT.flatMap(g=>g[1]).filter(it=>it[3]==='adp').map(it=>`<a href="${esc(it[2])}" target="_blank" rel="noopener">${esc(it[0])}</a>`).join(' · ')}</div>
   <div class="card"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">Timecard check · week of ${fmtLong(wk)}</h2><span class="spacer"></span>
     <button class="btn sm" data-act="adpWk" data-n="-7">◀ Prev week</button>${wk!==mondayOf(todayIso())?'<button class="btn sm" data-act="adpWk" data-n="0">This week</button>':''}<button class="btn sm" data-act="adpWk" data-n="7">Next week ▶</button></div>
     <div class="sub">Compare each marketer’s ADP timecard with their event check-ins before approving. On equipment-pickup days, paid time starts at the office clock-in. ${flagged?`<b style="color:var(--warn)">${flagged} shift${flagged===1?'':'s'} to double-check.</b>`:''}</div>
     ${Object.keys(byP).length?Object.entries(byP).map(([pid,list])=>{ const p=person(pid)||{}; const hrs=list.reduce((t,r)=>t+hoursOf(r.c),0);
-      return `<h3>${esc(personName(pid))} <span class="small muted">${esc(p.office||'')}${p.empId?' · ID '+esc(p.empId):''} · booth time ${round1(hrs)} h</span></h3>
-      <table><thead><tr><th>Day</th><th>Event</th><th>Scheduled</th><th>Office clock-in</th><th>Booth check-in</th><th>Check-out</th><th>ADP confirmed</th><th>Check</th></tr></thead><tbody>${list.map(r=>{ const c=r.c;
+      return `<h3>${esc(personName(pid))} <span class="small muted">${esc(p.office||'')}${p.empId?' · ID '+esc(p.empId):''} · booth time ${round1(hrs)} h${(()=>{ const a=list.filter(r=>r.cmp&&r.cmp.A.worked.length); return a.length?` · ADP ${round1(a.reduce((t,r)=>t+r.cmp.A.hours,0))} h`:''; })()}</span></h3>
+      <table><thead><tr><th>Day</th><th>Event</th><th>Scheduled</th><th>Office clock-in</th><th>Booth check-in</th><th>Check-out</th><th>ADP confirmed</th>${adpData()?'<th>ADP in–out</th><th>ADP hours</th>':''}<th>Check</th></tr></thead><tbody>${list.map(r=>{ const c=r.c, A=r.cmp&&r.cmp.A;
         return `<tr class="click" data-detail="${r.s.cid}" data-day="${esc(r.s.dayId)}" data-pid="${esc(pid)}"><td>${fmtLong(r.d)}</td><td>${esc(r.s.ev.name)}</td><td class="small">${timeRange(r.s.day)}</td>
           <td class="small">${c&&c.officePickup?esc(fmtTime(c.officeClockIn)||c.officeClockIn):'—'}</td><td class="small">${c?fmtClock(c.inAt):'—'}</td><td class="small">${c&&c.outAt?fmtClock(c.outAt):'—'}</td>
           <td class="small">${c?`${c.adpIn?'✓ in':'✗ in'}${c.status==='out'?(c.adpOut?' · ✓ out':' · ✗ out'):''}`:'—'}</td>
+          ${adpData()?`<td class="small">${A&&A.in!=null?minLabel(A.in)+' – '+minLabel(A.out):(A?'none':'<span class="muted">not in file</span>')}${r.cmp&&r.cmp.info.length?`<div class="muted">${esc(r.cmp.info.join(', '))}</div>`:''}</td><td class="small">${A&&A.worked.length?round1(A.hours):'—'}</td>`:''}
           <td>${r.issues.length?r.issues.map(i=>`<span class="pill p-warn">${esc(i)}</span>`).join(' '):(r.d>todayIso()?'<span class="small muted">upcoming</span>':'<span class="pill p-green">OK</span>')}</td></tr>`; }).join('')}</tbody></table>`; }).join(''):'<p class="muted">No shifts this week.</p>'}
   </div>`;
 }
@@ -1141,27 +1399,34 @@ const LINKS = {
 // The team's weekly cadence (each manager can edit their own copy).
 const DEFAULT_MGR_TASKS = [
   // Sunday
-  { id:'su1', when:'dow:0', group:'Wrap up the weekend', text:'Complete event evaluations for the weekend', tab:'evals', auto:'a-eval' },
+  { id:'su1', when:'dow:0', group:'Wrap up the weekend', text:'Complete event evaluations for the weekend in Exhibit Day', links:[['Exhibit Day',LINKS.exhibitDay]], tab:'evals', auto:'a-eval' },
   { id:'su2', when:'dow:0', group:'Wrap up the weekend', text:'Update results with ACTUAL costs in Exhibit Day (expenses + wages from ADP)', links:[['Exhibit Day',LINKS.exhibitDay],['ADP',LINKS.adp]], tab:'expenses' },
   { id:'su3', when:'dow:0', cond:'payday', group:'Wrap up the weekend', text:'Pay period ends today: review timesheets for accuracy and approve timecards (payday is Friday)', links:[['ADP',LINKS.adp]], tab:'adp', auto:'a-adp' },
   { id:'su4', when:'dow:0', group:'Wrap up the weekend', text:'Send 0-lead events to your direct manager with an explanation (by Monday 9 am)', tab:'evals', auto:'a-zero' },
+  { id:'su7', when:'dow:0', group:'Wrap up the weekend', text:'Remind your marketers to submit this week’s expense report tonight', tab:'expenses' },
   // Monday
   { id:'mo1', when:'dow:1', group:'Administrative tasks', text:'Review the upcoming schedule of events and confirm your upcoming events', links:[['Exhibit Day',LINKS.exhibitDay]], tab:'schedule' },
   { id:'mo0', when:'dow:1', group:'Administrative tasks', text:'Send the event activation summary (leads, 0-lead events, events not activated) to leadership', tab:'summary' },
-  { id:'mo2', when:'dow:1', group:'Administrative tasks', text:'Confirm previous and new shows are listed correctly on the Master and the booking tool (Master is emailed Mon/Wed/Fri)', links:[['Booking tool',LINKS.booking]] },
+  { id:'mo2', when:'dow:1', group:'Administrative tasks', text:'Confirm previous and new shows are listed correctly on the Master and the booking tool (Master is emailed Mon/Wed/Fri). For upcoming events, check the dates, target, cost, actual opps, unset opps and payment status', links:[['Booking tool',LINKS.booking]] },
   { id:'mo12', when:'dow:1', group:'Administrative tasks', text:'Review and approve your team’s expense reports (submitted Sunday night)', tab:'expenses', auto:'a-exp' },
   { id:'mo13', when:'dow:1', group:'Administrative tasks', text:'Submit your own expense report for last week', tab:'expenses' },
   { id:'mo14', when:'dow:1', group:'Administrative tasks', text:'Enter last week’s REM numbers for your division’s regions (cancels, meets, labor, expenses) before the meeting', tab:'remnums' },
   { id:'mo3', when:'dow:1', group:'Administrative tasks', text:'Code credit card transactions', links:[['PaymentNet',LINKS.paymentNet]] },
-  { id:'mo4', when:'dow:1', group:'Administrative tasks', text:'Add projected costs for NEW events in Exhibit Day', links:[['Exhibit Day',LINKS.exhibitDay]], tab:'events' },
   { id:'mo5', when:'dow:1', group:'Administrative tasks', text:'Reconcile leads using PCMS & Tableau', links:[['PCMS',LINKS.pcms],['Tableau',LINKS.tableau]] },
   { id:'mo6', when:'dow:1', group:'Administrative tasks', text:'Confirm all NEW marketers have a booking-tool username & password before their 1st event', links:[['Booking tool',LINKS.booking]] },
   { id:'mo7', when:'dow:1', group:'Recruiting & hiring', text:'iCIMS: send 1st-contact emails to all new applicants', links:[['ADP',LINKS.adp]] },
   { id:'mo8', when:'dow:1', group:'Recruiting & hiring', text:'Reject non-responsive candidates from prior communication' },
   { id:'mo9', when:'dow:1', group:'Recruiting & hiring', text:'Conduct scheduled phone screenings and/or interviews' },
+  { id:'mo15', when:'dow:1', group:'Continuing work flow', text:'Review your region on the Scorecard (opps vs goal, cost per opp) before the REM meeting', tab:'scorecard' },
   { id:'mo10', when:'dow:1', group:'Continuing work flow', text:'Attend the weekly REM meeting' },
+  { id:'mo16', when:'dow:1', group:'Continuing work flow', text:'Coach one marketer: review their booth photos and results from last week and give feedback', tab:'today' },
+  { id:'mo17', when:'dow:1', cond:'monthend', group:'Month-end', text:'Submit next month’s Researching events for approval in ETACC (due the last day of this month)', tab:'events' },
   { id:'mo11', when:'dow:1', group:'Continuing work flow', text:'Event planning / research future events', tab:'events' },
   // Thursday
+  { id:'ev1', when:'daily', cond:'shift', group:'Event day', text:'As shifts end, review check-outs with your team: results, booth photos, booth assets returned and any issues', tab:'today' },
+  { id:'th3', when:'dow:4', group:'Get ready for the weekend', text:'Check in with your marketers to make sure they’re all set for their scheduled events', tab:'schedule' },
+  { id:'th4', when:'dow:4', cond:'events', group:'Get ready for the weekend', text:'Confirm booth assets, kits and giveaways are packed and ready for each weekend event', tab:'assets' },
+  { id:'th5', when:'dow:4', cond:'events', group:'Get ready for the weekend', text:'Confirm hotels are booked in Navan for this weekend’s travel', tab:'travel' },
   { id:'th1', when:'dow:4', group:'Build the pipeline', text:'Research and add future events', tab:'events' },
   { id:'th2', when:'dow:4', group:'Build the pipeline', text:'Find and interview candidates: phone screens and interviews for new marketers', links:[['ADP',LINKS.adp]] },
   // Event weekends (Fri–Sun)
@@ -1170,7 +1435,6 @@ const DEFAULT_MGR_TASKS = [
   { id:'fr3', when:'dow:5', cond:'events', group:'Event weekend', text:'Visit or call your booths: setup meets standards and issues are resolved', tab:'today', auto:'a-iss' },
   { id:'sa1', when:'dow:6', cond:'events', group:'Event weekend', text:'Watch check-ins: follow up on late or missing marketers right away', tab:'today', auto:'a-late' },
   { id:'sa2', when:'dow:6', cond:'events', group:'Event weekend', text:'Visit or call your booths: setup meets standards and issues are resolved', tab:'today', auto:'a-iss' },
-  { id:'sa3', when:'dow:6', cond:'events', group:'Event weekend', text:'Review check-out results and booth photos as shifts end', tab:'today' },
   { id:'su6', when:'dow:0', cond:'events', group:'Event weekend', text:'Watch check-ins and booth issues for today’s shifts', tab:'today', auto:'a-late' },
   // Weekends with no events: pipeline work instead
   { id:'fr9', when:'dow:5', cond:'noevents', group:'No events this weekend', text:'Research and add future events', tab:'events' },
@@ -1185,13 +1449,15 @@ const DEFAULT_MGR_TASKS = [
   { id:'wk4', when:'weekly', group:'This week', text:'Order supplies running low (trifolds, brochures, badges, etc.)', tab:'assets', auto:'a-low' },
 ];
 function mgrKey(){ return S.user ? String(S.user.email||'').toLowerCase().replace(/[^a-z0-9]+/g,'_') : ''; }
+// Earlier wording of standard tasks: saved checklists still using it get the current wording (a manager's own edits are kept).
+const OLD_TASK_TEXT = { su1:['Complete event evaluations for the weekend'], mo2:['Confirm previous and new shows are listed correctly on the Master and the booking tool (Master is emailed Mon/Wed/Fri)'] };
 function mgrDoc(){ const k=mgrKey(); let d=(k && S.mgr[k]) || { workDays:DEFAULT_WORKDAYS, tasks:DEFAULT_MGR_TASKS, days:{}, weeks:{}, flex:{} };
   if(d.tasks && d.tasks!==DEFAULT_MGR_TASKS){   // add standard tasks introduced after this list was saved (unless the manager removed them)
-    const RETIRED=['su5'];   // standard tasks that moved or were dropped
+    const RETIRED=['su5','mo4','sa3'];   // standard tasks that moved or were dropped
     if(d.tasks.some(x=>RETIRED.includes(x.id))) d=Object.assign({}, d, { tasks:d.tasks.filter(x=>!RETIRED.includes(x.id)) });
     const have=new Map(d.tasks.map(x=>[x.id,x])), gone=new Set(d.removedTasks||[]);
     const missing=DEFAULT_MGR_TASKS.filter(x=>!have.has(x.id)&&!gone.has(x.id));
-    const upd=d.tasks.map(x=>{ const def=DEFAULT_MGR_TASKS.find(y=>y.id===x.id); return (def&&def.cond&&!('cond' in x))?Object.assign({},x,{cond:def.cond,text:def.text}):x; });
+    const upd=d.tasks.map(x=>{ const def=DEFAULT_MGR_TASKS.find(y=>y.id===x.id); if(def && (OLD_TASK_TEXT[x.id]||[]).includes(x.text)) x=Object.assign({},x,{text:def.text}); return (def&&def.cond&&!('cond' in x))?Object.assign({},x,{cond:def.cond,text:def.text}):x; });
     if(missing.length || upd.some((x,i)=>x!==d.tasks[i])) return Object.assign({}, d, { tasks:[...upd, ...missing] });
   }
   return d; }
@@ -1200,7 +1466,7 @@ function weekendHasEvents(date){ const dow=parseIso(date).getDay(), fri=addDays(
   return liveEvents().some(e=>inOffice(e.office) && (e.days||[]).some(x=>days.includes(x.date))); }
 const REM_USERS = ['paula.shoemaker@greatdayimprovements.com','trevor.morrissey@greatdayimprovements.com','angelique.critz@greatdayimprovements.com','chris.winston@greatdayimprovements.com'];
 function isRemUser(){ return !!(S.user && REM_USERS.includes(String(S.user.email||'').toLowerCase())) || (DEMO && !!S.user && !previewing()); }
-function condOk(x, date){ if(x.tab==='remnums' && !isRemUser()) return false; if(!x.cond) return true; if(x.cond==='payday') return isPayEnd(date); const ev=weekendHasEvents(date); return x.cond==='events'?ev:!ev; }
+function condOk(x, date){ if(x.tab==='remnums' && !isRemUser()) return false; if(!x.cond) return true; if(x.cond==='payday') return isPayEnd(date); if(x.cond==='monthend'){ const d=parseIso(date); return new Date(d.getFullYear(), d.getMonth()+1, 0).getDate()-d.getDate() < 7; } if(x.cond==='shift') return shiftsOn(date).some(s=>inOffice(s.ev.office)); const ev=weekendHasEvents(date); return x.cond==='events'?ev:!ev; }
 function workDays(){ const w=mgrDoc().workDays; return (w&&w.length)?w:DEFAULT_WORKDAYS; }
 // Weeks run Monday–Sunday. A date is a work day if it's a typical work day, unless the manager flexed it.
 function workWeekStart(iso){ return mondayOf(iso||todayIso()); }
@@ -1229,9 +1495,9 @@ function autoCounts(){
   return {
     'a-late':{ n:late, tab:'today', text:'Late or missing check-ins / check-outs' },
     'a-iss':{ n:Object.values(S.checkins).filter(c=>inOffice(c.office)&&((c.issues||[]).length||c.issueText)&&c.date>=yest).length, tab:'today', text:'Issues marketers reported' },
-    'a-gear':{ n:scopedAssets().filter(isGear).filter(a=>stOf(a).overdue).length, tab:'assets', text:'Booth gear not returned' },
+    'a-gear':{ n:scopedAssets().filter(isGear).filter(a=>stOf(a).overdue).length, tab:'assets', text:'Booth assets not returned' },
     'a-exp':{ n:Object.values(S.expenses).filter(x=>x.status==='submitted'&&(!x.office||inOffice(x.office))).length, tab:'expenses' },
-    'a-eval':{ n:evalsDue().filter(e=>!evalDone(e)).length, tab:'evals' },
+    'a-eval':{ n:EVALS_PAUSED?0:evalsDue().filter(e=>!evalDone(e)).length, tab:'evals' },
     'a-adp':{ n:adpRows(addDays(mondayOf(t),-7)).filter(r=>r.flag).length + adpRows(mondayOf(t)).filter(r=>r.flag&&r.d<t).length, tab:'adp' },
     'a-zero':{ n:zero.length, tab:'evals', list:zero.map(e=>e.name) },
     'a-staff':{ n:needsStaffing().length, tab:'schedule' },
@@ -1250,10 +1516,159 @@ function tasksFor(kind, date){
   const rolled=rolledFrom(date).flatMap(d=>tasks.filter(x=>x.when==='dow:'+parseIso(d).getDay() && condOk(x,d)).map(x=>Object.assign({}, x, { group:(x.group||'Tasks')+` (moved from ${DOW_NAMES[parseIso(d).getDay()]})` })));
   return [...own, ...rolled];
 }
+// Credit card coding quick reference (department EVT for all)
+const CC_GL_CODES = [
+  ['15500','Prepaid Shows','Future shows, prepaid show services (electric/internet)'],
+  ['71400','ADV - Tradeshows','Payments and executions in the same month; services paid onsite (electric/internet)'],
+  ['73300','Meals','Meals bought for team recognition'],
+  ['73400','Hotel','Overnight hotel stays'],
+  ['73600','Parking & Tolls','Event/airport parking, tolls when driving for work'],
+  ['61580','Marketing Spiffs','Contest prizes for marketers'],
+  ['73100','Airfare','Airfare'],
+  ['73500','Car Rental / Taxi','Car rental, rideshare, taxi'],
+  ['75200','Vehicles Gas','Fuel for rental car'],
+  ['76100','Office Supplies','Office supplies, wagon, rolling cart, candy, etc.'],
+  ['76300','Postage & Courier','Postage and shipping'],
+  ['76900','Miscellaneous Office Expenses','Branded apparel, canopy tent, banner, foam floor mats, etc.'] ];
+const CC_DEPT = 'EVT';
+function glTable(){ return `<table class="gltab"><thead><tr><th>GL code</th><th>Name</th><th>Common charges</th></tr></thead><tbody>${CC_GL_CODES.map(([c,n,w])=>`<tr><td><b>${c}</b></td><td>${esc(n)}</td><td class="small">${esc(w)}</td></tr>`).join('')}</tbody></table><p class="small muted" style="margin:6px 0 0">Department: <b>${CC_DEPT}</b> for every line.</p>`; }
+function isCcTask(item){ return item.id==='mo3' || /credit card/i.test(item.text||''); }
+function glOverlay(){
+  if(!ui.glRef) return '';
+  return `<div class="tourbg" data-act="glClose"><div class="tourbox phelp" role="dialog" aria-label="Credit card GL codes"><div class="tourstep">Quick reference</div><h2>💳 Coding credit card transactions</h2>${glTable()}
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px"><a class="btn" href="${esc(LINKS.paymentNet)}" target="_blank" rel="noopener">PaymentNet ↗</a><button class="btn primary" data-act="glClose">Got it</button></div></div></div>`;
+}
+// Manager toolkit: links to the Regional Event Managers SharePoint site (opening them needs a company sign-in).
+// Each item: [title, description, url, tag]; tags attach the link to matching checklist tasks and pages.
+const MGR_TOOLKIT = [
+ [
+  "Finding and booking events",
+  [
+   [
+    "Event Discovery guide",
+    "Strategies for finding the best events for your team (in the Regional Event Managers notebook).",
+    "https://greatdayimprovements0.sharepoint.com/sites/RegionalEventManagers/SiteAssets/Regional%20Event%20Managers%20Notebook/General.one",
+    "disc"
+   ],
+   [
+    "ExhibitDay budget SOP",
+    "Adding or updating an event in ExhibitDay for payment.",
+    "https://greatdayimprovements0.sharepoint.com/sites/RegionalEventManagers/SiteAssets/SitePages/Quarterly-Business-Reviews-are-this-Week%21/3727070079SOP-ExhibitDay-Budget.pdf",
+    "xday"
+   ]
+  ]
+ ],
+ [
+  "Hiring marketers",
+  [
+   [
+    "Hiring and onboarding a new marketer",
+    "Step by step: verbal offer, offer letter, acceptance and onboarding.",
+    "https://greatdayimprovements0.sharepoint.com/sites/RegionalEventManagers/SiteAssets/SitePages/Home/Step-by-Step-Guide-to-Hiring-and-Onboarding-a-New-Marketer.pdf",
+    "hire"
+   ],
+   [
+    "Interview guide and scoring rubric",
+    "Interview questions, what to look for, and a 1–5 score for each.",
+    "https://greatdayimprovements0.sharepoint.com/sites/RegionalEventManagers/SiteAssets/SitePages/Home/Interview-Guide-and-Scoring-Rubric.docx",
+    "hire"
+   ],
+   [
+    "iCIMS: create an email template",
+    "Save time on candidate emails with templates in iCIMS.",
+    "https://greatdayimprovements0.sharepoint.com/sites/RegionalEventManagers/Shared%20Documents/Team%20Resource%20Hub/How-to-Create-an-Email-Template-in-iCIMS-Applicant-Tracking-System.pdf",
+    "icims"
+   ]
+  ]
+ ],
+ [
+  "ADP and time off",
+  [
+   [
+    "ADP mobile app",
+    "Clocking in and out and viewing pay on a phone.",
+    "https://greatdayimprovements0.sharepoint.com/sites/RegionalEventManagers/SiteAssets/SitePages/Home/ADP-Mobile-App--1-.pdf",
+    "adp"
+   ],
+   [
+    "ADP self-service portal",
+    "Logging in, profile and pay information.",
+    "https://greatdayimprovements0.sharepoint.com/sites/RegionalEventManagers/SiteAssets/SitePages/Home/ADP-Self-service-Portal.pdf",
+    "adp"
+   ],
+   [
+    "ADP new employee registration",
+    "How a new hire registers for ADP payroll and timekeeping.",
+    "https://greatdayimprovements0.sharepoint.com/sites/RegionalEventManagers/SiteAssets/SitePages/Home/ADP-Registration.pdf",
+    "hire"
+   ],
+   [
+    "E-Time overview",
+    "How timecards work in E-Time.",
+    "https://greatdayimprovements0.sharepoint.com/sites/RegionalEventManagers/SiteAssets/SitePages/Home/How-to-E-Time-Overview.pdf",
+    "adp"
+   ],
+   [
+    "Approving time-off requests",
+    "Managers: approve or deny time off in ADP.",
+    "https://greatdayimprovements0.sharepoint.com/sites/RegionalEventManagers/SiteAssets/SitePages/Home/Approve-Time-Off-Requests.pdf",
+    "adp"
+   ],
+   [
+    "Requesting time off (salaried)",
+    "How salaried employees request time off.",
+    "https://greatdayimprovements0.sharepoint.com/sites/RegionalEventManagers/SiteAssets/SitePages/Home/Requesting-Time-Off_Salaried-Employees.pdf",
+    ""
+   ]
+  ]
+ ],
+ [
+  "HR forms and refreshers",
+  [
+   [
+    "HR and payroll refresher",
+    "Pre-employment, onboarding and payroll rules for managers.",
+    "https://greatdayimprovements0.sharepoint.com/sites/RegionalEventManagers/SiteAssets/SitePages/Home/Payroll-Refresher-Course--1-.pdf",
+    "hire"
+   ],
+   [
+    "I-9: list of acceptable documents",
+    "Which documents new hires can provide for the I-9.",
+    "https://greatdayimprovements0.sharepoint.com/sites/RegionalEventManagers/SiteAssets/SitePages/Home/List-of-Acceptable-Documents-I-9.pdf",
+    "hire"
+   ],
+   [
+    "Personnel Action Form (2025)",
+    "Promotions, pay changes, transfers and other changes.",
+    "https://greatdayimprovements0.sharepoint.com/sites/RegionalEventManagers/Shared%20Documents/Personnel%20Action%20Form%20Final%202025.pdf",
+    ""
+   ],
+   [
+    "Accountability documentation (2025)",
+    "The form for documenting performance or conduct conversations.",
+    "https://greatdayimprovements0.sharepoint.com/sites/RegionalEventManagers/Shared%20Documents/2025%20Accountability%20Documentation.pdf",
+    ""
+   ]
+  ]
+ ]
+];
+// Checklist tasks that get toolkit links: task id → toolkit titles.
+const TASK_TOOLKIT = { th1:['Event Discovery guide'], fr9:['Event Discovery guide'], sa9:['Event Discovery guide'], su9:['Event Discovery guide'], mo11:['Event Discovery guide'],
+  su2:['ExhibitDay budget SOP'], mo7:['iCIMS: create an email template'], mo8:['iCIMS: create an email template'],
+  mo9:['Interview guide and scoring rubric'], th2:['Interview guide and scoring rubric','Hiring and onboarding a new marketer'], fr8:['Interview guide and scoring rubric'], sa8:['Interview guide and scoring rubric'],
+  mo6:['Hiring and onboarding a new marketer'], su3:['E-Time overview'] };
+function toolkitItem(title){ for(const [,items] of MGR_TOOLKIT) for(const it of items) if(it[0]===title) return it; return null; }
+function toolkitView(){
+  return `<div class="card"><p class="small muted" style="margin-top:0">Guides and forms from the Regional Event Managers site. They open in SharePoint; sign in with your work account.</p>
+    ${MGR_TOOLKIT.map(([g,items])=>`<h3>${esc(g)}</h3>${items.map(([t,d,u])=>`<div class="tcard"><div style="flex:1;min-width:0"><b>${esc(t)}</b><div class="small muted">${esc(d)}</div></div><a class="btn primary" href="${esc(u)}" target="_blank" rel="noopener">Open ↗</a></div>`).join('')}`).join('')}</div>`;
+}
 function checkRow(item, doneMap, key, AC){
+  // Evaluations are entered in Exhibit Day while the hub's evaluations are paused: no hub count or hub button, always the Exhibit Day link.
+  if(item.auto==='a-eval'){ const ln=(item.links||[]).some(l=>l&&l[1]===LINKS.exhibitDay)?item.links:[...(item.links||[]),['Exhibit Day',LINKS.exhibitDay]];
+    item=Object.assign({}, item, { links:ln, text:item.text==='Complete event evaluations for the weekend'?'Complete event evaluations for the weekend in Exhibit Day':item.text }, EVALS_PAUSED?{ auto:null, tab:null }:{}); }
   const a=item.auto && AC[item.auto];
   const done = (a && a.n===0) || !!doneMap[item.id];
-  const links=(item.links||[]).map(([l,u])=>`<a class="btn sm" href="${esc(u)}" target="_blank" rel="noopener">${esc(l)} ↗</a>`).join('');
+  const links=(item.links||[]).map(([l,u])=>`<a class="btn sm" href="${esc(u)}" target="_blank" rel="noopener">${esc(l)} ↗</a>`).join('')+(isCcTask(item)?'<button class="btn sm" data-act="glRef" title="GL codes for credit card charges">💳 GL codes</button>':'')+(TASK_TOOLKIT[item.id]||[]).map(toolkitItem).filter(Boolean).map(it=>`<a class="btn sm" href="${esc(it[2])}" target="_blank" rel="noopener" title="${esc(it[1])}">🧰 ${esc(it[0])} ↗</a>`).join('');
   return `<div class="mtask ${done?'done':''}"><label class="chk" style="flex:1"><input type="checkbox" data-mtask="${esc(key)}|${esc(item.id)}" ${done?'checked':''} ${a&&a.n===0?'disabled':''}> <span>${esc(item.text)}${a&&a.list&&a.list.length?`<span class="small muted"> (${esc(a.list.slice(0,4).join(', '))}${a.list.length>4?'…':''})</span>`:''}</span></label>
     <span class="acts">${a?`<span class="pill ${a.n?'p-warn':'p-green'}">${a.n?a.n:'✓ none'}</span>`:''}${links}${item.tab?`<button class="btn sm" data-tab="${item.tab}">Hub ↗</button>`:''}${item.oneTime?`<button class="btn sm" data-act="qDel" data-scope="${item.scope}" data-key="${item.key}" data-id="${esc(item.id)}" title="Remove">✕</button>`:''}</span></div>`;
 }
@@ -1438,15 +1853,12 @@ async function copySummary(){
   render();
 }
 
-const DEFAULT_PRACTICES = `## Our pitch
-- (Add the team’s opening line and pitch here.)
-
-## Booth setup: non-negotiables
+const DEFAULT_PRACTICES = `## Booth setup: non-negotiables
 - Use an approved layout: **A** (5 banners), **B** (3 banners with Benefits) or **C** (3 banners with QR code). New banners only, never mixed with legacy banners. Banners are for indoor use only.
 - Table with the branded stretch cover centered in front of the banners, logo and benefit icons facing the aisle.
 - **$100K Sweepstakes** sign in a plexi stand or frame at the front of the booth. Never taped, propped or laid flat.
 - **Current promotion** displayed in its cardboard stand or a plexi stand, at the front, facing the aisle.
-- A completed **pre-consultation checklist** for every appointment set.
+- A completed **pre-consultation checklist** for every opp (set appointment). Hand it to the customer before they leave.
 
 ## Daily setup checklist
 - Banners straight, secure and unwrinkled. Nothing taped to displays.
@@ -1461,6 +1873,7 @@ const DEFAULT_PRACTICES = `## Our pitch
 - Name badge on the upper right chest at all times.
 - Clean, pressed clothing; showered, fresh breath, minimal fragrance.`;
 function practicesHtml(txt){
+  txt=String(txt||'').replace(/## Our pitch\s*\n- \(Add the team’s opening line and pitch here\.\)\s*/,'');
   const F='font:14px Helvetica Neue,Helvetica,Arial,sans-serif;';
   const inl=t=>esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
   let out='', inList=false;
@@ -1476,10 +1889,14 @@ function practicesHtml(txt){
 
 /* ---------------- TRAINING: pitch, products, booth setup ---------------- */
 const TRAINING_EDITORS = ['paula.shoemaker@greatdayimprovements.com','trevor.morrissey@greatdayimprovements.com'];
+const PRECONSULT_URL = 'PE_Pre-Consultation_Checklist.pdf';
+const SWEEPS_FLYER_URL = 'https://greatdayimprovements0-my.sharepoint.com/:b:/g/personal/sharon_kennedy_greatdayimprovements_com/IQCJsgnEKz03RZg5bei9FM5FAXfKFMwV-7lZD-ypYsEEi2M?e=AeWChp';   // $100K sweepstakes flyer (SharePoint)
 const TRAINING_CATS = ['Our pitch','Products','Booth setup & standards','Other'];
 const DEFAULT_TRAINING = [
   { id:'t1', builtin:true, cat:'Our pitch', title:'Event Booth Pitch Guide: the SPACE method (slides)', desc:'Start, Present, Ask, Close, Explain: openers, qualifying questions, closing and booth setup. Easiest to read on a phone.', url:'PE_Booth_Pitch_Guide.pdf' },
   { id:'t1b', builtin:true, cat:'Our pitch', title:'Pitch Guide: PowerPoint with speaker notes', desc:'The full deck with presenter notes, for training sessions and review on a computer.', url:'PE_Booth_Pitch_Guide.pptx' },
+  { id:'t1e', builtin:true, cat:'Booth setup & standards', title:'$100K Home Makeover Sweepstakes flyer (PDF)', desc:'The flyer to hand out at the booth, with the QR code to enter. Opens in SharePoint; sign in with your work account.', url:SWEEPS_FLYER_URL },
+  { id:'t1d', builtin:true, cat:'Booth setup & standards', title:'Pre-consultation checklist (PDF)', desc:'Customer handout: how to get ready for the in-home design consultation. Print copies for the booth and hand one to every customer who sets an appointment.', url:PRECONSULT_URL },
   { id:'t1c', builtin:true, cat:'Our pitch', title:'Booth Job Aid (2 pages)', desc:'Quick reference to keep at the booth: openers, what we build, qualifying and closing.', url:'PE_Booth_Job_Aid.pdf' },
   { id:'t2', cat:'Products', title:'Patio Enclosures product catalog (PDF)', desc:'Screen rooms, three- and four-season sunrooms, solariums, glass and roof systems.', url:'https://www.patioenclosures.com/Data/Sites/1/pdfs/patio_enclosures_catalog.pdf' },
   { id:'t3', cat:'Products', title:'Sunroom comparison chart (PDF)', desc:'Side-by-side features of screen rooms, three-season, four-season rooms and solariums.', url:'https://www.patioenclosures.com/Data/Sites/1/pdfs/patio-enclosures-sunroom-comparison-chart.pdf' },
@@ -1499,6 +1916,80 @@ async function saveTraining(items){
   if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubTraining','main'), doc); } else { S.training=doc; localSave(); }
   S.training=doc; render();
 }
+// Built-in training content: the SPACE pitch (from the Booth Job Aid) and the approved booth layouts.
+const SPACE_STEPS = [
+  ['S','Start the conversation','Open with curiosity and get them talking.',[
+    '“Hi! Are you thinking about adding extra living space to your home?”',
+    '“Have you ever wished you could enjoy your patio or deck year-round?”',
+    '“What brings you to the show today?”',
+    `<b>Bonus opener:</b> “We’re running a $100K Home Makeover sweepstakes. Scan the QR code to enter, no purchase necessary!” Hand them the <a href="${SWEEPS_FLYER_URL}" target="_blank" rel="noopener">flyer</a> and move on.`]],
+  ['P','Present who we are','Deliver the core message with confidence.',[
+    'Trusted for over 60 years: your project is in experienced hands.',
+    'We design, manufacture, install, guarantee and service it all.',
+    'Every product is custom-made for your space. No off-the-shelf kits.',
+    'Beautiful, usable living space without the cost of a full home addition.',
+    '<b>What we build:</b> sunrooms, screen rooms, patio enclosures, patio covers and awnings.']],
+  ['A','Ask and qualify','Keep them talking. Listen more than you speak.',[
+    '“Do you have an existing deck, concrete patio, or covered porch?”',
+    '“Are you looking for something seasonal or a year-round space?”',
+    '“Is this about enjoying the outdoors more, or creating a true extra room?”',
+    '<b>Listen for:</b> the existing structure, climate preference, and motivation (entertaining, hobbies, an extra room).']],
+  ['C','Close with the offer','Ask for the appointment: free, no pressure.',[
+    '“Great, let’s get one of our design consultants out to you. They’ll measure your space, bring samples, and use our design app to show you exactly what it could look like, completely free, no obligation. Are weekdays or weekends easier for you?”',
+    '<b>“We’re just browsing.”</b> → “Perfect, it’s free and zero pressure. Just ideas!”',
+    '<b>“We need to think about it.”</b> → “Our consultant answers every question right at your home, on your timeline.”',
+    '<b>“We can’t afford it right now.”</b> → “No cost to find out what’s possible. You might be surprised.”']],
+  ['E','Exit with expectations','Warm down and set them up before they leave.',[
+    '<b>Thank and recap:</b> “Thanks for stopping by! Just to confirm, you’re looking at a ____ and we have your appointment set for ____ at ____.”',
+    '<b>What to expect:</b> “Your design consultant will come to your home, measure the space, bring product samples, and use our design app to help plan your project. Plan for about 90 minutes, no pressure, no obligation.”',
+    '<b>Decision makers:</b> “Please make sure all homeowners and decision makers are present for the visit.” Ask about a spouse or partner if not mentioned.',
+    '<b>Confirm and send off:</b> “You’ll get a confirmation email shortly and a text reminder 24 hours before. Check your spam if you don’t see it. Any questions before you go?”',
+    `<b>Hand them the <a href="${PRECONSULT_URL}" target="_blank" rel="noopener">pre-consultation checklist</a></b> so they’re ready for the visit.`]] ];
+const BEFORE_LEAVE = ['Full name, address, phone and email captured','Referral name and address captured (if applicable)','All decision makers confirmed for the visit','Customer opted in to text reminders','Show name and date noted for lead tracking','Sweepstakes flyer offered and QR code shown','Pre-consultation checklist handed to the customer'];
+const OBJECTIONS = [
+  ['“It’s too expensive.”','We offer flexible financing, and it costs far less than a full home addition. Our consultant will work within your budget.'],
+  ['“I need to think about it.”','The free in-home consult is zero obligation and gives you exact pricing. Book now while we’re here!'],
+  ['“I can get it cheaper elsewhere.”','We build in the USA, use premium materials, and back it with a lifetime warranty. Compare total value.'],
+  ['“How long does it take?”','2–5 days to install once permits are approved. We handle all permitting for you.'],
+  ['“My HOA might not allow it.”','We navigate HOA requirements all the time and provide the documentation you need for approval.'] ];
+function pitchContent(){
+  return `<div class="tcontent"><h3 style="margin-top:4px">The SPACE method</h3><p class="small muted" style="margin:0 0 8px">The more you learn, the stronger the appointment. Qualify well, ask for the visit, and confirm before they walk away.</p>
+    ${SPACE_STEPS.map(([l,t,sub,pts],i)=>`<details class="space" ${i===0?'open':''}><summary><span class="spl">${l}</span><b>${esc(t)}</b> <span class="small muted">${esc(sub)}</span></summary><ul>${pts.map(x=>`<li>${x}</li>`).join('')}</ul></details>`).join('')}
+    <details class="space"><summary><span class="spl">✓</span><b>Before they leave: marketer checklist</b></summary><ul>${BEFORE_LEAVE.map(x=>`<li>☐ ${esc(x)}</li>`).join('')}</ul></details>
+    <details class="space"><summary><span class="spl">💬</span><b>More objection responses</b></summary><ul>${OBJECTIONS.map(([q,a])=>`<li><b>${esc(q)}</b> ${esc(a)}</li>`).join('')}</ul></details>
+    <details class="space"><summary><span class="spl">★</span><b>Why Patio Enclosures</b></summary><ul><li>Made in the USA, custom-built, 60+ years in business</li><li>Free in-home design consultation</li><li>Lifetime structural warranty, factory-trained installers</li><li>Financing options available</li><li>Adds usable square footage, curb appeal and resale value</li><li>Our 5 steps: free consultation and quote → design review → we pull all permits → install → final inspection and walkthrough</li></ul></details></div>`;
+}
+// Banner artwork differs by area of the country (SharePoint links).
+const BANNER_SETS = [
+  ['Main banner set','All areas except Texas and the Southwest','main','https://greatdayimprovements0-my.sharepoint.com/:b:/g/personal/sharon_kennedy_greatdayimprovements_com/IQAPXSGQyy7mSYOjd872bLfVAcTVwmURRG2UZ5HPUejDmmA?e=zX2NgH'],
+  ['Texas banner set','Shows in Texas','tx','https://greatdayimprovements0-my.sharepoint.com/:b:/g/personal/sharon_kennedy_greatdayimprovements_com/IQB2SqaaH6rSToluEy3jt3nPAVXXvd7BTZKv7FbvB6rKO2I?e=7yOjcw'],
+  ['Southwest banner set','Shows in the Southwest','sw','https://greatdayimprovements0-my.sharepoint.com/:b:/g/personal/sharon_kennedy_greatdayimprovements_com/IQD7w_4IyZ7eTZ1swQ9XvjVYAfFEXbAv0fnN_oZ0lNCOVHE?e=kkHwhP'] ];
+const BOOTH_LAYOUTS = [
+  ['A','5 banners (large booth)',['Scan to Learn More (QR code)','Enclose Your Patio or Porch','Enjoy These Benefits','Sunrooms & Screen Rooms','Financing Available'],'layout-a.jpg'],
+  ['B','3 banners with benefits',['Enclose Your Patio or Porch','Enjoy These Benefits','Sunrooms & Screen Rooms'],'layout-b.jpg'],
+  ['C','3 banners with QR code',['Enclose Your Patio or Porch','Scan to Learn More (QR code)','Sunrooms & Screen Rooms'],'layout-c.jpg'] ];
+function layoutsContent(){
+  return `<div class="tcontent"><h3 style="margin-top:4px">Approved indoor booth layouts</h3>
+    <p class="small" style="margin:0 0 6px">Use one of these three layouts, based on booth size. Banners stand side by side, left to right in the order listed, with no gaps. The table with the branded stretch cover sits centered in front, logo and benefit icons facing the aisle.</p>
+    <p class="small" style="margin:0 0 4px"><b>Never mix legacy and new banners.</b> If a full new set isn’t available, contact the national events manager before setup. <b>Indoor use only:</b> never outdoors, even covered or tented.</p>
+    <p class="small" style="margin:8px 0 4px"><b>Banner artwork depends on where the show is.</b> Pick your area to see its banners:</p>
+    <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:4px">${BANNER_SETS.map(([t,area,k,u])=>`<button class="btn sm ${(ui.lySet||'main')===k?'primary':''}" data-act="lySet" data-v="${k}" title="${esc(area)}">${esc(t)} <span class="${(ui.lySet||'main')===k?'':'muted'}">· ${esc(area)}</span></button>`).join('')}</div>
+    <div class="small" style="margin-bottom:4px">Showing the <b>${esc((BANNER_SETS.find(b=>b[2]===(ui.lySet||'main'))||BANNER_SETS[0])[0].toLowerCase())}</b> · <a href="${esc((BANNER_SETS.find(b=>b[2]===(ui.lySet||'main'))||BANNER_SETS[0])[3])}" target="_blank" rel="noopener">open the print PDF ↗</a> (SharePoint)</div>
+    <div class="layouts">${BOOTH_LAYOUTS.map(([k,t,order,img])=>`<div class="layout"><div class="lyimg"><a href="layout-${ui.lySet||'main'}-${k.toLowerCase()}.jpg" target="_blank" rel="noopener" title="Open full size"><img src="layout-${ui.lySet||'main'}-${k.toLowerCase()}.jpg" alt="Layout ${k}: ${esc(t)}" onerror="this.closest('.lyimg').classList.add('noimg')"></a><span class="lyph">Layout ${k} picture</span></div><b>Layout ${k}: ${esc(t)}</b><ol class="small">${order.map(o=>`<li>${esc(o)}</li>`).join('')}</ol></div>`).join('')}</div>
+    <h3 style="margin-top:16px">Approved outdoor booth</h3>
+    <div class="outdoor"><a href="outdoor-booth.jpg" target="_blank" rel="noopener" title="Open full size" class="lyimg"><img src="outdoor-booth.jpg" alt="Approved outdoor booth: branded 10x10 tent with weights on every leg, back-wall banner, and a covered table with the logo runner" onerror="this.closest('.lyimg').classList.add('noimg')"></a>
+      <ul class="small" style="margin:0;padding-left:18px;line-height:1.55">
+        <li><b>Branded 10×10 canopy</b> (teal, “Enclosures, Sunrooms, Screens” valance), fully raised and level.</li>
+        <li><b>A weight bag on every tent leg</b>, every time, even on calm days. Never stake into the ground unless the venue allows it.</li>
+        <li><b>Outdoor back-wall banner</b> (“Enclose Your Patio”) hung across the back of the tent, taut and straight. The indoor banners are never used outside.</li>
+        <li><b>Table:</b> full-length black tablecloth with the white logo runner centered at the front, facing the aisle.</li>
+        <li><b>Front of the table:</b> current promotion in its stand on one side, brochure holder on the other, catalogs and brochures neatly fanned. $100K Sweepstakes sign in its stand, never taped or laid flat.</li>
+        <li>Nothing on the ground in front of the table; boxes and personal items stored out of sight behind or under the table.</li>
+        <li>High wind or storms: lower the canopy and secure materials. Your safety and the public’s come first; call your manager.</li>
+      </ul></div>
+    <p class="small muted" style="margin:6px 0 0">The promotion in the picture is an example. Always display the current promotion.</p>
+    </div>`;
+}
 function trainingView(){
   const items=trainingItems(), ed=canEditTraining();
   const cats=[...TRAINING_CATS, ...[...new Set(items.map(x=>x.cat))].filter(c=>!TRAINING_CATS.includes(c))];
@@ -1509,7 +2000,7 @@ function trainingView(){
   return `${MARKETER_MODE?'<div class="row" style="margin-bottom:10px"><button class="btn" data-act="backCheckin">◀ Back to check-in</button></div>':''}
   ${ed?'<div class="row" style="margin-bottom:10px"><button class="btn primary" data-act="tAdd">+ Add training item</button><span class="small muted">Upload the pitch or add links. Marketers see this page from check-in and the schedule email.</span></div>':''}
   ${cats.map(c=>{ const list=items.filter(x=>x.cat===c); if(!list.length && c!=='Booth setup & standards') return '';
-    return `<div class="card"><h2>${c==='Our pitch'?'🎤 ':c==='Products'?'🏠 ':c==='Booth setup & standards'?'🎪 ':'📄 '}${esc(c)}</h2>${list.map(card).join('')}
+    return `<div class="card"><h2>${c==='Our pitch'?'🎤 ':c==='Products'?'🏠 ':c==='Booth setup & standards'?'🎪 ':'📄 '}${esc(c)}</h2>${c==='Our pitch'?pitchContent():''}${c==='Booth setup & standards'?layoutsContent():''}${list.map(card).join('')}
       ${c==='Booth setup & standards'?`<div class="practices">${practicesHtml((S.sched.practices&&S.sched.practices.trim())?S.sched.practices:DEFAULT_PRACTICES)}</div>`:''}</div>`; }).join('')}`;
 }
 function trainingPanel(){
@@ -1612,7 +2103,7 @@ async function alertCheckout(c){
   if(!iss.length && !bad.length) return;
   const r=alertRecipients(c.office);
   await queueMail('issue-'+c.id, { ...r, office:c.office, kind:'issue', subject:`Issue reported: ${c.eventName} (${c.personName})`,
-    html:mailShell('Issue reported at check-out', shiftTable(c, row2('Issues',iss.map(esc).join('<br>'))+row2('Booth gear',bad.join('<br>'))+row2('Equipment tonight',esc(EQUIP_WHERE[c.equipWhere]||'')+(c.equipNote?' – '+esc(c.equipNote):''))+row2('Leads / opps',`${num(c.leads)} / ${num(c.appts)}`))) });
+    html:mailShell('Issue reported at check-out', shiftTable(c, row2('Issues',iss.map(esc).join('<br>'))+row2('Booth assets',bad.join('<br>'))+row2('Equipment tonight',esc(EQUIP_WHERE[c.equipWhere]||'')+(c.equipNote?' – '+esc(c.equipNote):''))+row2('Leads / opps',`${num(c.leads)} / ${num(c.appts)}`))) });
 }
 async function alertExpenseSubmitted(x){
   const r=alertRecipients(x.office||(person(x.personId)||{}).office||'');
@@ -1721,7 +2212,7 @@ function alertsView(){
   const log=Object.entries(S.mailLog||{}).sort((a,b)=>(b[1].createdAt||0)-(a[1].createdAt||0)).slice(0,25);
   return `${S.user?myAlertsCard():''}<div class="card"><h2>🔔 Who gets alerts</h2><div class="sub">Each alert goes <b>to</b> the office’s supervisor, with a <b>copy</b> to Paula, the region’s manager and (if ticked below) the division leader. If an office has no supervisor, it goes to the region’s manager. Regional managers are filled in from the org chart; check the emails. Separate more than one email with commas.</div>
     ${ed?'':'<div class="notice">Only Paula, Trevor, Angelique and Chris can change these.</div>'}
-    ${ed?`<label class="chk" style="margin:6px 0"><input type="checkbox" data-alertcc data-keep="al-cc" ${c.ccDivision!==false?'checked':''}> Also copy the division leader (Trevor, Angelique or Chris)</label>`:''}
+    ${ed?`<label class="chk" style="margin:6px 0"><input type="checkbox" data-alertcc data-keep="al-cc" ${c.ccDivision!==false?'checked':''}> Also copy the division leader (Trevor, Angelique or Chris)</label><label class="chk" style="margin:6px 0"><input type="checkbox" data-apauto data-keep="al-ap" ${c.apAuto===true?'checked':''}> Email approved expense reports to Accounts Payable automatically, with receipts (turn on once the hub’s mailbox is working)</label>`:''}
     <h3>Regional managers</h3><table><thead><tr><th style="width:18%">Division</th><th style="width:28%">Region</th><th>Regional manager email</th></tr></thead><tbody>${(()=>{ const all=[...new Set([...ORG.flatMap(d=>Object.keys(d.regions)), ...regs])]; return all.map(r=>{ const d=divisionOf(r); return `<tr><td class="small">${d?esc(d.division)+'<div class="muted">'+esc(d.leader.name)+'</div>':'<span style="color:var(--warn)">Not in org chart</span>'}</td><td><b>${esc(regionName(r))}</b>${d&&d.regions[r]?`<div class="small muted">${esc(d.regions[r].name)}</div>`:''}</td><td>${f('region',r,c.regions[r])}</td></tr>`; }).join(''); })()}</tbody></table>
     <h3>Teams channels <span class="small muted">(optional)</span></h3><div class="small muted" style="margin-bottom:4px">Paste a Teams channel’s email address to post alerts in that channel too. In Teams: channel ⋯ → <b>Get email address</b>. Alerts for a division post in its channel; “All alerts” posts everything.</div>
     <table><tbody>${[['__all','All alerts'],...ORG.map(d=>[d.division,d.division+' Division'])].map(([k,l])=>`<tr><td style="width:30%"><b>${esc(l)}</b></td><td>${ed?`<input type="text" data-alert="teams" data-key="${esc(k)}" data-keep="al-teams-${esc(k)}" value="${esc((c.teams||{})[k]||'')}" placeholder="channel@….teams.ms" style="width:100%">`:esc((c.teams||{})[k]||'—')}</td></tr>`).join('')}</tbody></table>
@@ -1743,6 +2234,7 @@ async function saveAlertCfg(vals){
   const c=JSON.parse(JSON.stringify(alertCfg())); c.regions=c.regions||{}; c.offices=c.offices||{};
   (vals||[]).forEach(el=>{ const v=splitEmails(el.value).join(', '); c.teams=c.teams||{}; const m=el.kind==='region'?c.regions:el.kind==='teams'?c.teams:c.offices; if(v) m[el.key]=v; else delete m[el.key]; });
   if(vals && vals.ccDivision!==undefined) c.ccDivision=vals.ccDivision;
+  if(vals && vals.apAuto!==undefined) c.apAuto=vals.apAuto;
   c.allowed=cleanList([...LEADS, ...SUMMARY_TO, ...ORG.map(d=>d.leader.email), ...Object.values(c.regions).flatMap(splitEmails), ...Object.values(c.offices).flatMap(splitEmails), ...Object.values(c.teams||{}).flatMap(splitEmails)]);
   c.updatedAt=Date.now(); c.updatedBy=(S.user&&S.user.email)||'';
   if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubSettings','alerts'), c); }
@@ -1785,16 +2277,17 @@ const GUIDES = {
       'Tap <b>Check in</b> on today’s shift. If your shift isn’t listed, use <b>My shift isn’t listed</b>.',
       'Allow location when your phone asks. If it can’t find you, you can still check in.',
       'Take a <b>booth setup photo</b> (required). Make sure banners, table cover and signage are in the shot.',
-      'Scan or tick the booth gear and kits you’re taking.',
+      'Scan or tick the booth assets and kits you’re taking.',
       'If you picked up equipment at the office, tick that box and enter the time you clocked in on ADP at the office.',
       'Clock in on ADP, tick <b>I’ve clocked in on ADP</b>, then tap <b>Check in</b>.' ]],
     ['Checking out (end of your shift)', [
       'Tap <b>Check out</b> on your shift.',
-      'Enter <b>leads</b> and <b>opps</b> (appointments set) (use 0 if none) and foot traffic.',
+      'Enter <b>leads</b> and <b>opps</b> (set appointments), using 0 if none, and foot traffic. Leads you couldn’t set are <b>unset opps</b>: they go to the call center to be scheduled.',
       'Enter giveaways and print you used.',
-      'Tell us what happened to each piece of booth gear (returned good, needs repair, damaged, missing, or keeping it).',
+      'Tell us what happened to each booth asset (returned good, needs repair, damaged, missing, or keeping it).',
       '<b>Where is the event equipment tonight?</b> (required): kept at your home, returned to the office, left at the venue for a multi-day event, or handed to another marketer (say who).',
       'Report any issues: your manager is alerted right away.',
+      'Shift over 5 hours? Take your 30-minute <b>unpaid</b> meal break (clock out on ADP and back in) and your 15-minute <b>paid</b> rest breaks (stay clocked in), planned with your supervisor. At check-out you’ll confirm the meal break.',
       'Clock out on ADP, tick <b>I’ve clocked out on ADP</b>, then tap <b>Check out</b>.' ]],
     ['Bad signal at the venue', [
       'You can check in and out with no signal. Everything is saved on your phone and sends automatically when the signal comes back.',
@@ -1833,6 +2326,9 @@ const GUIDES = {
       '<b>Today’s Activity</b> shows who’s checked in, late, or finished, with booth photos, results, equipment location and issues.',
       'Alerts go by email to the office supervisor, with a copy to Paula and the region’s manager: late check-ins, no-shows (30 minutes), no check-out (an hour after the shift), and issues reported.',
       'Copy an event’s check-in link from Today or the schedule and text it to marketers.' ]],
+    ['Coding credit card transactions', [
+      'Each Monday, code your credit card transactions in <b>PaymentNet</b>. Use department <b>EVT</b> and the GL code below. You can also tap <b>💳 GL codes</b> on the task in My day.',
+      '__GLTABLE__' ]],
     ['After events', [
       'Complete <b>Post-Event Evaluations</b>. If an event wasn’t activated, enter the reason (required).',
       'Approve or return <b>Expense reports</b>. After approving, save the report as a PDF (receipts included), email it to Accounts Payable, and click Mark as sent.',
@@ -1858,7 +2354,7 @@ function guideView(){
   const which=ui.guide || (MARKETER_MODE||!S.user ? 'marketer' : 'manager'), g=GUIDES[which];
   return `${MARKETER_MODE?'<div class="row" style="margin-bottom:10px"><button class="btn" data-act="backCheckin">◀ Back to check-in</button></div>':''}
   <div class="row" style="margin-bottom:10px">${Object.entries(GUIDES).map(([k,x])=>`<button class="btn ${k===which?'primary':''}" data-act="guidePick" data-g="${k}">${k==='marketer'?'📱 Marketers':'🧭 Managers'}</button>`).join('')}<span class="spacer"></span><button class="btn" data-act="guidePrint">🖨️ Print</button></div>
-  <div class="card guide" id="guideBody"><h2>${esc(g.title)}</h2>${which==='manager'&&S.user?'<button class="btn sm primary" data-act="tourStart" style="margin-bottom:8px">▶ Take the 1-minute tour</button>':''}${g.sections.map(([h,items])=>`<h3 data-gsec="${esc(h)}" class="${ui.guideSec===h?'flash':''}">${esc(h)}</h3><ol>${items.map(i=>`<li>${i}</li>`).join('')}</ol>`).join('')}</div>`;
+  <div class="card guide" id="guideBody"><h2>${esc(g.title)}</h2>${which==='manager'&&S.user?'<button class="btn sm primary" data-act="tourStart" style="margin-bottom:8px">▶ Take the 1-minute tour</button>':''}${g.sections.map(([h,items])=>`<h3 data-gsec="${esc(h)}" class="${ui.guideSec===h?'flash':''}">${esc(h)}</h3><ol>${items.map(i=>`<li>${i==='__GLTABLE__'?glTable():i}</li>`).join('')}</ol>`).join('')}</div>`;
 }
 /* ---------------- Assigned tasks & sprints (Paula, Trevor, Angelique, Chris assign; managers complete) ----------------
    peHubTasks/{id}: { title, note, link, required, kind:'day'|'week'|'sprint', steps:[{id,text,due,scope}], audience, assignees:[emails],
@@ -2094,7 +2590,7 @@ function paidHours(c){
   if(!(c && c.inAt && c.outAt)) return 0;
   let start=c.inAt;
   if(c.officePickup && c.officeClockIn){ const m=toMin(c.officeClockIn), d=new Date(c.inAt); if(m!==null){ const t=new Date(d.getFullYear(),d.getMonth(),d.getDate(),Math.floor(m/60),m%60).getTime(); if(t<c.inAt && c.inAt-t<6*36e5) start=t; } }
-  return Math.max(0,(c.outAt-start)/36e5);
+  return Math.max(0,(c.outAt-start)/36e5 - (c.mealTaken===true?BREAKS.mealMin/60:0));
 }
 function eventCost(e, from, to){
   const ev=evalFor(e), m=etaccMatch(e)||{}, r=rollup(e), xc=expenseCostsForEvent(e);
@@ -2193,7 +2689,7 @@ async function importRates(file){
    "REM weekly numbers" form here (replaces the Jotform) → peHubScorecard/{w_<monday>_<region> | m_<yyyy-mm>_<region>}.
    Labor/expenses: REM numbers when entered, otherwise the hub's own (pay rates × hours, approved expense reports).
 */
-const SC_DEFAULTS = { cpo:250, setRate:80, cancelRate:20, pctGoal:100 };
+const SC_DEFAULTS = { cpo:350, setRate:80, cancelRate:20, pctGoal:100 };
 const SC_BRANCH_SPLIT = { IND:'MW-2', CIN:'MW-2', LOU:'MW-2', HOU:'SC-2', AUS:'SC-2', SAN:'SC-2', WAC:'SC-2', RAL:'SA-2', CHA:'SA-2', GRE:'SA-2', WSM:'SA-2' };
 const SC_REGIONS = ['MAN','MAS','MW','NE','OV','PNW','SA','SC','SE','SW','UPL'];
 function scTargets(){ const t=(ratesDoc().sc)||{}; return { cpo:num(t.cpo)||SC_DEFAULTS.cpo, setRate:num(t.setRate)||SC_DEFAULTS.setRate, cancelRate:num(t.cancelRate)||SC_DEFAULTS.cancelRate, pctGoal:num(t.pctGoal)||SC_DEFAULTS.pctGoal }; }
@@ -2219,6 +2715,26 @@ function scInScope(region, office){ const sc=ui.scope||[]; if(!sc.length) return
 function showReport(){ const R=S.showReport; return (R && R.rows && R.rows.length) ? R : null; }
 // Hub labor/expenses for events in a region whose first day is in the period
 function scHubCosts(P){ const by={}; liveEvents().filter(e=>e.start>=P.from && e.start<=P.to).forEach(e=>{ const r=regionOf(e.office)||'—', c=eventCost(e); const o=by[r]=by[r]||{ labor:0, expenses:0 }; o.labor+=c.cost.labor; o.expenses+=Math.max(0,c.total-c.cost.fee-c.cost.labor); }); return by; }
+// Leaders' corrections to a show's cost, opps, unset opps or goal (saved in peHubScorecard as ev_… docs).
+function scEvKey(x){ return 'ev_'+hash(normName(x.name)+'|'+x.start+'|'+normName(x.office||'')); }
+function scApplyEdit(x){ const o=scManual()[scEvKey(x)]; if(!o) return x; const y=Object.assign({}, x, { pulled:{ fee:x.fee, opps:x.opps, unset:x.unset, goal:x.goal }, edited:o });
+  ['fee','opps','unset','goal'].forEach(k=>{ if(scHas(o[k])) y[k]=num(o[k]); }); return y; }
+function scEvEditOverlay(){
+  const E=ui.scEv; if(!E) return ''; const x=E.x, o=scManual()[E.k]||{}, P=x.pulled||x;
+  const f=(k,l,v,pv)=>`<div class="field"><label>${l}</label><input type="number" min="0" step="${k==='fee'?'0.01':'1'}" data-scev="${k}" value="${esc(scHas(o[k])?o[k]:'')}" placeholder="${esc(String(pv??''))}"><div class="small muted">From ${x.src==='report'?'the Tradeshow Master':'check-outs/ETACC'}: ${k==='fee'?scMoney(pv):pv}</div></div>`;
+  return `<div class="tourbg" data-act="scEvClose"><div class="tourbox phelp" role="dialog" aria-label="Correct show numbers"><div class="tourstep">Scorecard correction</div><h2>${esc(x.name)}</h2><p class="small muted">${esc(x.office||'')} · ${fmtMD(x.start)}${x.end&&x.end!==x.start?'–'+fmtMD(x.end):''}. Leave a box blank to keep the number pulled in automatically.</p>
+    <div class="fields">${f('fee','Event cost ($)',o.fee,P.fee)}${f('opps','Opps',o.opps,P.opps)}${f('unset','Unset opps',o.unset,P.unset)}${f('goal','Goal (target opps)',o.goal,P.goal)}</div>
+    <div class="field"><label>Note (optional)</label><input type="text" data-scev="note" value="${esc(o.note||'')}" placeholder="Why the change, e.g. late opps from the call center"></div>
+    ${E.err?`<div class="notice err">${esc(E.err)}</div>`:''}
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:10px">${scManual()[E.k]?'<button class="btn" data-act="scEvClear">Undo correction</button>':''}<button class="btn" data-act="scEvClose">Cancel</button><button class="btn primary" data-act="scEvSave">Save</button></div></div></div>`;
+}
+async function scEvSave(clear){
+  const E=ui.scEv, x=E.x, rec={ kind:'event', name:x.name, office:x.office||'', start:x.start, updatedBy:(S.user&&S.user.email)||'', updatedAt:Date.now() };
+  if(!clear){ document.querySelectorAll('[data-scev]').forEach(el=>{ const k=el.dataset.scev, v=el.value.trim(); if(k==='note') rec.note=v; else if(v!=='') rec[k]=num(v); }); }
+  const M=Object.assign({}, S.scManual||{});
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; if(clear) await fsM.deleteDoc(fsM.doc(db,'peHubScorecard',E.k)); else await fsM.setDoc(fsM.doc(db,'peHubScorecard',E.k), rec); }
+  if(clear) delete M[E.k]; else M[E.k]=rec; S.scManual=M; if(S.mode!=='live') localSave();
+}
 function scShows(P){
   const left=[], shows=[], R=showReport();
   if(R){
@@ -2231,7 +2747,7 @@ function scShows(P){
       const m=etaccMatch(e)||{}, c=eventCost(e);
       shows.push({ name:e.name, office:e.office, start:e.start, end:e.end||e.start, region:regionOf(e.office)||'—', fee:c.cost.fee, opps:c.appts, unset:Math.max(0,c.leads-c.appts), goal:num(m.forecastedOpps), src:'hub' }); });
   }
-  return { shows:shows.sort((a,b)=>a.start.localeCompare(b.start)||a.name.localeCompare(b.name)), left };
+  return { shows:shows.map(scApplyEdit).sort((a,b)=>a.start.localeCompare(b.start)||a.name.localeCompare(b.name)), left };
 }
 function scAgg(list, extra){
   const o={ shows:list.length, cost:0, opps:0, unset:0, goal:0, zero:0, labor:0, expenses:0 };
@@ -2379,9 +2895,10 @@ function todoGroups_(){
   const A=attentionData();
   add('deadlines','⏳','Approaching deadlines','events', A.deadlines.map(d=>({ text:d.x.eventName||'', sub:`${d.x.branch||''} · ${d.what} ${fmtMD(d.date)}`, red:d.late||d.date<=addDays(t,3) })), 'Open ETACC');
   add('release','📨','Expected contract releases','events', A.release.map(d=>({ text:d.x.eventName||'', sub:`${d.x.branch||''} · ${d.date<t?'Released':d.date===t?'Releases today':'Expected'} ${fmtMD(d.date)}: register right away`, red:d.date<=t })), 'Open ETACC');
+  add('dates','📆','Event dates to double-check','events', dateChecks().map(r=>({ text:r.x.eventName||'', sub:`${r.x.branch||''} · ${dateRange(r.x)} · ${r.issues[0]}` })), 'Review dates');
   add('decide','🤔','Events that need a decision','events', A.decide.map(d=>({ text:d.x.eventName||'', sub:`${d.x.branch||''} · ${fmtLong(d.x.startDate)} · decide by ${fmtMD(d.date)}` })), 'Open ETACC');
   // evaluations
-  add('evals','📝','Evaluations to complete','evals', evalsDue().filter(e=>!evalDone(e)).map(e=>({ text:e.name, sub:`${e.office||''} · ended ${fmtMD(e.end||e.start)}`, red:(e.end||e.start)<=addDays(t,-7) })), 'Open evaluations');
+  if(!EVALS_PAUSED) add('evals','📝','Evaluations to complete','evals', evalsDue().filter(e=>!evalDone(e)).map(e=>({ text:e.name, sub:`${e.office||''} · ended ${fmtMD(e.end||e.start)}`, red:(e.end||e.start)<=addDays(t,-7) })), 'Open evaluations');
   // expenses
   add('exp','🧾','Expense reports to approve','expenses', Object.values(S.expenses).filter(x=>x.status==='submitted' && (!x.office||inOffice(x.office))).map(x=>({ text:x.personName||'', sub:`Week of ${fmtMD(x.weekStart)} · ${money2((x.totals||expCalc(x)).total)}` })), 'Open expense reports');
   // ADP
@@ -2465,8 +2982,88 @@ function stackTables(root){
 }
 // ---- Page help (“?”) ----
 const HELP_FOR = { today:['manager','During events'], schedule:['manager','Scheduling marketers'], events:['manager','Your routine'], myday:['manager','Your routine'], myweek:['manager','Your routine'], evals:['manager','After events'], expenses:['manager','After events'], costs:['manager','After events'], adp:['manager','After events'], assets:['manager','Equipment'], travel:['manager','Scheduling marketers'], scorecard:['manager','Scorecard and reports'], remnums:['manager','Scorecard and reports'], activity:['manager','Scorecard and reports'], checkin:['marketer','Checking in (when you start working the booth)'], summary:['manager','Scorecard and reports'], training:['manager','Getting started'] };
-function helpBtn(){ const h=HELP_FOR[ui.tab]; return h?`<button class="btn sm helpbtn" data-act="pageHelp" title="How this page works">? Help</button>`:''; }
-function pageHelp(){ const h=HELP_FOR[ui.tab]; if(!h) return; ui.guide=h[0]; ui.guideSec=h[1]; ui.tab='guide'; history.pushState(null,'','#guide'); render(); setTimeout(()=>{ const el=document.querySelector('[data-gsec="'+CSS.escape(h[1])+'"]'); if(el){ el.scrollIntoView({behavior:'smooth',block:'start'}); el.classList.add('flash'); } },60); }
+function helpBtn(){ const h=HELP_FOR[ui.tab]||pageHelpData()[ui.tab]; return h?`<button class="btn sm helpbtn" data-act="pageHelp" title="How this page works">? Help</button>`:''; }
+function pageHelp(){ const k=(ui.tab&&pageHelpData()[ui.tab])?ui.tab:'home'; ui.help=k; render(); }
+function pageGuide(tab){ const h=HELP_FOR[tab]; if(!h) return; ui.guide=h[0]; ui.guideSec=h[1]; ui.tab='guide'; history.pushState(null,'','#guide'); render(); setTimeout(()=>{ const el=document.querySelector('[data-gsec="'+CSS.escape(h[1])+'"]'); if(el){ el.scrollIntoView({behavior:'smooth',block:'start'}); el.classList.add('flash'); } },60); }
+// ---- Page-specific help (? Help on each page) ----
+// Each page: what it is for, how to use it, the rules behind its numbers, and who to ask.
+function pageHelpData(){
+  const m=n=>'$'+Number(n).toFixed(2);
+  return {
+  home:{ t:'Hub home', what:'Your starting point each day: what needs you, your checklist and every tool.',
+    how:['Tap <b>Start my day</b> (or <b>Start my week</b> on Mondays) for today’s checklist.','Work down <b>Needs your attention</b>. Tap an item to go straight to it; it drops off once handled.','Use the <b>search box</b> to jump to any event, marketer, piece of equipment or page.','Use <b>📍 All regions & offices</b> to narrow what you see.'],
+    rules:['<b>Needs your attention</b> shows only your area: your offices, region or division. Paula sees everything.','Late or missing check-ins: no check-in '+LATE_MIN+' minutes after the shift starts, or no check-out an hour after it ends.','Events needing marketers: Approved or Submitted for Contract events in the next 28 days with an unstaffed day.','ETACC deadlines: Researching events must be submitted for approval by the last day of the month before the event; they show 7 days ahead. Payment due and contract release dates show from 7 days before to 14 days after.','Events needing a decision: Researching events starting within 60 days.','The Good Morning pop-up shows once a day, and again after 2 hours away.'] },
+  today:{ t:'Today’s Activity', what:'Every marketer scheduled on the chosen date, with live check-in status, results and booth photos.',
+    how:['Use ◀ ▶ or the date box to change the day.','Tap a row for the marketer’s booth photo, location, results and any issues.','Tap <b>Copy check-in link</b> and text it to the marketers working that event.','Follow up right away on anyone marked late.'],
+    rules:['<b>Late</b>: no check-in '+LATE_MIN+' minutes after the shift starts. An alert goes out at 30 minutes.','<b>No check-out</b>: still checked in an hour after the shift ends.','Only Approved and Submitted for Contract events from the schedule appear.','Leads and opps come from what marketers enter at check-out. An <b>opp</b> (opportunity) is a set appointment; an <b>unset opp</b> is a lead that goes to the call center to be scheduled.','Booth photos are deleted after 12 months.','Under each shift time you’ll see its breaks, e.g. “30m meal · 2×15m rest”. Plan them with each marketer so the booth stays covered.'] },
+  myday:{ t:'My Day', what:'Your checklist for today: the standard routine for the weekday, tasks from leadership, and your own to-dos.',
+    how:['Check off each task as you finish it.','Tasks with a link or a count take you straight to the page that needs you.','<b>📌 From Paula</b> (or another leader) tasks have a due date; add a note if asked.','Add your own one-off task at the bottom.'],
+    rules:['Tasks change by weekday. Tuesday and Wednesday are off by default; change your work days in My Week.','Tasks from a day off move to your next work day.','Friday–Sunday tasks change when you have no events that weekend.','Assigned tasks that are overdue stay on today until done, and you get one reminder email the morning after.','Coding credit cards (Mondays): tap <b>💳 GL codes</b> on the task, or <button class="btn sm" data-act="glRef">💳 see the GL codes</button>.'] },
+  myweek:{ t:'My Week', what:'Your once-a-week tasks and a view of each work day’s checklist.',
+    how:['Tap <b>Start my week</b> on Monday.','Check off the weekly tasks as you go: staffing 3–4 weeks out, the weekend schedule email, hotels, supplies.','Set your work days if they differ from Mon, Thu, Fri, Sat, Sun.'],
+    rules:['Weekly tasks reset each Monday.','Week-long tasks from leadership show here with “this week” as the due date.'] },
+  assign:{ t:'Assign Tasks', what:'Send a one-off task or a multi-step sprint to managers’ My Day or My Week.',
+    how:['Type the task, and add a note or link if helpful.','Pick a day task, a week task, or a sprint with dated steps.','Choose who gets it: everyone, a division, a region, an office, or specific people.','Tick <b>Email them</b> to send a heads-up. Track who’s done on the board below.'],
+    rules:['Only Paula, Trevor, Angelique and Chris can assign tasks.','It shows under “From [your name]” and in their Needs your attention.','Anything not done gets one reminder email the morning after it’s due. Use <b>Remind</b> to send another.','Archive a task to take it off everyone’s list.'] },
+  checkin:{ t:'Check In / Out', what:'Where marketers check in and out of their shifts. Managers can check someone in if their phone won’t cooperate.',
+    how:['Marketers open their event’s link, tap their name, then <b>Check in</b>.','At check-in: take a booth setup photo, confirm the ADP clock-in, and pick the gear they’re taking.','At check-out: teardown photo, foot traffic, leads, opps, ADP clock-out, gear returned and any issues.'],
+    rules:['A booth setup photo is required to check in.','On equipment-pickup days, paid time starts at the office ADP clock-in.','Check-ins work with no signal and send when the signal returns.','An issue, or damaged or missing gear, sends an alert to the supervisor.','<b>Breaks</b> (policy 3.4): shifts over 5 hours get one 30-minute <b>unpaid</b> meal break (clock out on ADP); over 10 hours, a second where state law requires it. Every 4 hours worked earns a 15-minute <b>paid</b> rest break. Breaks can’t be skipped, combined, or used to shift start or end times.','At check-out, marketers on shifts over 5 hours confirm whether they took their meal break. “No” needs a reason and alerts the supervisor.','<b>Opps goal:</b> the event’s ETACC Target Opps is split by scheduled marketer-hours. Check-in shows the event target, today’s team goal and the marketer’s own shift goal; check-out shows the shift goal again.','At check-out, 0 opps needs an explanation, and an opps number far above the shift goal (or above the leads entered) asks the marketer to confirm it.'] },
+  adp:{ t:'ADP Timecards', what:'Compares each marketer’s check-ins with ADP before you approve timecards.',
+    how:['In ADP, run the <b>Time Details</b> report for the pay period, export it (CSV or Excel) and upload it with <b>📥 Upload ADP Time Details</b>.','Pick the week, and review each marketer’s shifts: ADP times sit next to their check-in and check-out.','Fix anything flagged in ADP, then approve timecards in ADP.'],
+    rules:['Pay periods are two weeks ending on Sunday. Approve by the end of that Sunday; payday is the following Friday.','Flags: no check-in, ADP clock-in not confirmed, ADP clock-out not confirmed, never checked out.','Booth time = check-in to check-out. On equipment-pickup days, paid time starts at the office clock-in.','With an ADP file uploaded, it also flags: ADP in more than '+ADP_TOL_MIN+' minutes before or after check-in, ADP out more than '+ADP_TOL_MIN+' minutes after check-out, total hours more than '+(ADP_HOURS_TOL*60)+' minutes apart, ADP time with no check-in, a check-in with no ADP time, and ADP time on a day with no scheduled shift.','People are matched by Employee ID (the ID in brackets in ADP), then by name. Anyone in the file who isn’t on the roster is listed so you can fix their ID.','The ADP file stays on your device only. Use <b>Clear</b> to remove it.','Breaks: for shifts over 5 hours, the hub expects a 30-minute unpaid meal break as an ADP clock-out (a gap between punches) and flags it if missing. Checked-in hours exclude the meal break when the marketer says they took it. A marketer reporting a missed meal break is flagged too.'] },
+  events:{ t:'Events (ETACC)', what:'The Event Tracking, Approval & Contracting Center, opened inside the hub.',
+    how:['Research, submit and track events exactly as you do in ETACC.','Fill in Region, hotel nights and payment and contract dates: the hub uses them.'],
+    rules:['Researching events are due for approval by the last day of the month before the event.','The hub matches ETACC events to the schedule by name and start date (within 3 days), so keep names the same in both.','An office’s Region in ETACC decides which manager sees it in Needs your attention.','<b>Date checks:</b> upcoming events (next 6 months) are flagged when they don’t run Fri–Sun, run more than 5 days, end before they start, are more than a year out, are still Researching after their start date, don’t match the schedule’s dates, or are listed twice with different dates. Use 🔎 Search to check the event’s website, fix ETACC if needed, or tap ✓ Dates are correct.'] },
+  schedule:{ t:'Marketer Schedule', what:'The weekly marketer schedule, opened inside the hub.',
+    how:['Assign marketers to each event day.','Keep the roster’s offices and employee IDs current.'],
+    rules:['Only Approved and Submitted for Contract events count as live in the hub.','Events in the next 28 days with an unstaffed day show in Needs your attention.','A marketer scheduled outside their own office counts as borrowed, which flags a possible hotel.'] },
+  travel:{ t:'Navan Travel', what:'Upcoming events that may need hotel rooms.',
+    how:['Review each event, then book rooms in <b>Navan</b>.','Marketers add the stay to their weekly expense report to get per diem.'],
+    rules:['Shown for events starting in the next 30 days that have hotel nights planned in ETACC, or a marketer borrowed from another office.','Distance and existing bookings aren’t considered: an event stays listed until it’s over.'] },
+  evals:{ t:'Post-Event Evaluations', what:'Manager evaluations of finished events, pre-filled from marketer check-outs.',
+    how:['Pick an event, review the pre-filled results, edit anything and save.','If the event wasn’t worked, record why.'],
+    rules:[...(EVALS_PAUSED?['Evaluations are <b>paused</b>: they don’t show in Needs your attention or My Day.']:[]),'Lists events that ended in the last 45 days.','Saving marks the matching ETACC event as evaluation completed. With no ETACC match, it saves in the hub only.'] },
+  expenses:{ t:'Expense Reports', what:'Weekly expense reports (Monday–Sunday): mileage, per diem and reimbursable expenses.',
+    how:['Marketers and managers submit one report per week by Sunday night.','Managers review on Monday and <b>Approve</b> or <b>Return</b> with a note.',(apAutoOn()?'Approving emails the report to Accounts Payable automatically: a PDF with every receipt (big reports go in parts).':'After approving: <b>Save as PDF</b> (receipts included), email it to Accounts Payable, then click <b>Mark as sent</b>.')],
+    rules:['Mileage: '+m(RATE_MARKETER)+' a mile for marketers, '+m(RATE_MANAGER)+' for managers (car allowance). Daily commute miles are subtracted first.','Per diem only on hotel dates: breakfast $'+PER_DIEM.b+', lunch $'+PER_DIEM.l+', dinner $'+PER_DIEM.d+'.','Receipts are required for everything except the phone stipend.','Bank details go only through the secure banking form, never in the hub.','Submitting alerts the supervisor; returning alerts the marketer.'] },
+  assets:{ t:'Asset Inventory & Check-Out', what:'Booth assets, kits and giveaways for every office.',
+    how:['<b>Inventory</b>: find, add or edit items.','<b>Check out / return</b>: scan items out to a person and back in.','<b>Annual inventory</b>: scan every barcode at an office and count giveaways.','<b>Activity</b>: every move, with who and when.'],
+    rules:['Gear is overdue once the shift it went out for has ended, or its due date has passed.','Supplies show as low at or below their reorder point.','In the annual inventory, anything not scanned shows as missing.'] },
+  scorecard:{ t:'Event Marketing Scorecard', what:'How events performed, by region: leads, opps, costs, and REM numbers.',
+    how:['Switch between <b>Week</b> and <b>Month to date</b>; use ◀ ▶ to step through weeks.','Download the scorecard as a spreadsheet (CSV) if you need it elsewhere.'],
+    rules:['Weeks run Monday–Sunday.','An opp (opportunity) is a set appointment; an unset opp is a lead that goes to the call center to be scheduled.','Leads and opps come from marketer check-outs; cancels, meets, labor, expenses and sales come from REM weekly numbers.','Paula, Trevor, Angelique and Chris can correct any show’s event cost, opps, unset opps or goal with ✎ in the Events table; the region totals update, and corrected shows are marked “edited” (hover to see the original numbers).','Targets (leaders can change): cost per opp $'+scTargets().cpo+', set rate at least '+scTargets().setRate+'%, cancel rate at most '+scTargets().cancelRate+'%.'] },
+  remnums:{ t:'REM Weekly Numbers', what:'Where leaders enter each region’s weekly cancels, meets, labor and expenses, and monthly sales.',
+    how:['Pick the period and the region, enter the numbers and save.','Then pick the next region.'],
+    rules:['Only Paula, Trevor, Angelique and Chris can enter numbers.','Saving again for the same region and period replaces the earlier entry.','Enter a negative sales number if cancellations or chargebacks outweighed new sales.','Regions missing last week’s numbers show in leaders’ Needs your attention.'] },
+  costs:{ t:'Cost per Lead', what:'What each event cost compared with its leads and opps.',
+    how:['Pick a date range. Events with the highest cost per lead are listed first.','Tap an event for its cost breakdown.'],
+    rules:['Cost = booth fee + wages + mileage + per diem + estimated hotel + phone + other.','Wages = booth hours × the marketer’s pay rate (default $'+(ratesDoc().default||DEFAULT_PAY)+' an hour).','Targets: cost per lead $'+(ratesDoc().cplTarget||DEFAULT_CPL_TARGET)+', cost per opp $'+(ratesDoc().cpaTarget||DEFAULT_CPA_TARGET)+'.','Pay rates and targets are set by Paula, Trevor, Angelique and Chris.'] },
+  summary:{ t:'Event Activation Summary', what:'Last week’s results for leadership: leads, 0-lead events and events not activated.',
+    how:['Pick the date range (last week by default) and review the results.','Use <b>Copy</b> to paste the summary into an email or Teams.'],
+    rules:['It emails automatically on Mondays from 8 am, covering last week (Monday–Sunday), to Paula, Trevor, Angelique and Chris.'] },
+  alerts:{ t:'Alerts', what:'Alerts for your area, and (for leaders) who receives them.',
+    how:['Tap an alert to go to what needs attention.','Leaders: in Alert settings, enter each office’s supervisor emails and Teams channel emails, then Save.'],
+    rules:['Late check-in: more than '+LATE_MIN+' minutes after the shift starts. Not checked in: 30 minutes after. No check-out: an hour after the shift ends.','Issues and damaged or missing gear reported at check-out alert right away.','Each alert goes to the office supervisor, copied to Paula, the regional manager and (if ticked) the division leader. No supervisor: it goes to the regional manager.','Separate more than one email with commas.'] },
+  toolkit:{ t:'Manager Toolkit', what:'Guides and forms for managers from the Regional Event Managers SharePoint site: finding events, hiring, ADP and HR.', how:['Tap <b>Open</b> to view a guide or form in SharePoint (sign in with your work account).','Many are also linked right on the matching My Day tasks, marked 🧰.'], rules:['Files live on SharePoint, so they’re always the latest version. Ask Paula if a link stops working.'] },
+  training:{ t:'Training', what:'Training materials and guides for managers and marketers.',
+    how:['Open any item to view or download it.'],
+    rules:['Only Paula and Trevor can add or edit training.'] },
+  activity:{ t:'Hub Activity', what:'Who is using the hub, and which pages and actions.',
+    how:['Pick a date range to see who used the hub and which pages.','Download the activity as a spreadsheet (CSV) if needed.'],
+    rules:['Only leaders can see it.','It records pages opened and key actions, never what anyone types.','The last 90 days are kept.'] },
+  };
+}
+function helpOverlay(){
+  if(!ui.help) return ''; const H=pageHelpData()[ui.help]; if(!H) return '';
+  const guide=HELP_FOR[ui.help];
+  const list=(a,tag)=>a&&a.length?`<${tag} class="phl">${a.map(x=>`<li>${x}</li>`).join('')}</${tag}>`:'';
+  return `<div class="tourbg" data-act="helpClose"><div class="tourbox phelp" role="dialog" aria-label="Help: ${esc(H.t)}">
+    <div class="tourstep">? Help</div><h2>${esc(H.t)}</h2><p>${H.what}</p>
+    ${H.how&&H.how.length?`<h3>How to use it</h3>${list(H.how,'ol')}`:''}
+    ${H.rules&&H.rules.length?`<h3>How it works</h3>${list(H.rules,'ul')}`:''}
+    <p class="small muted" style="margin-top:12px">Something not right, or a question? Contact Paula Shoemaker.</p>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px">${guide?'<button class="btn" data-act="helpGuide">📖 Full guide</button>':''}<button class="btn primary" data-act="helpClose">Got it</button></div></div></div>`;
+}
 // ---- First-time tour ----
 const TOUR = [
   ['👋','Welcome to the Event Activity Hub','Everything for running events lives here: your daily checklist, check-ins, events, expenses, equipment and the scorecard. This 1-minute tour shows the basics. You can reopen it anytime from How-to guides.','1-home.jpg','The home page'],
@@ -2474,7 +3071,7 @@ const TOUR = [
   ['📌','Your checklist and assigned tasks','Your day’s checklist lives on <b>My day</b> (and <b>My week</b>). Tasks Paula, Trevor, Angelique or Chris send you show up in a <b>📌 From Paula</b> group with a due date. Check each one off when it’s done, and add a note if they asked for one.','4-checklist.jpg','My day checklist with an assigned task'],
   ['⚑','Needs your attention','Everything that needs you is collected in one list: late check-ins, events that need marketers, ETACC deadlines and contract releases, evaluations, expense reports, timecards, equipment and hotels. Tap an item to go straight to it. Once it’s taken care of, it comes off the list.','3-attention.jpg','Needs your attention list'],
   ['📍','Checking in a marketer','Marketers check themselves in with their event’s link. Copy it from <b>Today’s Activity</b> or the schedule and text it to them. You can also check someone in from <b>Check-in</b> if their phone won’t cooperate.','5-checkin.jpg','Today’s Activity with Copy check-in link'],
-  ['🧾','Approving expenses','Each Monday, open <b>Expense reports</b>, review your team’s reports and approve or return them. After you approve, save the report as a PDF, email it to Accounts Payable, and click <b>Mark as sent</b>. Submit your own report the same day.','6-expenses.jpg','Expense reports page'],
+  ['🧾','Approving expenses','Each Monday, open <b>Expense reports</b>, review your team’s reports and approve or return them. After you approve, the report goes to Accounts Payable: automatically by email once that’s switched on, otherwise save it as a PDF, email it, and click <b>Mark as sent</b>. Submit your own report the same day.','6-expenses.jpg','Expense reports page'],
   ['🔎','Finding anything','Use the <b>search box</b> at the top to jump to an event, marketer, piece of equipment or page. On a phone, the menu at the bottom gets you Home, My day, Check-in, Events and Alerts.','7-search.jpg','Search results for an event'],
   ['❓','Help on every page','Tap <b>? Help</b> next to a page title to see how that page works. The <b>🏆 Scorecard</b> on the home page shows how last week’s events did.','8-help.jpg','Page header with the Help button'] ];
 function tourDone(){ const m=mgrDoc(); return !!(m.tourDone) || lsGet('peHub.tourDone.'+String((S.user&&S.user.email)||'').toLowerCase())==='1'; }
@@ -2646,13 +3243,13 @@ function scorecardView(){
   const kpi=(l,v,sub,miss)=>`<div class="kpi ${miss?'warn':''}"><b>${v}</b><span>${l}</span>${sub?`<small>${sub}</small>`:''}</div>`;
   const t=D.total, worst=D.rows.filter(r=>r.pctGoal!==null).sort((a,b)=>a.pctGoal-b.pctGoal)[0];
   const missing=D.rows.filter(r=>r.shows && !scHas(r.cancels) && !scHas(r.meets));
-  const head=`<tr><th>Region</th><th>Supervisor</th><th class="num">Events</th><th class="num">Event cost</th><th class="num">Opps</th><th class="num">Unset</th><th class="num">Goal</th><th class="num">% to goal</th><th class="num">Cost / opp</th><th class="num">Set rate</th><th class="num">Cancels</th><th class="num">Cancel rate</th><th class="num">Meets</th><th class="num">Labor</th><th class="num">Expenses</th><th class="num">All-in / opp</th>${mtd?'<th class="num">Sales MTD</th><th class="num">$/MAR</th>':''}</tr>`;
+  const head=`<tr><th>Region</th><th>Supervisor</th><th class="num">Events</th><th class="num">Event cost</th><th class="num">Opps</th><th class="num">Unset opps</th><th class="num">Goal</th><th class="num">% to goal</th><th class="num">Cost / opp</th><th class="num">Set rate</th><th class="num">Cancels</th><th class="num">Cancel rate</th><th class="num">Meets</th><th class="num">Labor</th><th class="num">Expenses</th><th class="num">All-in / opp</th>${mtd?'<th class="num">Sales MTD</th><th class="num">$/MAR</th>':''}</tr>`;
   const src=(v,s)=>`${scMoney(v)}${s==='hub'&&v?'<sup title="From the hub (pay rates and expense reports). The REM’s number replaces it once entered." style="color:var(--ink-soft)">h</sup>':''}`;
   const row=(r,lbl,sup,cls)=>`<tr class="${cls||''}"><td><b>${esc(lbl)}</b></td><td class="small">${esc(sup||'')}</td><td class="num">${r.shows}</td><td class="num">${scMoney(r.cost)}</td><td class="num">${r.opps}</td><td class="num">${r.unset}</td><td class="num">${r.goal||'—'}</td>${scCell('pctGoal',r.pctGoal,scPct(r.pctGoal))}${scCell('cpo',r.cpo,scMoney(r.cpo))}${scCell('setRate',r.setRate,scPct(r.setRate))}
     <td class="num">${r.cancels??'—'}</td>${scCell('cancelRate',r.cancelRate,scPct(r.cancelRate))}<td class="num">${r.meets??'—'}</td><td class="num">${src(r.labor,r.laborSrc)}</td><td class="num">${src(r.expenses,r.expSrc)}</td>${scCell('allIn',r.allIn,scMoney(r.allIn))}${mtd?`<td class="num">${scMoney(r.sales)}</td><td class="num">${r.mar===null?(scHas(r.sales)&&r.sales<=0?'n/a':'—'):(Math.round(r.mar*1000)/10)+'%'}</td>`:''}</tr>`;
   const regionRows=['East','Central','West',''].map(d=>{ const rs=D.rows.filter(r=>r.division===d); if(!rs.length) return ''; const dv=D.divs.find(x=>x.division===d);
     return rs.map(r=>row(r, r.name, r.supervisor)).join('') + (dv&&D.divs.length>1?row(dv, `${d} Division`, dv.leader, 'scdiv'):''); }).join('');
-  const showRows=D.shows.map(x=>{ const pg=x.goal?x.opps/x.goal:null, cpo=x.opps?x.fee/x.opps:null; return `<tr><td><b>${esc(x.name)}</b><div class="small muted">${esc(x.office||'')} · ${fmtMD(x.start)}${x.end&&x.end!==x.start?'–'+fmtMD(x.end):''}${x.code?' · '+esc(x.code):''}</div></td><td class="small">${esc(REGION_NAMES[x.region]||x.region)}</td><td class="num">${x.fee?scMoney(x.fee):'<span class="small" style="color:var(--warn)">no cost</span>'}</td><td class="num ${x.opps?'':'scred'}">${x.opps}</td><td class="num">${x.unset}</td><td class="num">${x.goal||'<span class="small" style="color:var(--warn)">no goal</span>'}</td>${scCell('pctGoal',pg,scPct(pg))}${scCell('cpo',cpo,scMoney(cpo))}</tr>`; }).join('');
+  const showRows=D.shows.map(x=>{ const pg=x.goal?x.opps/x.goal:null, cpo=x.opps?x.fee/x.opps:null; return `<tr><td><b>${esc(x.name)}</b><div class="small muted">${esc(x.office||'')} · ${fmtMD(x.start)}${x.end&&x.end!==x.start?'–'+fmtMD(x.end):''}${x.code?' · '+esc(x.code):''}</div></td><td class="small">${esc(REGION_NAMES[x.region]||x.region)}</td><td class="num">${x.fee?scMoney(x.fee):'<span class="small" style="color:var(--warn)">no cost</span>'}</td><td class="num ${x.opps?'':'scred'}">${x.opps}</td><td class="num">${x.unset}</td><td class="num">${x.goal||'<span class="small" style="color:var(--warn)">no goal</span>'}</td>${scCell('pctGoal',pg,scPct(pg))}${scCell('cpo',cpo,scMoney(cpo))}${isRemUser()?`<td style="white-space:nowrap">${x.edited?`<span class="pill p-warn" title="Edited by ${esc(x.edited.updatedBy||'')} ${x.edited.updatedAt?fmtStamp(x.edited.updatedAt):''}. Pulled: cost ${scMoney(x.pulled.fee)}, opps ${x.pulled.opps}, unset ${x.pulled.unset}, goal ${x.pulled.goal}">edited</span> `:''}<button class="btn sm" data-act="scEvEdit" data-k="${esc(scEvKey(x))}" title="Correct this show’s numbers">✎</button></td>`:''}</tr>`; }).join('');
   return `<div class="row" style="margin-bottom:10px;flex-wrap:wrap;gap:6px">
       <div class="seg"><button class="btn sm ${mtd?'':'primary'}" data-act="scView" data-v="week">Week</button><button class="btn sm ${mtd?'primary':''}" data-act="scView" data-v="mtd">Month to date</button></div>
       <button class="btn sm" data-act="scWk" data-n="-7">◀</button><b>${esc(P.label)}</b><button class="btn sm" data-act="scWk" data-n="7">▶</button>${wk!==addDays(mondayOf(todayIso()),-7)?'<button class="btn sm" data-act="scWk" data-n="0">Last week</button>':''}
@@ -2662,13 +3259,13 @@ function scorecardView(){
       <p class="small" style="margin:4px 0 10px">${t.shows} event${t.shows===1?'':'s'} produced <b>${t.opps} opps against a goal of ${t.goal||'—'}${t.pctGoal!==null?` (${scPct(t.pctGoal)} to goal)`:''}</b> on ${scMoney(t.cost)} in event cost${t.cpo!==null?`, about <b>${scMoney(t.cpo)} per opp</b>`:''}.${worst?` Furthest behind: <b>${esc(worst.name)}</b> at ${scPct(worst.pctGoal)} to goal.`:''}</p>
       ${t.zero?`<div class="notice" style="margin:0 0 8px">${t.zero} of ${t.shows} events show 0 opps. Check whether those results are entered before discussing them.</div>`:''}
       ${!mtd&&missing.length&&isRemUser()?`<div class="notice" style="margin:0 0 8px">Waiting on REM numbers for: ${missing.map(r=>`<b>${esc(r.name)}</b> (${esc(r.supervisor)})`).join(', ')}.</div>`:''}
-      <div class="kpis">${kpi('Actual opps',t.opps,`Goal ${t.goal||'—'} · ${scPct(t.pctGoal)} to goal`,scMiss('pctGoal',t.pctGoal))}${kpi('Event cost',scMoney(t.cost),`${t.shows} shows`)}${kpi('Cost per opp',scMoney(t.cpo),`Target ${$0(T.cpo)} or less`,scMiss('cpo',t.cpo))}${kpi('Opps set rate',scPct(t.setRate),`${t.unset} unset · target ${T.setRate}%`,scMiss('setRate',t.setRate))}${kpi('Cancel rate',scPct(t.cancelRate),`${t.cancels??'—'} cancels · target ${T.cancelRate}% or less`,scMiss('cancelRate',t.cancelRate))}${kpi('Meets',t.meets??'—','Entered by REMs')}${mtd?kpi('Sales (MTD)',scMoney(t.sales),t.mar!==null?`$/MAR ${(Math.round(t.mar*1000)/10)}%`:'Entered by REMs'):kpi('All-in cost / opp',scMoney(t.allIn),'Event cost + labor + expenses',scMiss('allIn',t.allIn))}</div></div>
+      <div class="kpis">${kpi('Actual opps',t.opps,`Goal ${t.goal||'—'} · ${scPct(t.pctGoal)} to goal`,scMiss('pctGoal',t.pctGoal))}${kpi('Event cost',scMoney(t.cost),`${t.shows} shows`)}${kpi('Cost per opp',scMoney(t.cpo),`Target ${$0(T.cpo)} or less`,scMiss('cpo',t.cpo))}${kpi('Opps set rate',scPct(t.setRate),`${t.unset} unset opps · target ${T.setRate}%`,scMiss('setRate',t.setRate))}${kpi('Cancel rate',scPct(t.cancelRate),`${t.cancels??'—'} cancels · target ${T.cancelRate}% or less`,scMiss('cancelRate',t.cancelRate))}${kpi('Meets',t.meets??'—','Entered by REMs')}${mtd?kpi('Sales (MTD)',scMoney(t.sales),t.mar!==null?`$/MAR ${(Math.round(t.mar*1000)/10)}%`:'Entered by REMs'):kpi('All-in cost / opp',scMoney(t.allIn),'Event cost + labor + expenses',scMiss('allIn',t.allIn))}</div></div>
     ${recognitionCard(D)}
     <div class="card"><h2 style="margin-top:0">By region</h2><div class="small muted" style="margin-bottom:6px">Cancels, meets, labor, expenses and sales come from the <b>REM weekly numbers</b> form. <sup>h</sup> = labor or expenses from the hub until the REM enters them. Red = missed target.</div>
       <div style="overflow-x:auto"><table class="sctable"><thead>${head}</thead><tbody>${regionRows}${row(t,'Total','All regions in view','sctotal')}</tbody></table></div></div>
-    <div class="card"><h2 style="margin-top:0">Events (${D.shows.length})</h2>${D.shows.length?`<div style="overflow-x:auto"><table class="sctable"><thead><tr><th>Show</th><th>Region</th><th class="num">Event cost</th><th class="num">Opps</th><th class="num">Unset</th><th class="num">Goal</th><th class="num">% to goal</th><th class="num">Cost / opp</th></tr></thead><tbody>${showRows}</tbody></table></div>`:'<div class="muted">No events started in this period.</div>'}
+    <div class="card"><h2 style="margin-top:0">Events (${D.shows.length})</h2>${D.shows.length?`<div style="overflow-x:auto"><table class="sctable"><thead><tr><th>Show</th><th>Region</th><th class="num">Event cost</th><th class="num">Opps</th><th class="num">Unset opps</th><th class="num">Goal</th><th class="num">% to goal</th><th class="num">Cost / opp</th>${isRemUser()?'<th></th>':''}</tr></thead><tbody>${showRows}</tbody></table></div>`:'<div class="muted">No events started in this period.</div>'}
       ${D.left.length?`<div class="small muted" style="margin-top:8px">Left out (longer than a week): ${D.left.map(e=>esc(e.name)).join('; ')}.</div>`:''}
-      <div class="small muted" style="margin-top:8px">Events count in the period their first day falls in (weeks run Mon–Sun). ${showReport()?'Event cost, opps, unset and goal are from the Tradeshow Master (Sunrooms events only).':'Opps = appointments set at check-out; unset = leads not set; goal = ETACC Target Opps; event cost = ETACC fee.'}</div></div>
+      <div class="small muted" style="margin-top:8px">Events count in the period their first day falls in (weeks run Mon–Sun). ${showReport()?'Event cost, opps, unset and goal are from the Tradeshow Master (Sunrooms events only).':'Opps = set appointments from check-out; unset opps = leads not set, which go to the call center to be scheduled; goal = ETACC Target Opps; event cost = ETACC fee.'}</div></div>
     ${lead?`<div class="card"><details ${ui.scTOpen?'open':''}><summary style="cursor:pointer"><b>🎯 Scorecard targets</b> <span class="small muted">(Paula, Trevor, Angelique and Chris)</span></summary><div class="fields" style="margin-top:10px">
       <div class="field"><label>% to opps goal (at least)</label><input type="number" data-sct="pctGoal" value="${T.pctGoal}"></div><div class="field"><label>Cost per opp (event cost, at most $)</label><input type="number" data-sct="cpo" value="${T.cpo}"></div>
       <div class="field"><label>Set rate (at least %)</label><input type="number" data-sct="setRate" value="${T.setRate}"></div><div class="field"><label>Cancel rate (at most %)</label><input type="number" data-sct="cancelRate" value="${T.cancelRate}"></div></div>
@@ -2771,7 +3368,7 @@ function scCsv(){
   const head=['Region','Supervisor','Events','Event cost','Actual opps','Unset opps','Opps goal','% to goal','Cost per opp','Set rate %','Cancels','Cancel rate %','Meets','Labor','Expenses','Total cost','All-in cost per opp',...(mtd?['Sales MTD','$/MAR %']:[])];
   const f=v=>v===null||v===undefined?'':(Math.round(v*100)/100), p=v=>v===null||v===undefined?'':Math.round(v*1000)/10;
   const line=(r,a,b)=>[a,b,r.shows,f(r.cost),r.opps,r.unset,r.goal,p(r.pctGoal),f(r.cpo),p(r.setRate),r.cancels??'',p(r.cancelRate),r.meets??'',f(r.labor),f(r.expenses),f(r.total),f(r.allIn),...(mtd?[r.sales??'',p(r.mar)]:[])];
-  const lines=[head, ...D.rows.map(r=>line(r,r.name,r.supervisor)), ...D.divs.map(d=>line(d,d.division+' Division',d.leader)), line(D.total,'Total','All regions in view'), [], ['Show','Office','Region','First date','Last date','Event cost','Opps','Unset','Goal'], ...D.shows.map(x=>[x.name,x.office,REGION_NAMES[x.region]||x.region,x.start,x.end,x.fee,x.opps,x.unset,x.goal])];
+  const lines=[head, ...D.rows.map(r=>line(r,r.name,r.supervisor)), ...D.divs.map(d=>line(d,d.division+' Division',d.leader)), line(D.total,'Total','All regions in view'), [], ['Show','Office','Region','First date','Last date','Event cost','Opps','Unset opps','Goal'], ...D.shows.map(x=>[x.name,x.office,REGION_NAMES[x.region]||x.region,x.start,x.end,x.fee,x.opps,x.unset,x.goal])];
   const csv=lines.map(l=>l.map(v=>{ v=String(v??''); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(',')).join('\r\n');
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'})); a.download=`event-scorecard_${mtd?'mtd-through-'+D.P.to:'week-of-'+D.P.ws}.csv`; a.click();
 }
@@ -2887,6 +3484,7 @@ async function initDB(){
         unsubs.push(F.onSnapshot(F.collection(db,'peHubScorecard'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.scManual=m; S.scLoaded=true; render(); }, err=>console.warn('scorecard',err)));
         unsubs.push(F.onSnapshot(F.doc(db,'peHubRates','main'), snap=>{ S.rates=snap.exists()?snap.data():null; render(); }, err=>console.warn('rates',err)));
         unsubs.push(F.onSnapshot(F.collection(db,'peHubTasks'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=Object.assign({id:d.id},d.data())); S.asg=m; S.asgLoaded=true; render(); }, err=>console.warn('tasks',err)));
+        unsubs.push(F.onSnapshot(F.collection(db,'peHubDateOk'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.dateOk=m; render(); }, err=>console.warn('date checks',err)));
         unsubs.push(F.onSnapshot(F.collection(db,'peHubTaskDone'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.asgDone=m; S.asgDoneLoaded=true; render(); }, err=>console.warn('task done',err)));
         unsubs.push(F.onSnapshot(F.collection(db,'peHubEvals'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.evals=m; S.evalsLoaded=true; render(); }, err=>console.warn('evals',err)));
       }
@@ -2992,7 +3590,7 @@ function render(){
   const keep=captureInputs();
   document.body.classList.toggle('marketer', MARKETER_MODE);
   if(!ui.tourT && S.user){ ui.tourT=setTimeout(()=>{ maybeStartTour(); if(ui.tour!=null){ markWelcomed(); render(); } else if(S.user && !MARKETER_MODE && (S.mode==='live'||ui.forceWelcome) && welcomeDue()){ ui.welcomeBack=welcomedToday(); ui.welcome=true; markWelcomed(); touchSeen.at=0; touchSeen(); render(); } else touchSeen(); },3000); }
-  app.innerHTML = `<div class="wrap">${header()}${viewAsBanner()}${searchBox()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}${bottomNav()}${tourOverlay()}${welcomeOverlay()}${undoToast()}`;
+  app.innerHTML = `<div class="wrap">${header()}${viewAsBanner()}${searchBox()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}${bottomNav()}${tourOverlay()}${welcomeOverlay()}${helpOverlay()}${glOverlay()}${scEvEditOverlay()}${undoToast()}`;
   stackTables(app); document.body.classList.toggle('hasnav', !!(S.user && !MARKETER_MODE)); if(ui.tourT && !ui.welcome) touchSeen();
   restoreInputs(keep);
   // lazy-load any photos now on screen
@@ -3013,7 +3611,7 @@ function header(){
     <div><h1>${MARKETER_MODE?'Event Check-In':'Event Activity Hub'}</h1><div class="asof">${stat}${S.mode==='local'&&!DEMO?` · not saving to the shared database (${esc(S.err)})`:''}</div></div>
     <div class="spacer"></div>${signin}</header>`;
 }
-const SECTIONS={ today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Marketer Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Asset Inventory & Check-Out'], evals:['📝','Post-Event Evaluations'], expenses:['🧾','Expense Reports'], travel:['🏨','Navan Travel'], adp:['⏱️','ADP Timecards'], myday:['☀️','My Day'], myweek:['▶️','My Week'], summary:['📊','Event Activation Summary'], training:['📚','Training'], alerts:['🔔','Alerts'], guide:['📖','How-to Guides'], costs:['💲','Cost per Lead'], scorecard:['🏆','Event Marketing Scorecard'], remnums:['✍️','REM Weekly Numbers'], activity:['👀','Hub Activity'], assign:['📌','Assign Tasks'] };
+const SECTIONS={ toolkit:['🧰','Manager Toolkit'], today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Marketer Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Asset Inventory & Check-Out'], evals:['📝','Post-Event Evaluations'], expenses:['🧾','Expense Reports'], travel:['🏨','Navan Travel'], adp:['⏱️','ADP Timecards'], myday:['☀️','My Day'], myweek:['▶️','My Week'], summary:['📊','Event Activation Summary'], training:['📚','Training'], alerts:['🔔','Alerts'], guide:['📖','How-to Guides'], costs:['💲','Cost per Lead'], scorecard:['🏆','Event Marketing Scorecard'], remnums:['✍️','REM Weekly Numbers'], activity:['👀','Hub Activity'], assign:['📌','Assign Tasks'] };
 function tabs(){
   if(ui.tab==='home' || !SECTIONS[ui.tab]) return '';
   const [ic,l]=SECTIONS[ui.tab];
@@ -3033,7 +3631,7 @@ function staffBanner(){
 function tilesView(){
   const t=todayIso(), today=shiftsOn(t).filter(s=>inOffice(s.ev.office)), st=today.map(shiftStatus);
   const late=st.filter(x=>x.k==='late'||x.k==='noout').length, inNow=st.filter(x=>x.k==='in').length;
-  const due=evalsDue().filter(e=>!evalDone(e)).length;
+  const due=EVALS_PAUSED?0:evalsDue().filter(e=>!evalDone(e)).length;
   const upcoming=liveEvents().filter(e=>inOffice(e.office)&&(e.end||e.start)>=t&&e.start<=addDays(t,7)).length;
   const gear=scopedAssets().filter(isGear).map(stOf);
   const out=gear.filter(g=>g.status==='out').length, overdue=gear.filter(g=>g.overdue).length, repair=gear.filter(g=>g.status==='repair').length;
@@ -3046,7 +3644,7 @@ function tilesView(){
     schedule:()=>tile('schedule','Weekly marketer schedule and shift assignments.', staff?`${staff} event${staff===1?'':'s'} need staffing`:'Open the weekly schedule', staff?'warn':'', staff||''),
     checkin:()=>tile('checkin','Marketers check in at the booth and check out with results.', 'Start or end a shift'),
     assets:()=>tile('assets','Inventory, barcode check-out and returns, transfers and the annual count.', `${gear.length} items · ${out} out${overdue?` · ${overdue} overdue`:''}${repair?` · ${repair} in repair`:''}${low?` · ${low} to reorder`:''}`, overdue||low?'warn':'', (overdue+low)||''),
-    evals:()=>tile('evals','Manager post-event evaluations, pre-filled from check-outs.', due?`${due} waiting for evaluation`:'All caught up', due?'warn':'', due||''),
+    evals:()=>tile('evals','Manager post-event evaluations, pre-filled from check-outs.', EVALS_PAUSED?'Paused for now':due?`${due} waiting for evaluation`:'All caught up', due?'warn':'', due||''),
     costs:()=>S.user?(()=>{ const rows=costRows(addDays(t,-27),t), C=costTotals(rows), f=rows.filter(costFlag).length; return tile('costs','What each event cost against the leads and opps it brought in.', C.leads?`${$0(C.cpl)} per lead · last 4 weeks`:'No results in the last 4 weeks', f?'warn':'', f?`${f} over target`:''); })():'',
     expenses:()=>{ const w=Object.values(S.expenses).filter(x=>x.status==='submitted' && (!x.office||inOffice(x.office))).length; return tile('expenses','Weekly expense reports: mileage, per diem and receipts. Approve and send to accounting.', S.user?(w?`${w} waiting for approval`:'Nothing waiting'):'Sign in to review', w?'warn':'', w||''); },
     adp:()=>{ const f=adpRows(mondayOf(t)).filter(x=>x.flag).length; return tile('adp','Compare this week’s check-ins with ADP, then approve timecards.', f?`${f} shift${f===1?'':'s'} to double-check`:'Approve timecards', f?'warn':'', f||''); },
@@ -3054,10 +3652,10 @@ function tilesView(){
   const MINI={ today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Equipment'], evals:['📝','Evaluations'], costs:['💲','Cost per Lead'], expenses:['🧾','Expense Reports'], adp:['⏱️','ADP timecards'], travel:['🏨','Navan travel'] };
   const mini=(k)=>{ const [ic,l]=MINI[k]; const [c,soft]=TC[k]||['var(--aqua)','#e0f4f6']; return `<div class="mini" data-tab="${k}" role="button" tabindex="0" style="--tc:${c};--tcs:${soft}"><span class="ic">${ic}</span><span class="mt"><b>${esc(l)}</b></span></div>`; };
   const link=(u,ic,l,sub,c,soft)=>`<a class="mini" href="${u}" target="_blank" rel="noopener" style="--tc:${c};--tcs:${soft}"><span class="ic">${ic}</span><span class="mt"><b>${l} ↗</b><small>${sub}</small></span></a>`;
-  const links=`${link(LINKS.pcms,'📇','PCMS','Leads & opps','#000','#ededed')}${link(LINKS.tableau,'📊','Tableau','Reports & dashboards','var(--gray)','#eeeeef')}<div class="mini" data-tab="guide" role="button" tabindex="0" style="--tc:var(--gray);--tcs:#eeeeef"><span class="ic">📖</span><span class="mt"><b>How-to guides</b><small>Step by step</small></span></div>`;
+  const links=`${link(LINKS.pcms,'📇','PCMS','Leads & opps','#000','#ededed')}${link(LINKS.tableau,'📊','Tableau','Reports & dashboards','var(--gray)','#eeeeef')}<div class="mini" data-tab="guide" role="button" tabindex="0" style="--tc:var(--gray);--tcs:#eeeeef"><span class="ic">📖</span><span class="mt"><b>How-to guides</b><small>Step by step</small></span></div><div class="mini" data-tab="toolkit" role="button" tabindex="0" style="--tc:var(--aqua);--tcs:#e0f4f6"><span class="ic">🧰</span><span class="mt"><b>Manager toolkit</b><small>Hiring, ADP, HR forms</small></span></div>`;
   const banners=`<div class="banners"><a class="teamsbanner" href="${TEAMS_HUB_URL}" target="_blank" rel="noopener"><div class="ic">👥</div><div style="flex:1"><h2>Team Resource Hub</h2><p>Guides, forms, standards and announcements in Microsoft Teams.</p></div><span class="go">Open in Teams ↗</span></a>
   <a class="teamsbanner trainbanner" href="#training" data-tab="training"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products, booth setup and standards.</p></div><span class="go">Open ↗</span></a></div>`;
-  if(!S.user) return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span>${scopePicker()}</div>${banners}<div class="tiles">${TOOL_ORDER.map(k=>T[k]()).join('')}</div>${leaderCard()}</div>`;
+  if(!S.user) return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span><button class="btn sm helpbtn" data-act="pageHelp" title="How the hub home works">? Help</button>${scopePicker()}</div>${banners}<div class="tiles">${TOOL_ORDER.map(k=>T[k]()).join('')}</div>${leaderCard()}</div>`;
   const order=toolsByUse(), mine=order.slice(0,6), rest=order.slice(6);
   const leader=isRemUser()?`<h3 class="homeh">Leader tools</h3><div class="minis">
     <div class="mini" data-tab="assign" role="button" tabindex="0" style="--tc:var(--red);--tcs:#fde2e1"><span class="ic">📌</span><span class="mt"><b>Assign tasks</b><small>One-offs & sprints</small></span></div>
@@ -3065,7 +3663,7 @@ function tilesView(){
     <div class="mini" data-tab="activity" role="button" tabindex="0" style="--tc:#000;--tcs:#ededed"><span class="ic">👀</span><span class="mt"><b>Hub activity</b><small>Who’s using the hub</small></span></div>
     <div class="mini" data-tab="alerts" role="button" tabindex="0" style="--tc:var(--aqua);--tcs:#e0f4f6"><span class="ic">🔔</span><span class="mt"><b>Alert settings</b><small>Who gets alerts</small></span></div>
     <div class="mini" data-tab="summary" role="button" tabindex="0" style="--tc:var(--gray);--tcs:#eeeeef"><span class="ic">📊</span><span class="mt"><b>Activation summary</b><small>Monday email</small></span></div></div>`:'';
-  return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span>${scopePicker()}</div>
+  return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span><button class="btn sm helpbtn" data-act="pageHelp" title="How the hub home works">? Help</button>${scopePicker()}</div>
   ${mgrBar()}
   ${todoCard({compact:true})}
   ${scBanner()}
@@ -3080,7 +3678,7 @@ function tilesView(){
 function body(){
   if(!S.schedLoaded) return `<div class="card">Loading…</div>`;
   switch(ui.tab){
-    case 'events': return toolFrame(ETACC_URL,'Event Tracking, Approval & Contracting Center');
+    case 'events': return (S.user?dateCheckCard():'')+toolFrame(ETACC_URL,'Event Tracking, Approval & Contracting Center');
     case 'schedule': return toolFrame(SCHEDULE_URL,'Marketer Weekly Schedule');
     case 'checkin': return checkinView();
     case 'assets': return assetsView();
@@ -3095,6 +3693,7 @@ function body(){
     case 'costs': return costView();
     case 'scorecard': return scorecardView();
     case 'remnums': return remNumsView();
+    case 'toolkit': return toolkitView();
     case 'assign': return S.user?asgView():'<div class="card">Sign in to assign tasks.</div>';
     case 'activity': return activityView();
     case 'myday': return S.user?myDayView():'<div class="card">Sign in to see your day.</div>';
@@ -3113,6 +3712,46 @@ function syncFrames(){
   });
   box.style.display = want ? 'block' : 'none';
 }
+/* ---------------- ETACC date checks ---------------- */
+// Flags upcoming ETACC events whose dates look off. Most events run Friday–Sunday, so anything else gets a second look.
+// "Dates are correct" clears an event for everyone until its dates change.
+const DOW3=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function dateOk(x){ const k=(S.dateOk||{})[x.id]; return !!(k && k.start===x.startDate && (k.end||'')===(x.endDate||'')); }
+function eventDateIssues(x){
+  const t=todayIso(), st=x.startDate, en=x.endDate||x.startDate, out=[]; if(!st) return out;
+  if(en<st) out.push('End date is before the start date');
+  const days=en>=st?daysBetween(st,en)+1:1;
+  if(en>=st && days>5) out.push(`Runs ${days} days`);
+  if(en>=st && days<=5 && !(parseIso(st).getDay()===5 && parseIso(en).getDay()===0)) out.push(`Runs ${DOW3[parseIso(st).getDay()]}${en!==st?'–'+DOW3[parseIso(en).getDay()]:' only'}, not Fri–Sun`);
+  if(daysBetween(t,st)>400) out.push('More than a year out: check the year');
+  if(x.status==='researching' && st<t) out.push('Start date has passed but it’s still Researching');
+  const n=normName(x.eventName);
+  liveEvents().filter(e=>normName(e.name)===n && Math.abs(daysBetween(e.start,st))<=30).forEach(e=>{
+    if(e.start!==st || (e.end||e.start)!==en) out.push(`Schedule has ${fmtMD(e.start)}${(e.end||e.start)!==e.start?'–'+fmtMD(e.end):''}`); });
+  (S.etacc||[]).filter(y=>y.id!==x.id && normName(y.eventName)===n && (y.branch||'')===(x.branch||'') && !['declined','not_pursuing'].includes(y.status) && y.startDate && y.startDate!==st && Math.abs(daysBetween(y.startDate,st))<=45)
+    .forEach(y=>out.push(`Also listed for ${fmtMD(y.startDate)}`));
+  return [...new Set(out)];
+}
+function dateChecks(){
+  const t=todayIso(), lim=addDays(t,180), from=addDays(t,-30);
+  return (S.etacc||[]).filter(x=>x.startDate && x.startDate>=from && (x.startDate<=lim || daysBetween(t,x.startDate)>400) && !['declined','not_pursuing'].includes(x.status) && inOffice(x.branch||'') && !dateOk(x))
+    .map(x=>({ x, issues:eventDateIssues(x) })).filter(r=>r.issues.length).sort((a,b)=>a.x.startDate.localeCompare(b.x.startDate));
+}
+function dateRange(x){ const en=x.endDate||x.startDate, y=new Date().getFullYear(), md=d=>fmtMD(d)+(+d.slice(0,4)!==y?'/'+d.slice(0,4):''); return `${DOW3[parseIso(x.startDate).getDay()]} ${md(x.startDate)}${en!==x.startDate?` – ${DOW3[parseIso(en).getDay()]} ${md(en)}`:''}`; }
+function dateCheckCard(){
+  const L=dateChecks(); if(!L.length) return '';
+  return `<div class="card" style="border-left:4px solid var(--gold)"><details ${ui.dcOpen?'open':''} data-dcopen><summary style="cursor:pointer"><b>📆 ${L.length} event${L.length===1?'':'s'} with dates to double-check</b> <span class="small muted">· most events run Fri–Sun; confirm each against the event’s website</span></summary>
+    <table style="margin-top:8px"><thead><tr><th>Event</th><th>Branch</th><th>ETACC dates</th><th>Why</th><th></th></tr></thead><tbody>${L.map(r=>`<tr><td>${esc(r.x.eventName||'')}</td><td class="small">${esc(r.x.branch||'')}</td><td class="small">${dateRange(r.x)}</td><td class="small">${r.issues.map(esc).join('<br>')}</td>
+      <td style="white-space:nowrap"><a class="btn sm" href="https://www.google.com/search?q=${encodeURIComponent((r.x.eventName||'')+' '+(r.x.branch||'').replace(/^[A-Z]{2,4}\s*-\s*/,'')+' '+r.x.startDate.slice(0,4)+' dates')}" target="_blank" rel="noopener">🔎 Search</a> <button class="btn sm" data-act="dcOk" data-id="${esc(r.x.id)}">✓ Dates are correct</button></td></tr>`).join('')}</tbody></table>
+    <div class="small muted" style="margin-top:6px">Wrong dates? Fix them in ETACC below. “Dates are correct” clears an event for everyone until its dates change.</div></details></div>`;
+}
+document.addEventListener('toggle', ev=>{ const el=ev.target; if(el && el.matches && el.matches('details[data-dcopen]')) ui.dcOpen=el.open; }, true);
+async function markDateOk(id){
+  const x=(S.etacc||[]).find(y=>y.id===id); if(!x) return;
+  const rec={ start:x.startDate, end:x.endDate||'', by:(S.user&&S.user.email)||'', at:Date.now() };
+  S.dateOk=Object.assign({}, S.dateOk||{}, { [id]:rec });
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubDateOk',id), rec); }
+}
 function toolFrame(url,title){
   // The tool itself lives in #frames, outside the part of the page that redraws, so live
   // updates never reload it (which used to make it blink and lose unsaved edits).
@@ -3127,7 +3766,7 @@ function homeView(){
   const dayCis=list.map(s=>s.c).filter(Boolean);
   const leads=dayCis.filter(c=>c.status==='out').reduce((t,c)=>t+num(c.leads),0), appts=dayCis.filter(c=>c.status==='out').reduce((t,c)=>t+num(c.appts),0);
   const gearOut=scopedAssets().filter(isGear).map(stOf).filter(g=>g.status==='out');
-  const due=evalsDue().filter(e=>!evalDone(e)).length;
+  const due=EVALS_PAUSED?0:evalsDue().filter(e=>!evalDone(e)).length;
   const recentIssues=Object.values(S.checkins).filter(c=>inOffice(c.office)&&((c.issues||[]).length||c.issueText)&&c.date>=addDays(todayIso(),-7)).sort((a,b)=>(b.outAt||b.inAt||0)-(a.outAt||a.inAt||0));
   // group by event
   const byEv={}; list.forEach((s,i)=>{ (byEv[s.ev.key]=byEv[s.ev.key]||{ev:s.ev,rows:[]}).rows.push([s,st[i]]); });
@@ -3138,14 +3777,14 @@ function homeView(){
     <div class="kpi"><b>${cnt('out')}</b><span>Checked out</span></div>
     <div class="kpi ${cnt('late')?'alert':''}"><b>${cnt('late')}</b><span>Late / missed check-in</span></div>
     <div class="kpi"><b>${leads}</b><span>Leads reported</span></div>
-    <div class="kpi"><b>${appts}</b><span>Opps (appointments set)</span></div>
-    <div class="kpi ${gearOut.some(g=>g.overdue)?'warn':''}"><b>${gearOut.length}</b><span>Booth gear out${gearOut.some(g=>g.overdue)?` (${gearOut.filter(g=>g.overdue).length} overdue)`:''}</span></div>
-    <div class="kpi ${due?'warn':''}"><b>${due}</b><span>Evaluations due</span></div>
+    <div class="kpi"><b>${appts}</b><span>Opps (set appointments)</span></div>
+    <div class="kpi ${gearOut.some(g=>g.overdue)?'warn':''}"><b>${gearOut.length}</b><span>Booth assets out${gearOut.some(g=>g.overdue)?` (${gearOut.filter(g=>g.overdue).length} overdue)`:''}</span></div>
+    ${EVALS_PAUSED?'':`<div class="kpi ${due?'warn':''}"><b>${due}</b><span>Evaluations due</span></div>`}
   </div>
   <div class="card"><h2>Event activity</h2><div class="sub">Every scheduled marketer for ${fmtLong(date)}, with live check-in status. Click a row for photos, location and results.</div>
   ${Object.values(byEv).length?Object.values(byEv).map(({ev,rows})=>`<h3 class="row">${esc(ev.name)} <span class="muted small">· ${esc(ev.office||'')}${ev.venueName?' · '+esc(ev.venueName):''}</span><span class="spacer"></span>${linkBtn(ev)}</h3>
     <table><thead><tr><th>Marketer</th><th>Shift</th><th>Status</th><th>Results</th><th>Gear</th></tr></thead><tbody>
-    ${rows.map(([s,x])=>`<tr class="click" data-detail="${s.cid}" data-day="${esc(s.dayId)}" data-pid="${esc(s.personId)}"><td>${esc(personName(s.personId))}${s.unscheduled?' <span class="pill p-warn">unscheduled</span>':''}</td><td>${timeRange(s.day)}</td><td><span class="pill ${x.cls}">${esc(x.label)}</span>${s.c&&s.c.inLoc?' <span class="small muted">📍</span>':''}${s.c&&s.c.inPhoto?' <span class="small muted">📷</span>':''}</td><td>${s.c&&s.c.status==='out'?`${num(s.c.leads)} leads · ${num(s.c.appts)} appts · ${round1(hoursOf(s.c))} h`:''}${s.c&&((s.c.issues||[]).length||s.c.issueText)?' <span class="pill p-red">issue</span>':''}</td><td class="small">${s.c?(s.c.assetsOut||[]).map(id=>esc(assetName(id))).join(', '):''}${s.c&&s.c.equipWhere?`<div>${s.c.equipWhere==='home'?'🏠':s.c.equipWhere==='office'?'🏢':s.c.equipWhere==='venue'?'📍':s.c.equipWhere==='handoff'?'🤝':'—'} ${esc(EQUIP_WHERE[s.c.equipWhere]||'')}${s.c.equipNote?': '+esc(s.c.equipNote):''}</div>`:''}</td></tr>`).join('')}
+    ${rows.map(([s,x])=>`<tr class="click" data-detail="${s.cid}" data-day="${esc(s.dayId)}" data-pid="${esc(s.personId)}"><td>${esc(personName(s.personId))}${s.unscheduled?' <span class="pill p-warn">unscheduled</span>':''}</td><td>${timeRange(s.day)}<div class="small muted">${esc(breakText(breakPlan(shiftHours(s.day.start,s.day.stop)),true))}</div></td><td><span class="pill ${x.cls}">${esc(x.label)}</span>${s.c&&s.c.inLoc?' <span class="small muted">📍</span>':''}${s.c&&s.c.inPhoto?' <span class="small muted">📷</span>':''}</td><td>${s.c&&s.c.status==='out'?`${num(s.c.leads)} leads · ${num(s.c.appts)} opps · ${round1(hoursOf(s.c))} h`:''}${s.c&&((s.c.issues||[]).length||s.c.issueText)?' <span class="pill p-red">issue</span>':''}</td><td class="small">${s.c?(s.c.assetsOut||[]).map(id=>esc(assetName(id))).join(', '):''}${s.c&&s.c.equipWhere?`<div>${s.c.equipWhere==='home'?'🏠':s.c.equipWhere==='office'?'🏢':s.c.equipWhere==='venue'?'📍':s.c.equipWhere==='handoff'?'🤝':'—'} ${esc(EQUIP_WHERE[s.c.equipWhere]||'')}${s.c.equipNote?': '+esc(s.c.equipNote):''}</div>`:''}</td></tr>`).join('')}
     </tbody></table>`).join(''):`<p class="muted">No marketers are scheduled on this day${(ui.scope||[]).length?' for '+esc(scopeLabel()):''}.</p>`}
   </div>
   <div class="card"><h2>Issues reported (last 7 days)</h2>${recentIssues.length?`<table><tbody>${recentIssues.slice(0,25).map(c=>`<tr class="click" data-detail="${c.id}"><td style="width:90px">${fmtMD(c.date)}</td><td>${esc(c.personName)}<div class="small muted">${esc(c.eventName)}</div></td><td>${(c.issues||[]).map(i=>`<span class="pill p-red">${esc(i)}</span>`).join(' ')} ${esc(c.issueText||'')}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">None reported.</p>'}</div>`;
@@ -3215,11 +3854,12 @@ function checkInPanel(p){
   const s=p.shift, me=person(p.pid)||{};
   const gear=S.assets.filter(a=>!a.retired && isGear(a) && !kitOf(a.id) && (!(stOf(a).office) || stOf(a).office===s.ev.office || p.gear.includes(a.id) || (stOf(a).holder||{}).personId===p.pid)).sort((a,b)=>(b.kind==='kit')-(a.kind==='kit')||a.name.localeCompare(b.name));
   return `<div class="panel"><h2>Check in · ${esc(s.ev.name)}</h2><div class="sub">${fmtLong(s.day.date)} · ${timeRange(s.day)} · ${esc(me.name||'')}</div>
+    ${goalNote(shiftGoal(s.ev, s.day, s.personId, s.dayId))}${breakNote(breakPlan(shiftHours(s.day.start, s.day.stop)))}
     <div class="grid">
       <div><div class="lbl">1. Location</div>${p.loc?`<div class="small">📍 Location captured (±${p.loc.acc} m). <a href="${mapLink(p.loc)}" target="_blank" rel="noopener">View</a></div>`:p.locNote?`<div class="small" style="color:var(--warn)">${esc(p.locNote)} You can still check in.</div> <button class="btn sm" data-act="getLoc">Try again</button>`:'<div class="small muted">Getting your location…</div>'}</div>
       <div><div class="lbl">2. Booth setup photo <span style="color:var(--red)">*</span></div><label class="btn big photobtn">📷 ${p.photo?'Retake booth photo':'Take booth photo'}<input type="file" accept="image/*" capture="environment" data-act="photo" data-slot="in" style="display:none"></label>${p.photo?`<img class="preview" src="${p.photo}" alt="Booth photo">`:''}</div>
-      <div><div class="lbl">3. Booth gear & kits you’re taking</div>${scanBox('checkin','Scan an item or kit barcode')}${ui.scanMsg?`<div class="small" style="color:${ui.scanMsg.kind==='ok'?'var(--accent)':'var(--red)'};margin:4px 0">${esc(ui.scanMsg.text)}</div>`:''}
-        ${gear.length?gear.map(a=>{ const g=stOf(a), mine=g.holder&&g.holder.personId===p.pid, blocked=(g.status==='out'&&!mine)||g.status==='lost'; return `<label class="chk"><input type="checkbox" data-gear="${a.id}" ${p.gear.includes(a.id)?'checked':''} ${blocked&&!p.gear.includes(a.id)?'disabled':''}> ${a.kind==='kit'?'🧰 ':''}${esc(a.name)} <code class="small muted">${esc(a.code||'')}</code>${a.kind==='kit'?` <span class="small muted">(${(a.contents||[]).length} items)</span>`:''}${g.status==='out'?` <span class="small muted">${mine?'(you have this)':'(with '+esc(g.holder.personName)+')'}</span>`:g.status==='repair'?' <span class="small" style="color:var(--warn)">(needs repair)</span>':g.status==='lost'?' <span class="small muted">(lost)</span>':''}</label>`; }).join(''):'<div class="small muted">No booth gear set up for this office yet.</div>'}</div>
+      <div><div class="lbl">3. Booth assets & kits you’re taking</div>${scanBox('checkin','Scan an item or kit barcode')}${ui.scanMsg?`<div class="small" style="color:${ui.scanMsg.kind==='ok'?'var(--accent)':'var(--red)'};margin:4px 0">${esc(ui.scanMsg.text)}</div>`:''}
+        ${gear.length?gear.map(a=>{ const g=stOf(a), mine=g.holder&&g.holder.personId===p.pid, blocked=(g.status==='out'&&!mine)||g.status==='lost'; return `<label class="chk"><input type="checkbox" data-gear="${a.id}" ${p.gear.includes(a.id)?'checked':''} ${blocked&&!p.gear.includes(a.id)?'disabled':''}> ${a.kind==='kit'?'🧰 ':''}${esc(a.name)} <code class="small muted">${esc(a.code||'')}</code>${a.kind==='kit'?` <span class="small muted">(${(a.contents||[]).length} items)</span>`:''}${g.status==='out'?` <span class="small muted">${mine?'(you have this)':'(with '+esc(g.holder.personName)+')'}</span>`:g.status==='repair'?' <span class="small" style="color:var(--warn)">(needs repair)</span>':g.status==='lost'?' <span class="small muted">(lost)</span>':''}</label>`; }).join(''):'<div class="small muted">No booth assets set up for this office yet.</div>'}</div>
       <div>${adpBox('in', p.adpIn)}</div>
       <div><label class="chk"><input type="checkbox" data-keep="office-pick" ${p.officePickup?'checked':''}> I picked up equipment at the office today</label>
         <div class="field" style="max-width:220px"><label class="small">Clocked in on ADP at the office at</label><input type="time" data-keep="office-time" value="${esc(p.officeTime||'')}"></div></div>
@@ -3235,16 +3875,21 @@ function checkOutPanel(p){
   return `<div class="panel"><h2>Check out · ${esc(c.eventName)}</h2><div class="sub">${esc(c.personName)} · checked in ${fmtStamp(c.inAt)} · about ${hrs} h so far</div>
     <div class="fields">
       <div class="field"><label>Leads <span style="color:var(--red)">*</span></label><input type="number" min="0" inputmode="numeric" data-keep="out-leads" value="${esc(p.leads??'')}"></div>
-      <div class="field"><label>Opps (appointments set) <span style="color:var(--red)">*</span></label><input type="number" min="0" inputmode="numeric" data-keep="out-appts" value="${esc(p.appts??'')}"></div>
+      <div class="field"><label>Opps (set appointments) <span style="color:var(--red)">*</span></label><input type="number" min="0" inputmode="numeric" data-keep="out-appts" value="${esc(p.appts??'')}" oninput="var z=document.getElementById('zeroWhy');if(z)z.style.display=this.value==='0'?'':'none'"><div class="small muted">Leads you couldn’t set are unset opps: they go to the call center to be scheduled.${(()=>{ const g=checkinGoal(c); return g?` <b>Your goal for this shift: about ${goalRound(g.mine)}.</b>`:''; })()}</div></div>
+      <div class="field" id="zeroWhy" style="${String(p.appts??'')==='0'?'':'display:none'}"><label>No opps today: what happened? <span style="color:var(--red)">*</span></label><textarea data-keep="out-zero" placeholder="e.g. very low foot traffic, booth in a back corner, mostly renters, weather">${esc(p.zeroWhy||'')}</textarea></div>
       <div class="field"><label>Foot traffic</label><select data-keep="out-traffic"><option value="">Select…</option>${['Low','Medium','High'].map(x=>`<option ${p.traffic===x?'selected':''}>${x}</option>`).join('')}</select></div>
     </div>
     ${cons.length?`<h3>Giveaways & print used</h3><div class="fields">${cons.map(a=>`<div class="field"><label class="small">${esc(a.name)}</label><input type="number" min="0" inputmode="numeric" data-keep="use-${a.id}" placeholder="0"></div>`).join('')}</div>`:''}
-    ${(c.assetsOut||[]).length?`<h3>Booth gear</h3><div class="small muted">Tell us what came back and what shape it’s in.</div>${c.assetsOut.map(id=>`<div class="row" style="margin:4px 0"><span style="flex:1">${esc(assetName(id))}</span><select data-keep="ret-${id}"><option value="Good">Returned – good</option><option value="Needs repair">Returned – needs repair</option><option value="Damaged">Returned – damaged</option><option value="keep">I still have it</option><option value="Missing">Missing / left at venue</option></select></div>`).join('')}`:''}
+    ${(c.assetsOut||[]).length?`<h3>Booth assets</h3><div class="small muted">Tell us what came back and what shape it’s in.</div>${c.assetsOut.map(id=>`<div class="row" style="margin:4px 0"><span style="flex:1">${esc(assetName(id))}</span><select data-keep="ret-${id}"><option value="Good">Returned – good</option><option value="Needs repair">Returned – needs repair</option><option value="Damaged">Returned – damaged</option><option value="keep">I still have it</option><option value="Missing">Missing / left at venue</option></select></div>`).join('')}`:''}
     <h3>Where is the event equipment tonight? <span style="color:var(--red)">*</span></h3><div class="small muted">Banners, table, tent, kit, giveaways: let us know where everything is.</div>
     <select data-keep="out-equip" style="font-size:16px;padding:9px;width:100%;margin-top:4px"><option value="">Choose…</option>${Object.entries(EQUIP_WHERE).map(([k,l])=>`<option value="${k}" ${p.equipWhere===k?'selected':''}>${esc(l)}</option>`).join('')}</select>
     <div class="field" style="margin-top:6px"><input type="text" data-keep="out-equip-note" value="${esc(p.equipNote||'')}" placeholder="Details (who has it, where it’s stored, when it goes back to the office)"></div>
     <h3>Any issues?</h3>${ISSUE_TYPES.map((t,i)=>`<label class="chk"><input type="checkbox" data-keep="iss-${i}"> ${esc(t)}</label>`).join('')}
     <div class="field" style="margin-top:6px"><textarea data-keep="out-issue" placeholder="Describe the issue or what you need (optional)"></textarea></div>
+    ${(()=>{ const bp=checkinBreakPlan(c); if(!bp||!bp.meals) return ''; return `<h3>Meal break <span style="color:var(--red)">*</span></h3><div class="small muted">Your shift called for ${breakText(bp)}.</div>
+      <label class="chk"><input type="radio" name="mealtaken" data-keep="meal-yes" ${p.meal==='yes'?'checked':''}> Yes, I took my ${BREAKS.mealMin}-minute unpaid meal break and clocked out on ADP for it</label>
+      <label class="chk"><input type="radio" name="mealtaken" data-keep="meal-no" ${p.meal==='no'?'checked':''}> No, I didn’t get my meal break</label>
+      <div class="field" style="margin-top:4px"><input type="text" data-keep="meal-note" value="${esc(p.mealNote||'')}" placeholder="If not, why? (your supervisor will follow up)"></div>`; })()}
     <div style="margin-top:12px">${adpBox('out', p.adpOut)}</div>
     <div class="field" style="margin-top:10px"><label>Shift notes</label><textarea data-keep="out-notes" placeholder="How did it go? Anything for next year?"></textarea></div>
     <div style="margin-top:10px"><div class="lbl">Teardown photo (optional)</div><label class="btn big photobtn">📷 ${p.photo?'Retake teardown photo':'Take teardown photo'}<input type="file" accept="image/*" capture="environment" data-act="photo" data-slot="out" style="display:none"></label>${p.photo?`<img class="preview" src="${p.photo}" alt="Teardown photo">`:''}</div>
@@ -3264,7 +3909,7 @@ async function submitIn(){
     await saveCheckin(p.cid,{
       id:p.cid, dayId:s.dayId, eventKey:s.ev.key, eventName:s.ev.name, office:s.ev.office||'', venueName:s.ev.venueName||'',
       date:s.day.date, shiftStart:s.day.start||'', shiftStop:s.day.stop||'', personId:p.pid, personName:me.name||'', unscheduled:!!p.unscheduled,
-      status:'in', inAt:Date.now(), adpIn:true, officePickup:!!p.officePickup, officeClockIn:p.officePickup?p.officeTime:'', inLoc:p.loc||null, inLocNote:p.loc?'':(p.locNote||''), inPhoto:photoId,
+      status:'in', inAt:Date.now(), tzOff:new Date().getTimezoneOffset(), adpIn:true, officePickup:!!p.officePickup, officeClockIn:p.officePickup?p.officeTime:'', inLoc:p.loc||null, inLocNote:p.loc?'':(p.locNote||''), inPhoto:photoId,
       assetsOut:p.gear, inNote:(document.querySelector('[data-keep="in-note"]')||{}).value||''
     }, true);
     try{ await logAsset(p.gear.flatMap(id=>expandKits([id])).map(x=>({ type:'checkout', assetId:x, personId:p.pid, personName:me.name||'', eventKey:s.ev.key, eventName:s.ev.name, cid:p.cid }))); }catch(err){ console.error('asset log',err); }
@@ -3276,12 +3921,21 @@ async function submitIn(){
 }
 async function submitOut(){
   const p=ui.panel, c=S.checkins[p.cid];
-  const v=k=>{ const el=document.querySelector(`[data-keep="${k}"]`); return el ? (el.type==='checkbox'?el.checked:el.value) : undefined; };
+  const v=k=>{ const el=document.querySelector(`[data-keep="${k}"]`); return el ? ((el.type==='checkbox'||el.type==='radio')?el.checked:el.value) : undefined; };
   const leads=v('out-leads'), appts=v('out-appts');
   p.leads=leads; p.appts=appts; p.traffic=v('out-traffic');
   p.adpOut=!!v('adp-out');
   if(!p.adpOut){ p.err='Please clock out on ADP, then tick “I’ve clocked out on ADP.”'; render(); return; }
   if(leads==='' || appts===''){ p.err='Enter your leads and opps (use 0 if none).'; render(); return; }
+  p.zeroWhy=v('out-zero')||'';
+  if(num(appts)===0 && !p.zeroWhy.trim()){ p.err='You entered 0 opps. Tell us what happened today.'; render(); return; }
+  { const g=checkinGoal(c), n=num(appts), hi=g?Math.max(g.mine*3, g.mine+5):15, key=leads+'|'+appts;
+    if(p.rangeOk!==key && (n>hi || n>num(leads))){
+      if(!confirm(n>num(leads)?`You entered ${n} opps but only ${num(leads)} leads. Opps are leads you set, so they can’t be more than your leads. Is ${n} opps right?`:`You entered ${n} opps${g?`, but your goal for this shift was about ${goalRound(g.mine)}`:''}. That’s much higher than usual. Is ${n} right?`)){ p.err=''; render(); return; }
+      p.rangeOk=key; } }
+  { const bp=checkinBreakPlan(c); p.meal=v('meal-yes')?'yes':v('meal-no')?'no':''; p.mealNote=v('meal-note')||'';
+    if(bp && bp.meals && !p.meal){ p.err='Tell us whether you took your meal break.'; render(); return; }
+    if(p.meal==='no' && !p.mealNote.trim()){ p.err='Tell us why you didn’t get your meal break.'; render(); return; } }
   p.equipWhere=v('out-equip')||''; p.equipNote=v('out-equip-note')||'';
   if(!p.equipWhere){ p.err='Tell us where the event equipment is tonight.'; render(); return; }
   if(p.equipWhere==='handoff' && !p.equipNote.trim()){ p.err='Enter who you handed the equipment to.'; render(); return; }
@@ -3297,10 +3951,10 @@ async function submitOut(){
     let outPhoto=''; if(p.photo) outPhoto=await putPhoto(p.photo,{checkin:p.cid, kind:'out'});
     const loc=await Promise.race([getLocation(), new Promise(r=>setTimeout(()=>r({loc:null}),8000))]);
     await saveCheckin(p.cid,{ status:'out', outAt:Date.now(), adpOut:true, outLoc:loc.loc||null, leads:num(leads), appts:num(appts), traffic:p.traffic||'',
-      consumables:cons, assetsReturned:returned, assetConditions:retCond, issues, issueText:v('out-issue')||'', notes:v('out-notes')||'', outPhoto, equipWhere:p.equipWhere, equipNote:p.equipNote }, false);
+      consumables:cons, assetsReturned:returned, assetConditions:retCond, issues, issueText:v('out-issue')||'', notes:v('out-notes')||'', outPhoto, equipWhere:p.equipWhere, equipNote:p.equipNote, ...(num(appts)===0?{ zeroWhy:p.zeroWhy }:{}), ...(p.meal?{ mealTaken:p.meal==='yes', mealNote:p.meal==='no'?p.mealNote:'' }:{}) }, false);
     try{ await logAsset(aEntries); }catch(err){ console.error('asset log',err); }
-    alertCheckout(Object.assign({}, c, { leads:num(leads), appts:num(appts), issues, issueText:v('out-issue')||'', assetConditions:retCond, equipWhere:p.equipWhere, equipNote:p.equipNote }));
-    ui.lastSms=`${c.personName}: checked out of ${c.eventName}. Leads ${num(leads)}, appts ${num(appts)}. Equipment: ${EQUIP_WHERE[p.equipWhere]}${p.equipNote?' ('+p.equipNote+')':''}.`;
+    alertCheckout(Object.assign({}, c, { leads:num(leads), appts:num(appts), issues:p.meal==='no'?[...issues,'Meal break not taken']:issues, issueText:[v('out-issue')||'', p.meal==='no'?'Meal break not taken: '+p.mealNote:''].filter(Boolean).join(' · '), assetConditions:retCond, equipWhere:p.equipWhere, equipNote:p.equipNote }));
+    ui.lastSms=`${c.personName}: checked out of ${c.eventName}. Leads ${num(leads)}, opps ${num(appts)}. Equipment: ${EQUIP_WHERE[p.equipWhere]}${p.equipNote?' ('+p.equipNote+')':''}.`;
     ui.panel=null; ui.notice=ui.queued?'Saved on your phone. Your check-out will send when you have signal.':'Checked out. Thanks for your work today!'; ui.noticeKind='ok';
   }catch(e){ console.error(e); p.err='Couldn’t save: '+(e.message||e.code)+'. Check your signal and try again.'; }
   ui.busy=false; render();
@@ -3312,7 +3966,7 @@ function evalsView(){
   if(ui.evalKey){ const e=S.sched.events.find(x=>x.key===ui.evalKey); if(e) return evalForm(e); ui.evalKey=null; }
   const list=evalsDue().sort((a,b)=>(b.end||b.start).localeCompare(a.end||a.start));
   const todo=list.filter(e=>!evalDone(e)), done=list.filter(e=>evalDone(e));
-  const row=e=>{ const r=rollup(e); return `<tr class="click" data-eval="${esc(e.key)}"><td>${esc(e.name)}<div class="small muted">${esc(e.venueName||'')}</div></td><td>${esc(e.office||'')}</td><td>${fmtMD(e.start)}${e.end&&e.end!==e.start?'–'+fmtMD(e.end):''}</td><td>${r.cs.length} check-in${r.cs.length===1?'':'s'}</td><td>${r.leads} leads · ${r.appts} appts</td><td>${evalDone(e)?'<span class="pill p-green">Evaluated</span>':'<span class="pill p-warn">Needs evaluation</span>'}</td></tr>`; };
+  const row=e=>{ const r=rollup(e); return `<tr class="click" data-eval="${esc(e.key)}"><td>${esc(e.name)}<div class="small muted">${esc(e.venueName||'')}</div></td><td>${esc(e.office||'')}</td><td>${fmtMD(e.start)}${e.end&&e.end!==e.start?'–'+fmtMD(e.end):''}</td><td>${r.cs.length} check-in${r.cs.length===1?'':'s'}</td><td>${r.leads} leads · ${r.appts} opps</td><td>${evalDone(e)?'<span class="pill p-green">Evaluated</span>':'<span class="pill p-warn">Needs evaluation</span>'}</td></tr>`; };
   return `<div class="row" style="margin-bottom:12px"><button class="btn primary" data-tab="summary">📊 Event activation summary</button><span class="spacer"></span>${scopePicker()}</div>
   ${S.user?'':'<div class="notice">Sign in (top right) to complete evaluations.</div>'}
   ${S.user&&S.etaccErr?`<div class="notice">Couldn’t read ETACC events (${esc(S.etaccErr)}). Evaluations will save in the hub only.</div>`:''}
@@ -3342,7 +3996,7 @@ function evalForm(e){
   return `<div class="row" style="margin-bottom:10px"><button class="btn sm" data-act="evalBack">◀ All evaluations</button><span class="spacer"></span>${m?`<a class="btn sm" href="${ETACC_URL}#event=${encodeURIComponent(m.id)}" target="_blank" rel="noopener">Open in ETACC ↗</a>`:''}</div>
   <div class="card"><h2>${esc(e.name)}</h2><div class="sub">${esc(e.office||'')} · ${fmtLong(e.start)}${e.end&&e.end!==e.start?' – '+fmtLong(e.end):''}${e.venueName?' · '+esc(e.venueName):''}<br>${m?`Linked to ETACC event${m.postEventEvalCompleted?' (evaluation already marked complete in ETACC)':''}.`:S.user?'<span style="color:var(--warn)">No matching ETACC event found by name and date. This evaluation will save in the hub only.</span>':''}${saved?`<br>Last saved ${fmtStamp(saved.savedAt)} by ${esc(saved.savedBy)}.`:''}</div>
   <div class="kpis"><div class="kpi"><b>${r.cs.length}</b><span>Check-ins</span></div><div class="kpi"><b>${r.leads}</b><span>Leads</span></div><div class="kpi"><b>${r.appts}</b><span>Opps</span></div><div class="kpi"><b>${round1(r.hrs)}</b><span>Hours worked</span></div><div class="kpi"><b>${r.lph}</b><span>Leads per hour</span></div></div>
-  <h3>Marketer check-ins</h3>${r.cs.length?`<table><thead><tr><th>Date</th><th>Marketer</th><th>In / out</th><th>Results</th><th>Photos</th></tr></thead><tbody>${r.cs.sort((a,b)=>a.date.localeCompare(b.date)||(a.inAt-b.inAt)).map(c=>`<tr><td>${fmtMD(c.date)}</td><td>${esc(c.personName)}${c.unscheduled?' <span class="pill p-warn">unscheduled</span>':''}</td><td class="small">${fmtClock(c.inAt)}${c.inLoc?` <a href="${mapLink(c.inLoc)}" target="_blank" rel="noopener">📍</a>`:''} – ${c.outAt?fmtClock(c.outAt):'<span style="color:var(--warn)">no check-out</span>'}</td><td class="small">${c.status==='out'?`${num(c.leads)} leads · ${num(c.appts)} appts${c.traffic?' · '+esc(c.traffic)+' traffic':''}`:''}${c.notes?`<div class="muted">${esc(c.notes)}</div>`:''}${(c.issues||[]).length||c.issueText?`<div style="color:var(--red)">${esc([...(c.issues||[]),c.issueText].filter(Boolean).join('; '))}</div>`:''}</td><td><div class="thumbs">${[c.inPhoto,c.outPhoto].filter(Boolean).map(id=>photoImg(id)).join('')}</div></td></tr>`).join('')}</tbody></table>`:'<p class="muted">No marketer check-ins were recorded for this event.</p>'}
+  <h3>Marketer check-ins</h3>${r.cs.length?`<table><thead><tr><th>Date</th><th>Marketer</th><th>In / out</th><th>Results</th><th>Photos</th></tr></thead><tbody>${r.cs.sort((a,b)=>a.date.localeCompare(b.date)||(a.inAt-b.inAt)).map(c=>`<tr><td>${fmtMD(c.date)}</td><td>${esc(c.personName)}${c.unscheduled?' <span class="pill p-warn">unscheduled</span>':''}</td><td class="small">${fmtClock(c.inAt)}${c.inLoc?` <a href="${mapLink(c.inLoc)}" target="_blank" rel="noopener">📍</a>`:''} – ${c.outAt?fmtClock(c.outAt):'<span style="color:var(--warn)">no check-out</span>'}</td><td class="small">${c.status==='out'?`${num(c.leads)} leads · ${num(c.appts)} opps${c.traffic?' · '+esc(c.traffic)+' traffic':''}`:''}${c.notes?`<div class="muted">${esc(c.notes)}</div>`:''}${(c.issues||[]).length||c.issueText?`<div style="color:var(--red)">${esc([...(c.issues||[]),c.issueText].filter(Boolean).join('; '))}</div>`:''}</td><td><div class="thumbs">${[c.inPhoto,c.outPhoto].filter(Boolean).map(id=>photoImg(id)).join('')}</div></td></tr>`).join('')}</tbody></table>`:'<p class="muted">No marketer check-ins were recorded for this event.</p>'}
   </div>
   <div class="card"><h2>Post-event evaluation</h2><div class="sub">Same fields as ETACC’s Post-Event Evaluation. Pre-filled from check-outs; edit anything before saving.</div>
     <div class="fields">
@@ -3379,7 +4033,7 @@ function detailPanel(){
       ${c.officePickup?`<tr><th>Equipment</th><td>Picked up at the office · clocked in on ADP at ${esc(fmtTime(c.officeClockIn)||c.officeClockIn)}</td></tr>`:''}
       <tr><th>ADP</th><td>${c.adpIn?'✓ Confirmed clock-in':'<span style="color:var(--warn)">Clock-in not confirmed</span>'}${c.status==='out'?(c.adpOut?' · ✓ Confirmed clock-out':' · <span style="color:var(--warn)">Clock-out not confirmed</span>'):''}</td></tr>
       <tr><th>Checked out</th><td>${c.outAt?fmtStamp(c.outAt)+(c.outLoc?` · <a href="${mapLink(c.outLoc)}" target="_blank" rel="noopener">location</a>`:'')+` · ${round1(hoursOf(c))} h`:'<span class="muted">Not yet</span>'}</td></tr>
-      ${c.status==='out'?`<tr><th>Results</th><td>${num(c.leads)} leads · ${num(c.appts)} opps${c.traffic?' · '+esc(c.traffic)+' traffic':''}</td></tr>`:''}
+      ${c.status==='out'?`<tr><th>Results</th><td>${num(c.leads)} leads · ${num(c.appts)} opps${c.traffic?' · '+esc(c.traffic)+' traffic':''}${(()=>{ const g=checkinGoal(c); return g?` · goal about ${goalRound(g.mine)}`:''; })()}</td></tr>${c.zeroWhy?`<tr><th>Why 0 opps</th><td>${esc(c.zeroWhy)}</td></tr>`:''}${c.mealTaken===false?`<tr><th>Meal break</th><td>Not taken: ${esc(c.mealNote||'')}</td></tr>`:''}`:''}
       ${c.equipWhere?`<tr><th>Equipment tonight</th><td>${esc(EQUIP_WHERE[c.equipWhere]||'')}${c.equipNote?' – '+esc(c.equipNote):''}</td></tr>`:''}
       ${(c.assetsOut||[]).length?`<tr><th>Gear</th><td>${c.assetsOut.map(id=>{ const k=(c.assetConditions||{})[id]; return esc(assetName(id))+(c.status!=='out'?'':k==='keep'?' <span style="color:var(--warn)">still with marketer</span>':k==='Missing'?' <span style="color:var(--red)">missing</span>':(c.assetsReturned||[]).includes(id)?` ✓ returned${k&&k!=='Good'?' – '+esc(k.toLowerCase()):''}`:''); }).join('<br>')}</td></tr>`:''}
       ${Object.keys(c.consumables||{}).length?`<tr><th>Used</th><td>${Object.entries(c.consumables).map(([id,n])=>`${n} × ${esc(assetName(id))}`).join('<br>')}</td></tr>`:''}
@@ -3448,7 +4102,14 @@ document.addEventListener('click', async ev=>{
   if(a==='expSent'){ const x=S.expenses[ui.expView]; const by=(S.user&&S.user.email)||''; await guard(()=>saveExpense(Object.assign({}, x, { sentToAP:Date.now(), history:[...(x.history||[]), { at:Date.now(), by, action:'Sent to Accounts Payable' }] }))); return; }
   if(a==='expPrint'){ printExpense(S.expenses[ui.expView]); return; }
   if(a==='expEmail'){ emailExpense(S.expenses[ui.expView]); return; }
-  if(a==='expApprove'){ const x=S.expenses[ui.expView]; if(!confirm(`Approve ${x.personName}’s report for ${money2((x.totals||expCalc(x)).total)}?`)) return; await guard(()=>expAction(x,'approved')); ui.notice='Approved. Save it as a PDF and email it to Accounts Payable using the steps on the report.'; ui.noticeKind='ok'; render(); return; }
+  if(a==='expApprove'){ const x=S.expenses[ui.expView], auto=apAutoOn(); if(!confirm(auto?`Approve ${x.personName}’s report for ${money2((x.totals||expCalc(x)).total)} and email it to Accounts Payable with the receipts?`:`Approve ${x.personName}’s report for ${money2((x.totals||expCalc(x)).total)}?`)) return;
+    await guard(()=>expAction(x,'approved'));
+    if(auto && S.expenses[x.id] && S.expenses[x.id].status==='approved'){ ui.busy=true; ui.notice='Approved. Emailing Accounts Payable…'; ui.noticeKind='ok'; render();
+      try{ const n=await sendExpenseToAP(S.expenses[x.id]); ui.notice=`Approved and emailed to Accounts Payable${n>1?` in ${n} emails`:''} with the receipts.`; ui.noticeKind='ok'; }
+      catch(e){ console.error(e); ui.notice='Approved, but the email to Accounts Payable didn’t go out ('+(e.code||e.message)+'). Use “Email it to Accounts Payable now” on the report, or send it yourself.'; ui.noticeKind='err'; }
+      ui.busy=false; render(); return; }
+    ui.notice='Approved. Save it as a PDF and email it to Accounts Payable using the steps on the report.'; ui.noticeKind='ok'; render(); return; }
+  if(a==='expAP'){ const x=S.expenses[ui.expView]; if(!x||x.status!=='approved') return; ui.busy=true; render(); try{ const n=await sendExpenseToAP(x); ui.notice=`Emailed to Accounts Payable${n>1?` in ${n} emails`:''} with the receipts.`; ui.noticeKind='ok'; }catch(e){ console.error(e); ui.notice='Couldn’t email Accounts Payable: '+(e.code||e.message); ui.noticeKind='err'; } ui.busy=false; render(); return; }
   if(a==='expReturn'){ const x=S.expenses[ui.expView]; const note=prompt('What needs to change? (the marketer will see this)',''); if(note===null) return; await guard(()=>expAction(x,'returned',note)); alertExpenseReturned(x, note); ui.expView=null; render(); return; }
   if(a==='alRead'){ await guard(()=>markAlertsRead([t.dataset.id])); return; }
   if(a==='alReadAll'){ await guard(()=>markAlertsRead(unreadAlerts().map(x=>x.id))); return; }
@@ -3462,6 +4123,15 @@ document.addEventListener('click', async ev=>{
   if(a==='undoClose'){ ui.undo=null; render(); return; }
   if(a==='sgo'){ searchGo(+t.dataset.i); return; }
   if(a==='pageHelp'){ pageHelp(); return; }
+  if(a==='dcOk'){ ui.dcOpen=true; await guard(()=>markDateOk(t.dataset.id)); render(); return; }
+  if(a==='scEvEdit'){ const D=scData(), x=D.shows.find(y=>scEvKey(y)===t.dataset.k); if(x){ ui.scEv={ k:t.dataset.k, x }; render(); } return; }
+  if(a==='scEvClose'){ if(ev.target.closest('.tourbox') && t.classList.contains('tourbg')) return; ui.scEv=null; render(); return; }
+  if(a==='scEvSave'||a==='scEvClear'){ if(a==='scEvClear' && !confirm('Undo this correction and go back to the numbers pulled in automatically?')) return; try{ await scEvSave(a==='scEvClear'); ui.scEv=null; ui.notice=a==='scEvClear'?'Correction removed.':'Scorecard updated.'; ui.noticeKind='ok'; }catch(e){ ui.scEv.err='Couldn’t save: '+(e.code||e.message); } render(); return; }
+  if(a==='lySet'){ ui.lySet=t.dataset.v; render(); return; }
+  if(a==='glRef'){ ui.help=null; ui.glRef=true; render(); return; }
+  if(a==='glClose'){ if(ev.target.closest('.tourbox') && t.classList.contains('tourbg')) return; ui.glRef=false; render(); return; }
+  if(a==='helpClose'){ if(ev.target.closest('.tourbox') && t.classList.contains('tourbg')) return; ui.help=null; render(); return; }
+  if(a==='helpGuide'){ const k=ui.help; ui.help=null; pageGuide(k); return; }
   if(a==='welcomeClose'){ if(ev.target.closest('.tourbox') && t.classList.contains('tourbg')) return; ui.welcome=false; render(); return; }
   if(a==='welcomeGo'){ ui.welcome=false; const g=t.dataset.go;
     if(g==='startDay'||g==='startWeek'){ render(); const b=document.createElement('button'); b.dataset.act=g; b.style.display='none'; document.body.appendChild(b); b.click(); b.remove(); return; } else if(g==='search'){ render(); setTimeout(()=>{ const i=document.getElementById('hubSearch'); i&&i.focus(); },30); return; }
@@ -3501,7 +4171,7 @@ document.addEventListener('click', async ev=>{
   if(a==='asgArchive'){ const x=(S.asg||{})[t.dataset.id]; if(x) await guard(()=>asgUpdate(x.id,{ archived:!x.archived })); return; }
   if(a==='asgDelete'){ const x=(S.asg||{})[t.dataset.id]; if(!x || !confirm(`Delete “${x.title}” for everyone? Managers’ check-offs are kept but the task disappears. (Archive instead to keep the record.)`)) return; await guard(()=>asgDelete(x.id)); return; }
   if(a==='asgRemind'){ const n=await asgRemind(t.dataset.id,false); ui.notice=n?`Reminder sent to ${n} manager${n===1?'':'s'}.`:'Already reminded today.'; ui.noticeKind=''; render(); return; }
-  if(a==='alertSave'){ const vals=[...document.querySelectorAll('[data-alert]')].map(el=>({ kind:el.dataset.alert, key:el.dataset.key, value:el.value })); const ccEl=document.querySelector('[data-alertcc]'); if(ccEl) vals.ccDivision=ccEl.checked; ui.busy=true; render(); try{ await saveAlertCfg(vals); ui.alertMsg='Saved.'; }catch(e){ ui.alertMsg='Couldn’t save: '+(e.code||e.message); } ui.busy=false; render(); return; }
+  if(a==='alertSave'){ const vals=[...document.querySelectorAll('[data-alert]')].map(el=>({ kind:el.dataset.alert, key:el.dataset.key, value:el.value })); const ccEl=document.querySelector('[data-alertcc]'); if(ccEl) vals.ccDivision=ccEl.checked; const apEl=document.querySelector('[data-apauto]'); if(apEl) vals.apAuto=apEl.checked; ui.busy=true; render(); try{ await saveAlertCfg(vals); ui.alertMsg='Saved.'; }catch(e){ ui.alertMsg='Couldn’t save: '+(e.code||e.message); } ui.busy=false; render(); return; }
   if(a==='alertTest'){ const ok=await queueMail('test-'+Date.now(), { to:[(S.user&&S.user.email)||PAULA], kind:'test', subject:'Event Hub test alert', html:mailShell('Test alert','<p>If you’re reading this, automatic alerts are working.</p>') }); ui.alertMsg=ok?'Test queued: check your inbox in a minute.':'Couldn’t queue the test email.'; render(); return; }
   if(a==='backCheckin'){ ui.tab='checkin'; history.replaceState(null,'',location.pathname+location.search); render(); return; }
   if(a==='tAdd'){ ui.tForm={}; render(); return; }
@@ -3521,6 +4191,7 @@ document.addEventListener('click', async ev=>{
   if(a==='mtAdd'){ const tasks=[...(mgrDoc().tasks||[]), { id:'t_'+uid(), text:'New task', when:'dow:'+parseIso(todayIso()).getDay(), group:'' }]; await guard(()=>saveMgr({ tasks })); return; }
   if(a==='mtDel'){ if(!confirm('Remove this task from your list?')) return; const m=mgrDoc(); { const pt=JSON.parse(JSON.stringify(m.tasks||[])), pr=(m.removedTasks||[]).slice(); showUndo('Task removed.', ()=>saveMgr({ tasks:pt, removedTasks:pr })); } await guard(()=>saveMgr({ tasks:(m.tasks||[]).filter(x=>x.id!==t.dataset.id), removedTasks:[...new Set([...(m.removedTasks||[]), t.dataset.id])] })); return; }
   if(a==='mtReset'){ if(!confirm('Replace your task list with the team’s standard weekly cadence?')) return; await guard(()=>saveMgr({ removedTasks:[], tasks:JSON.parse(JSON.stringify(DEFAULT_MGR_TASKS)) })); return; }
+  if(a==='adpClear'){ if(!confirm('Remove the uploaded ADP file from this device?')) return; adpSave(null); ui.adpMsg=''; render(); return; }
   if(a==='adpWk'){ const n=+t.dataset.n; ui.adpWeek = n===0 ? mondayOf(todayIso()) : addDays(ui.adpWeek||mondayOf(todayIso()), n); render(); return; }
   if(a==='scopeToggle'){ ui.scopeOpen=!ui.scopeOpen; render(); return; }
   if(a==='scopeClear'){ ui.scope=[]; lsSet('peHub.scope','[]'); render(); return; }
@@ -3571,6 +4242,7 @@ document.addEventListener('change', async ev=>{
   if(ev.target && ev.target.matches && ev.target.matches('[data-viewas]')){ const v=ev.target.value; if(v) startViewAs(v); return; }
   const el=ev.target;
   if(el.dataset.remset){ const R=remDraft(); let v=el.value; if(el.dataset.remset==='week' && v) v=mondayOf(v); if(v||el.dataset.remset==='region') R[el.dataset.remset]=v; ui.remMsg=''; render(); return; }
+  if(el.id==='adpFile' && el.files[0]){ ui.adpMsg='Reading the ADP file…'; render(); try{ ui.adpMsg=await importAdpTime(el.files[0]); const D=adpData(); if(D && !(addDays(ui.adpWeek||mondayOf(todayIso()),6)>=D.from && (ui.adpWeek||mondayOf(todayIso()))<=D.to)) ui.adpWeek=mondayOf(D.to); }catch(e){ ui.adpMsg=e.message||String(e); } el.value=''; render(); return; }
   if(el.id==='srFile' && el.files[0]){ ui.srMsg='Reading the file…'; render(); try{ ui.srMsg=await importShowReport(el.files[0]); }catch(e){ ui.srMsg=e.message||String(e); } el.value=''; render(); return; }
   if(el.id==='remFile' && el.files[0]){ ui.remMsg='Reading the file…'; render(); try{ ui.remMsg=await importRemJotform(el.files[0]); }catch(e){ ui.remMsg=e.message||String(e); } el.value=''; render(); return; }
   if(el.dataset.scm){ const [kind,key,region,field]=el.dataset.scm.split('|'); try{ await saveScManual(`${kind}_${key}_${region}`, field, el.value); render(); }catch(e){ alert('Couldn’t save: '+(e.code||e.message)); } return; }

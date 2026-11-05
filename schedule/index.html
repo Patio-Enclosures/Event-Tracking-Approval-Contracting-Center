@@ -175,6 +175,15 @@ h3.bh{font-size:14px;margin:18px 0 4px}
   .mylist{display:none!important}
   .details{grid-template-columns:repeat(3,1fr)}
 }
+.offnote{margin:6px 0;padding:6px 8px;border-radius:6px;background:#fdecea;color:#8a1c12;font-size:13px}
+.offshift{opacity:.7;background:#f6f6f6}
+.offdays{margin:6px 0}
+details.sec>summary{cursor:pointer;list-style:none}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary h2{display:inline}
+details.sec>summary::before{content:'▸';display:inline-block;width:18px;color:var(--muted,#777);transition:transform .15s}
+details.sec[open]>summary::before{transform:rotate(90deg)}
+.staffwarn details.sec>summary h2{display:inline}
 </style>
 </head>
 <body>
@@ -246,6 +255,10 @@ function load(){
   try{ const raw = localStorage.getItem(STORE_KEY); if(raw) data = Object.assign(data, JSON.parse(raw)); }catch(e){}
   try{ const u = JSON.parse(localStorage.getItem(STORE_KEY+'-ui')||'{}'); if(u.office!==undefined) ui.office=u.office; if(u.region) ui.region=u.region; if(u.weeks) ui.weeks=u.weeks; if(u.person) ui.person=u.person; }catch(e){}
 }
+// Collapsible sections: which ones are closed is remembered on this device.
+let secClosed = (()=>{ try{ return new Set(JSON.parse(localStorage.getItem(STORE_KEY+'-sec')||'[]')); }catch(e){ return new Set(); } })();
+function secOpen(k){ return !secClosed.has(k); }
+function secSet(k, open){ if(open) secClosed.delete(k); else secClosed.add(k); try{ localStorage.setItem(STORE_KEY+'-sec', JSON.stringify([...secClosed])); }catch(e){} }
 function saveLocal(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(data)); }catch(e){ if(cloud.status!=='live') ui.notice = 'Could not save in this browser (storage is blocked or full). Use Backup to keep a copy.'; }
   try{ localStorage.setItem(STORE_KEY+'-ui', JSON.stringify({office:ui.office, region:ui.region||'', person:ui.person||'', weeks:ui.weeks||1})); }catch(e){}
@@ -297,7 +310,7 @@ function cloudPayload(name){
   if(name==='roster') return clean({ list:data.roster, rosterAsOf:data.rosterAsOf||null, hpiAsOf:data.hpiAsOf||null });
   // Booth location / setup notes typed on event cards, kept apart from the ETACC import so re-imports keep them.
   if(name==='practices') return { text: data.practices||'' };
-  if(name==='details') return { list: Object.entries(data.details||{}).filter(([k,v])=>v && (v.booth||v.setup||Object.keys(v.times||{}).length||(v.dates&&v.dates.length))).map(([key,v])=>Object.assign({ key, booth:v.booth||'', setup:v.setup||'', times:Object.entries(v.times||{}).map(([date,t])=>({ date, start:t.start||'', stop:t.stop||'' })) }, v.dates&&v.dates.length?{ dates:v.dates.slice() }:{})) };
+  if(name==='details') return { list: Object.entries(data.details||{}).filter(([k,v])=>v && (v.booth||v.setup||Object.keys(v.times||{}).length||(v.dates&&v.dates.length)||v.off)).map(([key,v])=>Object.assign({ key, booth:v.booth||'', setup:v.setup||'', times:Object.entries(v.times||{}).map(([date,t])=>({ date, start:t.start||'', stop:t.stop||'' })) }, v.dates&&v.dates.length?{ dates:v.dates.slice() }:{}, v.off?{ off:v.off }:{})) };
   // Firestore can't store an array inside an array, so each assignment is an object.
   // Partial shifts: hours for one marketer on one event day, kept with that day's assignment.
   return { list: Object.entries(data.assignments).filter(([k,v])=>v && v.length).map(([id,people])=>{ const times={}; people.forEach(pid=>{ const t=(data.shiftTimes||{})[id+'::'+pid]; if(t&&(t.start||t.stop)) times[pid]={start:t.start||'',stop:t.stop||''}; }); return Object.keys(times).length ? { id, people, times } : { id, people }; }) };
@@ -335,7 +348,7 @@ function applyCloud(name, d, force){
     if(name==='roster'){ data.roster = d.list||[]; data.rosterAsOf = d.rosterAsOf||null; data.hpiAsOf = d.hpiAsOf||null; }
     if(name==='assignments'){ data.assignments = Object.fromEntries((d.list||[]).map(x=>[x.id, x.people||[]]).filter(x=>x[0] && Array.isArray(x[1]))); data.shiftTimes={}; (d.list||[]).forEach(x=>Object.entries(x.times||{}).forEach(([pid,t])=>{ data.shiftTimes[x.id+'::'+pid]={start:t.start||'',stop:t.stop||''}; })); }
     if(name==='practices'){ data.practices = d.text||''; }
-    if(name==='details'){ data.details = Object.fromEntries((d.list||[]).filter(x=>x.key).map(x=>[x.key, { booth:x.booth||'', setup:x.setup||'', times:Object.fromEntries((x.times||[]).filter(t=>t.date).map(t=>[t.date,{start:t.start||'',stop:t.stop||''}])), dates:Array.isArray(x.dates)&&x.dates.length?x.dates.slice():null }])); }
+    if(name==='details'){ data.details = Object.fromEntries((d.list||[]).filter(x=>x.key).map(x=>[x.key, { booth:x.booth||'', setup:x.setup||'', times:Object.fromEntries((x.times||[]).filter(t=>t.date).map(t=>[t.date,{start:t.start||'',stop:t.stop||''}])), dates:Array.isArray(x.dates)&&x.dates.length?x.dates.slice():null, off:x.off&&x.off.reason?x.off:null }])); }
     cloud.pushed[name] = JSON.stringify(cloudPayload(name));
   } else if(force){
     if(name==='events'){ data.events=[]; data.dataAsOf=null; data.sourceFile=''; data.importedAt=null; }
@@ -495,6 +508,9 @@ function importCSV(text, file){
     if(badDate) why.push(`${badDate} row${badDate===1?' had a':'s had a'} Start Date that couldn't be read (e.g. "${badDateEx}").`);
     alert(why.join('\n\n')); ui.notice = why.join(' '); render(); return;
   }
+  // events added for staffing before they were submitted stay until the import brings them in
+  const keptAdded=(data.events||[]).filter(e=>e.added && !events.some(n=>n.key===e.key) && (e.end||e.start)>=addDays(todayIso(),-60));
+  keptAdded.forEach(e=>{ const o=Object.assign({}, e, { days:etaccDays(e).map(d=>({ date:d.date, start:d.start, stop:d.stop })), start:e._start||e.start, end:e._end||e.end }); delete o._days; delete o._start; delete o._end; events.push(o); });
   // keep assignments only for event days that still exist
   const valid = new Set(); events.forEach(e=>{ e.days.forEach(d=>valid.add(dayId(e,d))); (((data.details||{})[e.key]||{}).dates||[]).forEach(dt=>valid.add(e.key+'#'+dt)); });
   let dropped=0;
@@ -625,11 +641,25 @@ function offices(){
 function regionMap(){ const c={}; data.events.forEach(e=>{ if(e.office&&e.region){ c[e.office]=c[e.office]||{}; c[e.office][e.region]=(c[e.office][e.region]||0)+1; } });
   const m={}; Object.entries(c).forEach(([o,r])=>{ m[o]=Object.entries(r).sort((a,b)=>b[1]-a[1])[0][0]; }); return m; }
 function regionOf(o){ return regionMap()[o]||''; }
-function regions(){ return [...new Set([...Object.values(regionMap()), ...data.roster.map(r=>r.region).filter(Boolean)])].sort(); }
-function inView(o){ if(ui.office) return o===ui.office; if(ui.region) return regionOf(o)===ui.region; return true; }
+function regions(){ const a=myArea(); return [...new Set([...Object.values(regionMap()), ...data.roster.map(r=>r.region).filter(Boolean)])].filter(r=>!a||a.regs.has(r)||[...a.offs].some(o=>regionOf(o)===r)).sort(); }
+// Managers only see their own area (same org chart as the Event Hub). Paula, and anyone not in the chart, see everything.
+const SCHED_PAULA='paula.shoemaker@greatdayimprovements.com';
+const SCHED_ORG={ East:{ lead:'trevor.morrissey@greatdayimprovements.com', regions:{ SA:'trevor.morrissey', 'SA-2':'jessica.bustamante-ripper', NE:'michael.wing', MAN:'jarrett.branch', MAS:'jarrett.branch' } },
+  Central:{ lead:'angelique.critz@greatdayimprovements.com', regions:{ MW:'angelique.critz', UPL:'angelique.critz', 'MW-2':'eddie.wilson' } },
+  West:{ lead:'chris.winston@greatdayimprovements.com', regions:{ SC:'chris.winston', 'SC-2':'stephen.novak', SW:'chris.winston' } } };
+function myArea(){
+  const em=String((cloud.user&&cloud.user.email)||'').toLowerCase(); if(!em || em===SCHED_PAULA) return null;
+  const regs=new Set(), offs=new Set();
+  Object.values(SCHED_ORG).forEach(d=>{ if(d.lead===em) Object.keys(d.regions).forEach(r=>regs.add(r)); Object.entries(d.regions).forEach(([r,u])=>{ if(u+'@greatdayimprovements.com'===em) regs.add(r); }); });
+  (data.roster||[]).forEach(p=>{ if(p.mgr && p.office && String(p.email||'').toLowerCase()===em) offs.add(p.office); });
+  return (regs.size||offs.size) ? { regs, offs } : null;
+}
+function inArea(o){ const a=myArea(); if(!a) return true; return a.offs.has(o) || a.regs.has(regionOf(o)); }
+function inAreaP(r){ const a=myArea(); if(!a) return true; return a.offs.has(r.office) || a.regs.has(personRegion(r)); }
+function inView(o){ if(!inArea(o)) return false; if(ui.office) return o===ui.office; if(ui.region) return regionOf(o)===ui.region; return true; }
 // A person's region: from the roster upload if given, otherwise from their branch's ETACC events.
 function personRegion(r){ return (r && (r.region || regionOf(r.office))) || ''; }
-function inViewP(r){ if(ui.office) return r.office===ui.office; if(ui.region) return personRegion(r)===ui.region; return true; }
+function inViewP(r){ if(!inAreaP(r)) return false; if(ui.office) return r.office===ui.office; if(ui.region) return personRegion(r)===ui.region; return true; }
 // "Patio South Atlantic Region" -> "SA", "Patio Midwest Region" -> "MW", "Mid-Atlantic North" -> "MAN".
 function regionCode(v){
   if(/marketing|corporate|great day/i.test(String(v||''))) return 'Corporate';
@@ -663,8 +693,8 @@ function visibleEvents(){ return data.events.filter(e=>inView(e.office) && INCLU
 function needsStaffing(){
   const t=todayIso(), lim=addDays(t,28);
   return visibleEvents().filter(e=>(e.end||e.start)>=t && e.start<=lim).map(e=>{
-    const open=e.days.filter(d=>d.date>=t && !assigned(dayId(e,d)).length);
-    return { e, open, total:e.days.filter(d=>d.date>=t).length };
+    const open=e.days.filter(d=>d.date>=t && !d.off && !assigned(dayId(e,d)).length);
+    return { e, open, total:e.days.filter(d=>d.date>=t && !d.off).length };
   }).filter(x=>x.open.length).sort((a,b)=>a.open[0].date.localeCompare(b.open[0].date));
 }
 function shiftsOn(date){
@@ -708,13 +738,16 @@ function applyManagerTimes(){
     const dates=(det.dates&&det.dates.length) ? det.dates.slice().sort() : base.map(d=>d.date);
     e.days=dates.map(dt=>{ const b=base.find(x=>x.date===dt); return { date:dt, start:b?b.start:'', stop:b?b.stop:'', _s:b?b.start:'', _t:b?b.stop:'' }; });
     if(e.days.length){ e.start=e.days[0].date; e.end=e.days[e.days.length-1].date; }
+    const off=det.off; (e.days||[]).forEach(d=>{ d.off = off && (off.days||[]).includes(d.date) ? off : null; });
     (e.days||[]).forEach(d=>{ if(!('_s' in d)){ d._s=d.start||''; d._t=d.stop||''; }
       const o=t[d.date]; d.start=(o&&o.start)||d._s; d.stop=(o&&o.stop)||d._t; d.mgrTime=!!(o&&(o.start||o.stop)); }); });
 }
 function readDetDraft(){
   const bi=document.getElementById('detBooth'), si=document.getElementById('detSetup'); if(!(bi && si)) return null;
   const rows=[...document.querySelectorAll('[data-drow]')].map(r=>({ date:(r.querySelector('.ddate')||{}).value||'', start:(r.querySelector('[data-tpart=start]')||{}).value||'', stop:(r.querySelector('[data-tpart=stop]')||{}).value||'' }));
-  return { booth:bi.value, setup:si.value, rows };
+  const orr=document.getElementById('detOffReason');
+  const off = orr ? { reason:orr.value, note:(document.getElementById('detOffNote')||{}).value||'', days:[...document.querySelectorAll('[data-offday]')].filter(x=>x.checked).map(x=>x.dataset.offday) } : undefined;
+  return { booth:bi.value, setup:si.value, rows, off };
 }
 function render(){
   if(ui.editDet && !ui.detLock){ const dd=readDetDraft(); if(dd) ui.detDraft = dd; } ui.detLock=false;
@@ -740,6 +773,7 @@ function render(){
     </div>
     <div class="spacer"></div>
     <a class="btn primary no-print" href="../hub/?m=1${me?'&p='+encodeURIComponent(me.id):''}" style="text-decoration:none">📍 Check in / out</a>
+    <a class="btn no-print" href="../hub/?m=1#training" style="text-decoration:none">📚 Training</a>
     <a class="btn no-print" href="../hub/" style="text-decoration:none">Event Hub</a>
     <div class="print-only" style="font-weight:600;">Week of ${esc(label)}</div>
   </header>
@@ -772,16 +806,16 @@ function render(){
   </div>
   ${ui.notice ? `<div class="notice">${esc(ui.notice)} <button class="btn sm" data-act="dismiss" style="margin-left:6px;">OK</button></div>` : ''}
   ${!me && (cloud.user || cloud.status==='local') ? staffBanner() : ''}
-  <div class="card">
-    <h2>${me ? 'My schedule' : 'Schedule'}</h2>
+  <details class="card sec" data-sec="grid" ${secOpen('grid')?'open':''}>
+    <summary><h2>${me ? 'My schedule' : 'Schedule'}</h2></summary>
     <div class="sub">${nW>1?`${nW} weeks: ${esc(vlabel)}`:`Week of ${esc(label)}`}${me ? '' : ` <label class="chk no-print" style="display:inline-flex;margin-left:8px;"><input type="checkbox" data-act="allroster" ${ui.showAllRoster?'checked':''}> Show everyone on the roster</label>`}</div>
     ${data.events.length ? weekChunks.map(w=>`${nW>1?`<h3 class="weekhead">Week of ${esc(fmtFull(w[0]))} – ${esc(fmtFull(w[6]))}</h3>`:''}${gridHtml(w, me)}`).join('') : '<div class="empty">No events loaded yet. A manager imports them in “Build the schedule” below.</div>'}
-  </div>
-  <div class="card">
-    <h2>Event details</h2>
+  </details>
+  <details class="card sec" data-sec="details" ${secOpen('details')?'open':''}>
+    <summary><h2>Event details</h2></summary>
     <div class="sub">${me ? `Where you’re working ${nW>1?'in these weeks':'this week'}.` : `Venues and contacts for events ${nW>1?'in these weeks':'this week'}.`}</div>
     ${shownEvents.length ? `<div class="details">${shownEvents.map(e=>detailCard(e,vdays)).join('')}</div>` : `<div class="empty">${me ? `You’re not scheduled ${nW>1?'in these weeks':'this week'}.` : `No events ${nW>1?'in these weeks':'this week'}.`}</div>`}
-  </div>
+  </details>
   <details class="card build no-print" ${ui.buildOpen?'open':''} data-build>
     <summary><h2>Build the schedule</h2><span class="hint">For managers: import events, keep the roster, and assign marketers.</span></summary>
     ${signedOutLive ? `
@@ -795,24 +829,24 @@ function render(){
       </div>
       ${cloud.authErr ? `<div class="need" style="margin-top:4px;">${esc(cloud.authErr)}</div>` : ''}${cloud.authNote ? `<div class="hint" style="margin-top:4px;">${esc(cloud.authNote)}</div>` : ''}
     </div>` : buildHtml(days, weekShifts, weekEvents, label)}
-    <h3 class="bh">Performance Based Scheduling</h3>
+    <details class="sec" data-sec="pbs" ${secOpen('pbs')?'open':''}><summary><h3 class="bh" style="display:inline">Performance Based Scheduling</h3></summary>
     <table class="pbs"><caption class="hint" style="text-align:left;caption-side:top;padding-bottom:4px;">Weekly hours available by results per hour worked (1 ÷ Hrs/Issued)</caption>
       <tr><th>Per hour</th><th>About 1 every</th><th>Hours available each week</th></tr>
       <tr><td>.20 and over</td><td>5 hours</td><td>Up to 28</td></tr>
       <tr><td>.17 – .19</td><td>6 hours</td><td>Up to 18</td></tr>
       <tr><td>.14 – .16</td><td>7 hours</td><td>Up to 12</td></tr>
       <tr><td>.13 and below</td><td>Over 7 hours</td><td>Up to 6</td></tr>
-    </table>
+    </table></details>
   </details>
-  ${ui.modal==='roster' ? rosterModal() : ''}${ui.modal==='email' ? emailModal(vdays, vlabel) : ''}`;
+  ${ui.modal==='roster' ? rosterModal() : ''}${ui.modal==='etacc' ? etaccModal() : ''}${ui.modal==='email' ? emailModal(vdays, vlabel) : ''}`;
 }
 function staffBanner(){
   const list=needsStaffing(); if(!list.length) return '';
-  return `<div class="staffwarn no-print"><h2>⚠ ${list.length} event${list.length===1?'':'s'} in the next 4 weeks still need${list.length===1?'s':''} marketers</h2>
+  return `<div class="staffwarn no-print"><details class="sec" data-sec="staff" ${secOpen('staff')?'open':''}><summary><h2>⚠ ${list.length} event${list.length===1?'':'s'} in the next 4 weeks still need${list.length===1?'s':''} marketers</h2></summary>
     <div class="hint" style="margin-bottom:6px;">Schedule events 3–4 weeks out so marketers can plan. ${esc(viewLabel())}.</div>
     <table><tbody>${list.slice(0,12).map(x=>`<tr><td><b>${esc(x.e.name)}</b><div class="hint">${esc(x.e.office||'')}</div></td><td>${esc(fmtLong(x.e.start))}${x.e.end&&x.e.end!==x.e.start?' – '+esc(fmtLong(x.e.end)):''}</td>
       <td><span class="need">${x.open.length} of ${x.total} day${x.total===1?'':'s'} unstaffed</span></td><td style="text-align:right;"><button class="btn sm" data-act="gostaff" data-date="${esc(x.open[0].date)}">Staff it</button></td></tr>`).join('')}</tbody></table>
-    ${list.length>12?`<div class="hint" style="margin-top:4px;">…and ${list.length-12} more.</div>`:''}</div>`;
+    ${list.length>12?`<div class="hint" style="margin-top:4px;">…and ${list.length-12} more.</div>`:''}</details></div>`;
 }
 function buildHtml(days, weekShifts, weekEvents, label){
   const saveBar = cloud.status==='live' ? `
@@ -827,15 +861,16 @@ function buildHtml(days, weekShifts, weekEvents, label){
   return `${saveBar}
     <div class="buildbar">
       <button class="btn primary" data-act="import">⬆ Import ETACC CSV</button>
+      ${cloud.status==='live' && cloud.user ? `<button class="btn" data-act="addetacc" title="Staff an ETACC event that isn’t Submitted for Contract yet">+ Staff another ETACC event</button>`:''}
       <button class="btn" data-act="roster">👥 Roster (${data.roster.length})</button>
       <input type="date" data-act="pick" value="${ui.weekStart}" aria-label="Jump to week">
       <div class="spacer"></div>
       <button class="btn" data-act="backup">Backup</button>
       <button class="btn" data-act="restore">Restore</button>
     </div>
-    <div class="hint" style="margin:-4px 0 12px;">${data.hpiAsOf ? `Hrs/Issued as of ${esc(fmtFull(data.hpiAsOf))} (${esc(HPI_NOTE)}). ` : ''}Only Approved and Submitted for Contract events are scheduled.</div>
+    <div class="hint" style="margin:-4px 0 12px;">${data.hpiAsOf ? `Hrs/Issued as of ${esc(fmtFull(data.hpiAsOf))} (${esc(HPI_NOTE)}). ` : ''}Approved and Submitted for Contract events come in with the ETACC import. To staff an event that isn’t submitted yet, use <b>+ Staff another ETACC event</b>.</div>
     ${!data.events.length ? `<div class="empty"><p>In ETACC click <b>⬇ Export CSV</b>, then click <b>⬆ Import ETACC CSV</b> above.</p>${!data.roster.length?'<p>Then add your marketers under <b>👥 Roster</b>.</p>':''}</div>` : `
-    <h3 class="bh">Assign marketers — week of ${esc(label)}</h3>
+    <details class="sec" data-sec="assign" ${secOpen('assign')?'open':''}><summary><h3 class="bh" style="display:inline">Assign marketers — week of ${esc(label)}</h3></summary>
     <div class="sub">Pick a name on each event day. Each office’s best Hrs/Issued is listed first, with PBS hours left.</div>
     <div class="days7">
       ${days.map((d,i)=>`
@@ -848,7 +883,7 @@ function buildHtml(days, weekShifts, weekEvents, label){
       <span class="hint">Put a marketer on every day of an event this week:</span>
       <select id="allEv">${weekEvents.map(e=>`<option value="${esc(e.key)}">${esc(e.name)}</option>`).join('')}</select>
       <select id="allPerson">${marketerOptions(weekEvents[0])}</select>
-      <button class="btn sm" data-act="assignall">Add</button></div>` : ''}`}`;
+      <button class="btn sm" data-act="assignall">Add</button></div>` : ''}</details>`}`;
 }
 // Marketer pick list for an event: everyone assigned to the event's branch first, then everyone else as borrowed
 // (same region first, then other regions, then anyone with no office set).
@@ -872,6 +907,7 @@ function shiftCard(s){
   const lbl = r => { const m=pbsMax(r), used=weekHoursFor(r.id);
     const cap = m===null ? '' : used>=m ? ` · AT PBS MAX (${+used.toFixed(1)}/${m} hrs)` : ` · ${+(m-used).toFixed(1)} of ${m} hrs left`;
     return `${esc(r.name)}${hpiText(r)?' · '+esc(hpiText(r)):''}${cap}`; };
+  if(s.day.off) return `<div class="shift offshift"><div class="t">${esc(timeRange(s.day))}</div><div class="n">${esc(s.ev.name)}</div><div class="v">🚫 Not activated: ${esc(s.day.off.reason)}</div></div>`;
   return `<div class="shift">
     <div class="t">${esc(timeRange(s.day))}</div>
     <div class="n">${esc(s.ev.name)}</div>
@@ -927,6 +963,9 @@ function gridHtml(days, me){
       return `<tr><th>${esc(p.name)}<span class="off">${esc(p.office||'')}</span>${hpiText(p)?`<span class="hpi ${hpiTier(p)}">${esc(hpiText(p))}</span>`:''}</th>${cells}<td class="hrs ${over?'over':''}"><b>${hrs?+hrs.toFixed(1):'0'}</b>${mx!==null?` / ${mx}`:''}${over?'<span class="d">over PBS</span>':''}${mx===null && !p.mgr?'<span class="d">not rated</span>':''}</td></tr>`;
     }).join('')}</tbody></table></div>`;
 }
+const OFF_REASONS = ['Canceled by the event organizer','Weather','Venue or booth issue','No marketer available','Other'];
+function offLine(off, e){ if(!off) return ''; const ds=(off.days||[]); const all=e && ds.length===e.days.length;
+  return `🚫 <b>Not activated: ${esc(off.reason||'')}</b>${all?' (whole event)':' · '+ds.map(d=>esc(fmtLong(d))).join(', ')}${off.note?' · '+esc(off.note):''}`; }
 function detRows(e,draft){
   if(draft && draft.rows) return draft.rows;
   return e.days.map(d=>({ date:d.date, start:d.mgrTime?d.start:'', stop:d.mgrTime?d.stop:'' }));
@@ -949,7 +988,8 @@ function detailCard(e,days){
   const editRow = (k,v)=> editing ? `<dt>${k}</dt><dd>${v}</dd>` : row(k,v);
   return `<div class="det">
     <h3>${esc(e.name)}</h3>
-    <div class="office">${esc(e.office)}${e.region && e.region!==e.office ? ' ('+esc(e.region)+')' : ''} · ${esc(e.status)}</div>
+    <div class="office">${esc(e.office)}${e.region && e.region!==e.office ? ' ('+esc(e.region)+')' : ''} · ${esc(e.status)}${e.added?' · <span class="need" title="Added for staffing before it was submitted in ETACC">Not submitted in ETACC yet</span>':''}</div>
+    ${det.off && !editing ? `<div class="offnote">${offLine(det.off, e)}</div>` : ''}
     <dl>
       ${editing
         ? `<dt>Dates &amp; hours</dt><dd>${detRows(e,draft).map((r,i)=>{ const b=etaccDays(e).find(x=>x.date===r.date);
@@ -963,6 +1003,11 @@ function detailCard(e,days){
       ${editRow('Booth location', boothLoc)}
       ${row('Booth size', esc(e.boothSize))}
       ${editRow('Set up', setupHtml)}
+      ${editing ? (()=>{ const o=(draft.off!==undefined?draft.off:det.off)||{}, ds=o.days||e.days.map(d=>d.date);
+        return `<dt>Not activated / canceled</dt><dd><select id="detOffReason" class="detin"><option value="">No: the event is going ahead</option>${OFF_REASONS.map(r=>`<option ${o.reason===r?'selected':''}>${esc(r)}</option>`).join('')}</select>
+          <div class="offdays">${e.days.map(d=>`<label class="chk" style="display:inline-flex;margin-right:8px;"><input type="checkbox" data-offday="${esc(d.date)}" ${ds.includes(d.date)?'checked':''}> ${esc(fmtLong(d.date))}</label>`).join('')}</div>
+          <input type="text" id="detOffNote" class="detin" value="${esc(o.note||'')}" placeholder="Note (e.g. organizer canceled due to low vendor sign-ups)">
+          <div class="hint">Days marked here aren’t counted as unstaffed, don’t send late check-in alerts, and show as Not Activated with this reason in the hub’s activation summary.</div></dd>`; })() : ''}
       ${editing ? `<dt></dt><dd class="detbtns"><button class="btn sm primary" data-act="detdone" data-key="${esc(e.key)}">Save</button> <button class="btn sm" data-act="detcancel">Cancel</button></dd>` : ''}
       ${row('Organizer', esc(e.organizer))}
       ${row('Contact', esc(e.contactName))}
@@ -972,6 +1017,7 @@ function detailCard(e,days){
       ${row('Notes', esc(e.notes))}
     </dl>
     <div class="no-print" style="margin-top:8px;"><button class="btn sm" data-act="copylink" data-key="${esc(e.key)}">🔗 Copy check-in link</button>${ui.copiedKey===e.key?' <span class="hint" style="color:var(--accent);font-weight:600;">Copied — paste it into a text or email</span>':''}</div>
+    ${e.added && canEdit() && !(cloud.status==='live' && !cloud.user) ? `<div class="no-print" style="margin-top:8px;"><button class="btn sm" data-act="removeadded" data-key="${esc(e.key)}">Remove from schedule</button> <span class="hint">Added from ETACC by ${esc((e.added.by||'').split('@')[0])} (${esc(e.added.etaccStatus||'')})</span></div>`:''}
     ${!editing && canEdit() && !(cloud.status==='live' && !cloud.user) ? `<div class="no-print" style="margin-top:8px;"><a href="#" data-act="detedit" data-key="${esc(e.key)}">✎ ${e.days.some(d=>!d.start&&!d.stop) ? 'Add show hours, dates, ' : 'Edit dates, hours, '}booth location &amp; set up</a></div>` : ''}
   </div>`;
 }
@@ -1035,6 +1081,42 @@ function emailModal(days, label){
     <div class="emailprev" id="emailPrev" style="margin-top:8px;">${emailHtml(days,label)}</div>
     <div class="row" style="margin-top:12px;justify-content:flex-end;"><button class="btn" data-act="closemodal-btn">Finished</button></div>
   </div></div>`;
+}
+/* ---------- staff an ETACC event that isn't submitted yet ---------- */
+// Reads ETACC (dashboardEvents) directly. The event is added to the schedule as "added" so the next CSV import keeps it;
+// once ETACC exports it as Approved / Submitted for Contract, the import's copy replaces it (same name, branch and start date).
+const ETACC_LABEL = { researching:'Researching', execute:'Submitted for Approval', submitted:'Submitted for Contract', declined:'Declined', not_pursuing:'Not Pursuing' };
+async function loadEtaccForStaffing(){
+  ui.etacc={ loading:true, list:[], q:'' }; render();
+  try{ const {fsM,db}=cloud.fb; const snap=await fsM.getDocs(fsM.collection(db,'dashboardEvents')); const a=[]; snap.forEach(d=>a.push(Object.assign({ id:d.id }, d.data())));
+    ui.etacc={ loading:false, list:a, q:'' }; }
+  catch(e){ ui.etacc={ loading:false, list:[], q:'', err:e.code||e.message }; }
+  render();
+}
+function etaccCandidates(){
+  const t=todayIso(), have=new Set(data.events.map(e=>e.key)), q=String((ui.etacc&&ui.etacc.q)||'').toLowerCase();
+  return ((ui.etacc&&ui.etacc.list)||[]).filter(x=>x.startDate && (x.endDate||x.startDate)>=t && ['researching','execute','submitted'].includes(x.status) && x.branch && inView(x.branch)
+      && !have.has(eventKey(x.branch,x.eventName,x.startDate)) && (!q || String(x.eventName||'').toLowerCase().includes(q) || String(x.branch||'').toLowerCase().includes(q)))
+    .sort((a,b)=>a.startDate.localeCompare(b.startDate));
+}
+function etaccModal(){
+  const E=ui.etacc||{}, L=E.loading?[]:etaccCandidates();
+  return `<div class="modal-bg" data-act="closemodal"><div class="modal" role="dialog" aria-modal="true" aria-label="Staff another ETACC event" style="max-width:760px;">
+    <h2>Staff an ETACC event that isn’t submitted yet</h2>
+    <div class="hint" style="margin-bottom:8px;">Upcoming Researching, Submitted for Approval and Submitted for Contract events in ${esc(viewLabel())} that aren’t on the schedule. Adding one puts it on the schedule now so you can assign marketers; it’s marked “Not submitted in ETACC yet” until it comes in with an import.</div>
+    <input type="text" id="etaccQ" placeholder="Search event or branch" value="${esc(E.q||'')}" style="width:100%;margin-bottom:8px;">
+    ${E.loading?'<div class="hint">Loading ETACC…</div>':E.err?`<div class="need">Couldn’t read ETACC (${esc(E.err)}).</div>`:L.length?`<table class="etacclist"><tbody>${L.slice(0,60).map(x=>`<tr><td><b>${esc(x.eventName||'')}</b><div class="hint">${esc(x.branch||'')}</div></td><td>${esc(fmtLong(x.startDate))}${x.endDate&&x.endDate!==x.startDate?' – '+esc(fmtLong(x.endDate)):''}</td><td><span class="hint">${esc(ETACC_LABEL[x.status]||x.status)}</span></td><td style="text-align:right"><button class="btn sm primary" data-act="addetaccev" data-id="${esc(x.id)}">Add to schedule</button></td></tr>`).join('')}</tbody></table>${L.length>60?`<div class="hint">…and ${L.length-60} more. Search to narrow.</div>`:''}`:'<div class="hint">No upcoming ETACC events to add in this view.</div>'}
+    <div class="row" style="margin-top:12px;justify-content:flex-end;"><button class="btn" data-act="closemodal-btn">Finished</button></div>
+  </div></div>`;
+}
+function eventFromEtacc(x){
+  const start=x.startDate, end=x.endDate||start, days=[]; const h=x.hoursByDay||{};
+  for(let d=start; d<=end && days.length<31; d=addDays(d,1)) days.push({ date:d, start:(h[d]&&h[d].open)||'', stop:(h[d]&&h[d].close)||'' });
+  return { key:eventKey(x.branch,x.eventName,start), name:x.eventName||'', office:x.branch||'', region:regionOf(x.branch)||'', status:'Approved', start, end, days,
+    venueName:x.venueName||'', venueAddress:x.venueAddress||[x.venueStreet,x.venueCity,x.venueState].filter(Boolean).join(', '), zip:x.zip||'',
+    organizer:x.organizer||'', contactName:x.contactName||'', contactPhone:x.contactPhone||'', contactEmail:x.contactEmail||'',
+    boothNumber:x.boothNumber||'', boothLocation:x.boothLocation||'', boothSize:x.boothSize||'', setup:[], notes:'',
+    added:{ by:(cloud.user&&cloud.user.email)||'', at:new Date().toISOString(), etaccStatus:ETACC_LABEL[x.status]||x.status||'' } };
 }
 function rosterModal(){
   const offs = offices();
@@ -1136,7 +1218,11 @@ document.addEventListener('click', e=>{
         Object.keys(data.shiftTimes||{}).forEach(k=>{ if(k.split('::')[0]===from){ if(to) data.shiftTimes[to+'::'+k.split('::')[1]]=data.shiftTimes[k]; delete data.shiftTimes[k]; } }); });
       const base=etaccDays(ev).map(d=>d.date).sort(), dates=(newDates.join()===base.join())?null:newDates;
       data.details = data.details||{};
-      if(booth || setup || Object.keys(times).length || dates) data.details[key] = Object.assign({ booth, setup, times }, dates?{ dates }:{}); else delete data.details[key];
+      const offIn=dd.off||{}, offDays=(offIn.days||[]).filter(d=>newDates.includes(d));
+      if(offIn.reason && !offDays.length){ alert('Tick the day(s) that were not activated, or choose “No: the event is going ahead.”'); break; }
+      const prevOff=(data.details[key]||{}).off;
+      const off = offIn.reason ? { reason:offIn.reason, note:String(offIn.note||'').trim(), days:offDays, by:(cloud.user&&cloud.user.email)||'', at:(prevOff&&prevOff.reason===offIn.reason&&prevOff.days.join()===offDays.join())?prevOff.at:new Date().toISOString() } : null;
+      if(booth || setup || Object.keys(times).length || dates || off) data.details[key] = Object.assign({ booth, setup, times }, dates?{ dates }:{}, off?{ off }:{}); else delete data.details[key];
       if(dates || gone.length) ui.notice = dates ? `${ev.name}: dates changed to ${newDates.map(fmtLong).join(', ')}. ETACC still shows ${base.map(fmtLong).join(', ')}; update ETACC too if the event really moved.` : `${ev.name}: back to the ETACC dates.`;
       ui.editDet = null; ui.detDraft = null; save();
       // Event card edits (dates, hours, booth, set up) publish right away so the hub's check-in sees them;
@@ -1170,6 +1256,13 @@ document.addEventListener('click', e=>{
       save(); render(); break;
     }
     case 'import': document.getElementById('csvFile').click(); break;
+    case 'addetacc': ui.modal='etacc'; loadEtaccForStaffing(); break;
+    case 'addetaccev': { const x=((ui.etacc&&ui.etacc.list)||[]).find(y=>y.id===t.dataset.id); if(!x) break;
+      const ev=eventFromEtacc(x); if(data.events.some(e=>e.key===ev.key)) break;
+      data.events.push(ev); save(); ui.notice=`${ev.name} added to the schedule for staffing. Click 💾 Save schedule to publish it.`; render(); break; }
+    case 'removeadded': { const e=data.events.find(x=>x.key===t.dataset.key); if(!e||!e.added) break;
+      const has=e.days.some(d=>assigned(dayId(e,d)).length); if(!confirm(`Remove ${e.name} from the schedule?${has?' Marketers scheduled on it will be taken off.':''}`)) break;
+      e.days.forEach(d=>{ delete data.assignments[dayId(e,d)]; }); data.events=data.events.filter(x=>x.key!==e.key); save(); render(); break; }
     case 'rosterfile': if(!canUploadRoster()){ alert('Only Paula Shoemaker and Trevor Morrissey can upload a roster file.'); break; } document.getElementById('rosterFile').click(); break;
     case 'rosterdl': {
       const head=['Employee ID','Name','Branch','Region','Email','Phone','Commute Miles','Title','Hire Date','Manager','Hrs/Issued'];
@@ -1308,7 +1401,8 @@ readFile(document.getElementById('backupFile'), (text)=>{
     if(confirm('Replace everything here with this backup?')){ data=Object.assign({events:[],roster:[],assignments:{},details:{}},d); ui.notice='Backup restored.'; save(); render(); } }
   catch(err){ alert('That file isn\'t a schedule backup.'); }
 });
-document.addEventListener('toggle', e=>{ if(e.target.matches && e.target.matches('[data-build]')) ui.buildOpen = e.target.open; }, true);
+document.addEventListener('input', e=>{ if(e.target.id==='etaccQ' && ui.etacc){ ui.etacc.q=e.target.value; const pos=e.target.selectionStart; render(); const q=document.getElementById('etaccQ'); if(q){ q.focus(); try{ q.setSelectionRange(pos,pos); }catch(_){} } } });
+document.addEventListener('toggle', e=>{ if(e.target.matches && e.target.matches('[data-build]')) ui.buildOpen = e.target.open; if(e.target.matches && e.target.matches('[data-sec]')) secSet(e.target.dataset.sec, e.target.open); }, true);
 document.addEventListener('keydown', e=>{
   if(e.key==='Escape' && ui.modal){ ui.modal=null; render(); }
   else if(e.key==='Escape' && ui.editDet){ ui.editDet=null; ui.detDraft=null; render(); }

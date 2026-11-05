@@ -1835,7 +1835,7 @@ const GUIDES = {
       'Copy an event’s check-in link from Today or the schedule and text it to marketers.' ]],
     ['After events', [
       'Complete <b>Post-Event Evaluations</b>. If an event wasn’t activated, enter the reason (required).',
-      'Approve or return <b>Expense reports</b>. Approved reports go to Accounts Payable as a PDF with receipts.',
+      'Approve or return <b>Expense reports</b>. After approving, save the report as a PDF (receipts included), email it to Accounts Payable, and click Mark as sent.',
       'Approve timecards in ADP on pay-period Sundays; the ADP Timecards page flags shifts to check.',
       'The <b>Event Activation Summary</b> emails automatically on Monday mornings to Paula, Trevor, Angelique and Chris, including cost per lead.',
       '<b>Cost per Lead</b> shows what each event cost (booth fee, wages, mileage, per diem, hotel, other) against its leads and opps, by region and office, and flags events over target. Download it for Excel.',
@@ -2153,8 +2153,8 @@ function costView(){
 }
 function ratesCard(){
   const RD=ratesDoc(), ed=isLeadUser(), roster=rosterSorted().filter(p=>inOffice(p.office));
-  if(!ed) return `<div class="small muted">Pay rates and targets are set by Paula and Trevor.</div>`;
-  return `<div class="card"><details ${ui.ratesOpen?'open':''}><summary style="cursor:pointer"><b>💲 Pay rates & targets</b> <span class="small muted">(only Paula and Trevor can see and edit)</span></summary>
+  if(!ed) return `<div class="small muted">Pay rates and targets are set by Paula, Trevor, Angelique and Chris.</div>`;
+  return `<div class="card"><details ${ui.ratesOpen?'open':''}><summary style="cursor:pointer"><b>💲 Pay rates & targets</b> <span class="small muted">(only Paula, Trevor, Angelique and Chris can see and edit)</span></summary>
     <div class="fields" style="margin-top:10px"><div class="field"><label>Default hourly pay</label><input type="number" step="0.01" min="0" data-rate="__default" value="${esc(RD.default??DEFAULT_PAY)}"></div>
       <div class="field"><label>Target cost per lead</label><input type="number" step="1" min="0" data-rate="__cpl" value="${esc(RD.cplTarget??DEFAULT_CPL_TARGET)}"></div>
       <div class="field"><label>Target cost per opp</label><input type="number" step="1" min="0" data-rate="__cpa" value="${esc(RD.cpaTarget??DEFAULT_CPA_TARGET)}"></div></div>
@@ -2474,7 +2474,7 @@ const TOUR = [
   ['📌','Your checklist and assigned tasks','Your day’s checklist lives on <b>My day</b> (and <b>My week</b>). Tasks Paula, Trevor, Angelique or Chris send you show up in a <b>📌 From Paula</b> group with a due date. Check each one off when it’s done, and add a note if they asked for one.','4-checklist.jpg','My day checklist with an assigned task'],
   ['⚑','Needs your attention','Everything that needs you is collected in one list: late check-ins, events that need marketers, ETACC deadlines and contract releases, evaluations, expense reports, timecards, equipment and hotels. Tap an item to go straight to it. Once it’s taken care of, it comes off the list.','3-attention.jpg','Needs your attention list'],
   ['📍','Checking in a marketer','Marketers check themselves in with their event’s link. Copy it from <b>Today’s Activity</b> or the schedule and text it to them. You can also check someone in from <b>Check-in</b> if their phone won’t cooperate.','5-checkin.jpg','Today’s Activity with Copy check-in link'],
-  ['🧾','Approving expenses','Each Monday, open <b>Expense reports</b>, review your team’s reports and approve or return them. Approved reports go to Accounts Payable automatically. Submit your own report the same day.','6-expenses.jpg','Expense reports page'],
+  ['🧾','Approving expenses','Each Monday, open <b>Expense reports</b>, review your team’s reports and approve or return them. After you approve, save the report as a PDF, email it to Accounts Payable, and click <b>Mark as sent</b>. Submit your own report the same day.','6-expenses.jpg','Expense reports page'],
   ['🔎','Finding anything','Use the <b>search box</b> at the top to jump to an event, marketer, piece of equipment or page. On a phone, the menu at the bottom gets you Home, My day, Check-in, Events and Alerts.','7-search.jpg','Search results for an event'],
   ['❓','Help on every page','Tap <b>? Help</b> next to a page title to see how that page works. The <b>🏆 Scorecard</b> on the home page shows how last week’s events did.','8-help.jpg','Page header with the Help button'] ];
 function tourDone(){ const m=mgrDoc(); return !!(m.tourDone) || lsGet('peHub.tourDone.'+String((S.user&&S.user.email)||'').toLowerCase())==='1'; }
@@ -2669,7 +2669,7 @@ function scorecardView(){
     <div class="card"><h2 style="margin-top:0">Events (${D.shows.length})</h2>${D.shows.length?`<div style="overflow-x:auto"><table class="sctable"><thead><tr><th>Show</th><th>Region</th><th class="num">Event cost</th><th class="num">Opps</th><th class="num">Unset</th><th class="num">Goal</th><th class="num">% to goal</th><th class="num">Cost / opp</th></tr></thead><tbody>${showRows}</tbody></table></div>`:'<div class="muted">No events started in this period.</div>'}
       ${D.left.length?`<div class="small muted" style="margin-top:8px">Left out (longer than a week): ${D.left.map(e=>esc(e.name)).join('; ')}.</div>`:''}
       <div class="small muted" style="margin-top:8px">Events count in the period their first day falls in (weeks run Mon–Sun). ${showReport()?'Event cost, opps, unset and goal are from the Tradeshow Master (Sunrooms events only).':'Opps = appointments set at check-out; unset = leads not set; goal = ETACC Target Opps; event cost = ETACC fee.'}</div></div>
-    ${lead?`<div class="card"><details ${ui.scTOpen?'open':''}><summary style="cursor:pointer"><b>🎯 Scorecard targets</b> <span class="small muted">(Paula and Trevor)</span></summary><div class="fields" style="margin-top:10px">
+    ${lead?`<div class="card"><details ${ui.scTOpen?'open':''}><summary style="cursor:pointer"><b>🎯 Scorecard targets</b> <span class="small muted">(Paula, Trevor, Angelique and Chris)</span></summary><div class="fields" style="margin-top:10px">
       <div class="field"><label>% to opps goal (at least)</label><input type="number" data-sct="pctGoal" value="${T.pctGoal}"></div><div class="field"><label>Cost per opp (event cost, at most $)</label><input type="number" data-sct="cpo" value="${T.cpo}"></div>
       <div class="field"><label>Set rate (at least %)</label><input type="number" data-sct="setRate" value="${T.setRate}"></div><div class="field"><label>Cancel rate (at most %)</label><input type="number" data-sct="cancelRate" value="${T.cancelRate}"></div></div>
       <div class="small muted">All-in cost per opp uses the Cost per Lead page’s cost-per-opp target (${$0(num(ratesDoc().cpaTarget||DEFAULT_CPA_TARGET))}).</div>

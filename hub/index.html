@@ -80,6 +80,7 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .tourbg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
 .tourbox{background:#fff;border-radius:16px;max-width:460px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35);border-top:6px solid var(--aqua)}.tourbox h2{margin:6px 0 8px}.tourbox p{color:var(--ink-soft);line-height:1.5}
 .touric{font-size:40px}.tourstep{font-size:12px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em}.tourdots{display:flex;gap:6px;justify-content:center;margin:12px 0}.tourdots i{width:8px;height:8px;border-radius:50%;background:#ddd}.tourdots i.on{background:var(--aqua)}
+.viewas{max-width:200px;font-size:13px;padding:4px 6px;border-radius:8px;border:1px solid var(--line,#ccc);background:#fff}.viewasbar{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:#fff4d6;border:2px solid var(--gold,#e0a200);border-radius:12px;padding:10px 14px;margin:10px 0}
 .tourbox.hasimg{max-width:680px}.tourimgwrap{display:block;margin:10px 0 4px;border:1px solid var(--line,#ddd);border-radius:10px;overflow:hidden;background:#f4f6f6}.tourimg{display:block;width:100%;height:auto;max-height:46vh;object-fit:contain;object-position:top}.touric-sm{margin-right:4px}.brandlink{display:block;border-radius:8px;cursor:pointer}.brandlink:focus-visible{outline:3px solid var(--aqua);outline-offset:3px}
 .tourbox.welcome{max-width:560px;border-top-color:var(--gold)}.tourbox{max-height:92vh;overflow:auto}
 .wopts{display:grid;grid-template-columns:1fr 1fr;gap:8px}@media (max-width:520px){.wopts{grid-template-columns:1fr}}
@@ -1182,7 +1183,7 @@ function mgrDoc(){ const k=mgrKey(); let d=(k && S.mgr[k]) || { workDays:DEFAULT
 function weekendHasEvents(date){ const dow=parseIso(date).getDay(), fri=addDays(date, dow===0?-2:5-dow), days=[fri,addDays(fri,1),addDays(fri,2)];
   return liveEvents().some(e=>inOffice(e.office) && (e.days||[]).some(x=>days.includes(x.date))); }
 const REM_USERS = ['paula.shoemaker@greatdayimprovements.com','trevor.morrissey@greatdayimprovements.com','angelique.critz@greatdayimprovements.com','chris.winston@greatdayimprovements.com'];
-function isRemUser(){ return !!(S.user && REM_USERS.includes(String(S.user.email||'').toLowerCase())) || (DEMO && !!S.user); }
+function isRemUser(){ return !!(S.user && REM_USERS.includes(String(S.user.email||'').toLowerCase())) || (DEMO && !!S.user && !previewing()); }
 function condOk(x, date){ if(x.tab==='remnums' && !isRemUser()) return false; if(!x.cond) return true; if(x.cond==='payday') return isPayEnd(date); const ev=weekendHasEvents(date); return x.cond==='events'?ev:!ev; }
 function workDays(){ const w=mgrDoc().workDays; return (w&&w.length)?w:DEFAULT_WORKDAYS; }
 // Weeks run Monday–Sunday. A date is a work day if it's a typical work day, unless the manager flexed it.
@@ -1469,7 +1470,7 @@ const DEFAULT_TRAINING = [
   { id:'t4', cat:'Products', title:'Screen rooms', desc:'Features and benefits; upgradeable to glass later.', url:'https://www.patioenclosures.com/screen-rooms.aspx' },
   { id:'t7', cat:'Products', title:'PatioEnclosures.com', desc:'Our website: products, photo galleries and current offers.', url:'https://www.patioenclosures.com/' },
 ];
-function canEditTraining(){ if(MARKETER_MODE) return false; return !!(S.user && TRAINING_EDITORS.includes(String(S.user.email||'').toLowerCase())) || (DEMO && !!S.user); }
+function canEditTraining(){ if(MARKETER_MODE) return false; return !!(S.user && TRAINING_EDITORS.includes(String(S.user.email||'').toLowerCase())) || (DEMO && !!S.user && !previewing()); }
 function trainingItems(){
   if(!(S.training && Array.isArray(S.training.items))) return DEFAULT_TRAINING;
   const have=new Set(S.training.items.map(x=>x.id)), gone=new Set(S.training.removed||[]);
@@ -1540,7 +1541,7 @@ const PAULA = 'paula.shoemaker@greatdayimprovements.com';
 const LEADS = ['paula.shoemaker@greatdayimprovements.com','trevor.morrissey@greatdayimprovements.com'];
 const SUMMARY_SEND = { dow:1, hour:8 };   // Mondays, 8:00 am (the first manager to open the hub after that sends it)
 const PHOTO_KEEP_DAYS = 365;               // booth photos are deleted after 12 months (receipts and training files are kept)
-function isLeadUser(){ return !!(S.user && LEADS.includes(String(S.user.email||'').toLowerCase())) || (DEMO && !!S.user); }
+function isLeadUser(){ return !!(S.user && LEADS.includes(String(S.user.email||'').toLowerCase())) || (DEMO && !!S.user && !previewing()); }
 function defaultRegionMgrs(){ const m={}; ORG.forEach(d=>Object.entries(d.regions).forEach(([r,x])=>{ m[r]=x.email; })); return m; }
 function alertCfg(){ const c=S.alertCfg || { offices:{}, allowed:[] }; return Object.assign({ ccDivision:true }, c, { regions:Object.assign(defaultRegionMgrs(), c.regions||{}), offices:c.offices||{} }); }
 function cleanList(a){ return [...new Set(a.map(x=>String(x||'').trim().toLowerCase()).filter(x=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)))]; }
@@ -1610,7 +1611,7 @@ async function alertExpenseReturned(x, note){
 
 // --- alerts swept by any manager with the hub open ---
 async function sweepAlerts(){
-  if(S.mode!=='live' || !S.user || !S.isMgr || !S.schedLoaded) return;
+  if(S.mode!=='live' || !S.user || !S.isMgr || !S.schedLoaded || previewing()) return;
   const t=todayIso();
   for(const s of shiftsOn(t)){
     const k=shiftStatus(s).k, ev=s.ev;
@@ -1856,6 +1857,42 @@ function stepWeekEnd(st){ return addDays(mondayOf(st.due),6); }
 function stepLate(st, t){ return st.scope==='week' ? stepWeekEnd(st)<t : st.due<t; }
 function asgByName(t){ return (t.createdByName||'').split(' ')[0] || 'leadership'; }
 // Everyone who can get an assignment: leaders, regional managers, office supervisors and roster managers with an email.
+/* ---------------- View as a manager (Paula & Trevor) ---------------- */
+var viewAsUnsub=null;
+function realEmail(){ return String(((S.realUser||S.user)||{}).email||'').toLowerCase(); }
+function previewing(){ return !!(S.user && S.user.preview); }
+function canViewAs(){ return !MARKETER_MODE && !!(S.realUser||S.user) && (LEADS.includes(realEmail()) || DEMO); }
+function viewAsPicker(){
+  if(!canViewAs() || previewing()) return '';
+  const me=realEmail(), ppl=asgPeople().filter(p=>p.email!==me);
+  return `<select class="viewas" data-viewas title="See the hub the way a manager sees it" aria-label="View the hub as a manager"><option value="">👁 View as…</option>${ppl.map(p=>`<option value="${esc(p.email)}">${esc(p.name)}${p.regions&&p.regions.size?` · ${esc([...p.regions].join(', '))}`:''}</option>`).join('')}</select>`;
+}
+function viewAsBanner(){
+  if(!previewing()) return '';
+  return `<div class="viewasbar" role="status"><span>👁 <b>Previewing as ${esc(S.user.displayName||S.user.email)}</b> <span class="muted">(${esc(S.user.email)})</span>. This is their home page, checklist, tasks and menus. Nothing you click here is saved or sent.</span><button class="btn sm primary" data-act="viewAsEnd">Exit preview</button></div>`;
+}
+function startViewAs(email){
+  const p=asgPeople().find(x=>x.email===String(email||'').toLowerCase()); if(!p) return;
+  if(!S.realUser){ S.realUser=S.user; S.realScope=ui.scope; }
+  S.user={ email:p.email, displayName:p.name, uid:'preview', preview:true };
+  Object.assign(ui,{ tab:'home', tour:null, tourChecked:true, welcome:false, scope:[], rem:null, item:null, detail:null, exp:null, expView:null, audit:null, evalKey:null, evalDraft:null, notice:'' });
+  if(viewAsUnsub){ viewAsUnsub(); viewAsUnsub=null; }
+  if(S.mode==='live' && DB.raw){ const {fsM,db}=DB.raw, mk=mgrKey(); viewAsUnsub=fsM.onSnapshot(fsM.doc(db,'peHubMgr',mk), snap=>{ if(snap.exists()){ S.mgr[mk]=mgrFromFs(snap.data()); render(); } }, err=>console.warn('view-as',err)); }
+  history.pushState(null,'',location.pathname+location.search); render(); window.scrollTo(0,0);
+}
+function endViewAs(){
+  if(viewAsUnsub){ viewAsUnsub(); viewAsUnsub=null; }
+  if(S.realUser){ S.user=S.realUser; S.realUser=null; ui.scope=S.realScope||[]; S.realScope=null; }
+  Object.assign(ui,{ tab:'home', tour:null, rem:null, item:null, detail:null, exp:null, expView:null, audit:null, notice:'' });
+  render(); window.scrollTo(0,0);
+}
+function previewBlocked(){ ui.notice='Preview only: nothing was saved. Exit the preview to make changes.'; ui.noticeKind='warn'; render(); return Promise.reject(new Error('preview-only')); }
+function guardWrites(fsM){
+  const g=Object.assign({}, fsM);
+  ['setDoc','updateDoc','deleteDoc','addDoc'].forEach(k=>{ const f=fsM[k]; g[k]=(...a)=>previewing()?previewBlocked():f(...a); });
+  const wb=fsM.writeBatch; g.writeBatch=(...a)=>{ const b=wb(...a); if(!previewing()) return b; return { set(){return this;}, update(){return this;}, delete(){return this;}, commit:()=>previewBlocked() }; };
+  return g;
+}
 function asgPeople(){
   const m={}, add=(email,name,region)=>{ email=String(email||'').trim().toLowerCase(); if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return; const x=m[email]=m[email]||{ email, name:'', regions:new Set() }; if(name&&!x.name) x.name=name; if(region) x.regions.add(region); };
   LEADERSHIP.forEach(p=>add(p.email,p.name));
@@ -2782,7 +2819,7 @@ function mergeMgrTimes(){
 const DB = { fb:null };
 const LOCAL_KEY='peHub.local';
 function localLoad(){ try{ return JSON.parse(lsGet(LOCAL_KEY)||'{}'); }catch(e){ return {}; } }
-function localSave(){ lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, alertCfg:S.alertCfg, rates:S.rates, scManual:S.scManual, activity:S.activity, showReport:S.showReport, alerts:S.alerts, asg:S.asg, asgDone:S.asgDone, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
+function localSave(){ if(previewing()) return; lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, alertCfg:S.alertCfg, rates:S.rates, scManual:S.scManual, activity:S.activity, showReport:S.showReport, alerts:S.alerts, asg:S.asg, asgDone:S.asgDone, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
 setInterval(()=>{ sweepAlerts(); }, 5*60000);
 async function initDB(){
   if(DEMO){ goLocal('demo'); return; }
@@ -2793,7 +2830,7 @@ async function initDB(){
     const app=appM.initializeApp(FIREBASE_CONFIG); // default app: shares sign-in with ETACC on the same site
     const auth=authM.getAuth(app);
     let db; try{ db=fsM.initializeFirestore(app,{ localCache: fsM.persistentLocalCache({ tabManager: fsM.persistentMultipleTabManager() }) }); }catch(e){ console.warn('offline cache off',e); db=fsM.getFirestore(app); }
-    DB.fb={authM,fsM,auth,db};
+    DB.raw={fsM,db}; DB.fb={authM,fsM:guardWrites(fsM),auth,db};
     const F=fsM;
     let first=true; const live=()=>{ if(first){ first=false; clearTimeout(timeout); S.mode='live'; } };
     const fail=(what)=>err=>{ console.error(what,err); if(what==='schedule' && S.mode==='connecting'){ clearTimeout(timeout); goLocal(err.code||err.message); } else { ui.notice=`Couldn’t read ${what}: ${err.code||err.message}`; ui.noticeKind='err'; render(); } };
@@ -2819,7 +2856,7 @@ async function initDB(){
     F.onSnapshot(F.collection(db,'peHubAudits'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.audits=m; render(); }, fail('inventory counts'));
     let unsubs=[];
     authM.onAuthStateChanged(auth, u=>{
-      S.user=u; unsubs.forEach(f=>f()); unsubs=[]; S.etacc=null; S.etaccErr=''; S.evals={}; S.evalsLoaded=false; S.mailRecent=[];
+      if(viewAsUnsub){ viewAsUnsub(); viewAsUnsub=null; } S.realUser=null; S.user=u; unsubs.forEach(f=>f()); unsubs=[]; S.etacc=null; S.etaccErr=''; S.evals={}; S.evalsLoaded=false; S.mailRecent=[];
       checkAccess(u).then(()=>{ if(S.isMgr){ setTimeout(sweepAlerts, 60000); setTimeout(cleanupPhotos, 20000); } });
       if(u){
         unsubs.push(F.onSnapshot(F.collection(db,'dashboardEvents'), snap=>{ const a=[]; snap.forEach(d=>a.push(Object.assign({id:d.id},d.data()))); S.etacc=a; render(); }, err=>{ S.etaccErr=err.code||err.message; render(); }));
@@ -2937,7 +2974,7 @@ function render(){
   const keep=captureInputs();
   document.body.classList.toggle('marketer', MARKETER_MODE);
   if(!ui.tourT && S.user){ ui.tourT=setTimeout(()=>{ maybeStartTour(); if(ui.tour!=null){ markWelcomed(); render(); } else if(S.user && !MARKETER_MODE && (S.mode==='live'||ui.forceWelcome) && welcomeDue()){ ui.welcomeBack=welcomedToday(); ui.welcome=true; markWelcomed(); touchSeen.at=0; touchSeen(); render(); } else touchSeen(); },3000); }
-  app.innerHTML = `<div class="wrap">${header()}${searchBox()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}${bottomNav()}${tourOverlay()}${welcomeOverlay()}${undoToast()}`;
+  app.innerHTML = `<div class="wrap">${header()}${viewAsBanner()}${searchBox()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}${bottomNav()}${tourOverlay()}${welcomeOverlay()}${undoToast()}`;
   stackTables(app); document.body.classList.toggle('hasnav', !!(S.user && !MARKETER_MODE)); if(ui.tourT && !ui.welcome) touchSeen();
   restoreInputs(keep);
   // lazy-load any photos now on screen
@@ -2952,7 +2989,7 @@ function restoreInputs(k){ document.querySelectorAll('[data-keep]').forEach(el=>
 function header(){
   const stat = S.mode==='live'?'<span class="cstat live">● Live</span>':S.mode==='connecting'?'<span class="cstat">○ Connecting…</span>':`<span class="cstat local">○ ${DEMO?'Demo data':'This device only'}</span>`;
   const signin = MARKETER_MODE ? `<a class="small" href="${location.pathname}">Manager view</a>` :
-    S.user ? `<div class="signin small">${(()=>{ const n=unreadAlerts().length; return `<button class="btn sm bell" data-tab="alerts" title="Alerts">🔔${n?`<span class="bdot">${n}</span>`:''}</button>`; })()}<span class="muted">${esc(S.user.email)}</span><button class="btn sm" data-act="signOut">Sign out</button></div>` :
+    S.user ? `<div class="signin small">${(()=>{ const n=unreadAlerts().length; return `<button class="btn sm bell" data-tab="alerts" title="Alerts">🔔${n?`<span class="bdot">${n}</span>`:''}</button>`; })()}${viewAsPicker()}<span class="muted">${esc(S.user.email)}</span>${previewing()?'<button class="btn sm primary" data-act="viewAsEnd">Exit preview</button>':'<button class="btn sm" data-act="signOut">Sign out</button>'}</div>` :
     `<form class="signin" data-form="signin"><input type="email" name="email" placeholder="Manager email" data-keep="si-email" autocomplete="username" style="width:170px"><input type="password" name="pw" placeholder="Password" data-keep="si-pw" autocomplete="current-password" style="width:120px"><button class="btn sm primary">Sign in</button><button type="button" class="btn sm" data-act="pwReset" title="Email me a link to set a new password">Forgot password?</button>${S.authErr?`<span class="small" style="color:var(--red)">${esc(S.authErr)}</span>`:''}</form>`;
   return `<header class="top">${MARKETER_MODE?'<img class="brandlogo" src="pe-logo.png" alt="Patio Enclosures by Great Day Improvements">':'<a href="#" class="brandlink" data-tab="home" title="Back to Hub home" aria-label="Back to Hub home"><img class="brandlogo" src="pe-logo.png" alt="Patio Enclosures by Great Day Improvements"></a>'}
     <div><h1>${MARKETER_MODE?'Event Check-In':'Event Activity Hub'}</h1><div class="asof">${stat}${S.mode==='local'&&!DEMO?` · not saving to the shared database (${esc(S.err)})`:''}</div></div>
@@ -3359,6 +3396,7 @@ document.addEventListener('click', async ev=>{
   if(a==='closePanel'){ ui.panel=null; ui.assetForm=null; ui.detail=null; ui.item=null; ui.scanMsg=null; ui.mgrEditOpen=false; ui.tForm=null; render(); return; }
   if(a==='clearNotice'){ ui.notice=''; render(); return; }
   if(a==='signOut'){ signOut(); return; }
+  if(a==='viewAsEnd'){ endViewAs(); return; }
   if(a==='day'){ ui.date=addDays(ui.date,+t.dataset.n); render(); return; }
   if(a==='today'){ ui.date=todayIso(); render(); return; }
   if(a==='copyLink'){ const e=S.sched.events.find(x=>x.key===t.dataset.ev); const link=checkinLink(e); let ok=false; try{ await navigator.clipboard.writeText(link); ok=true; }catch(err){} ui.notice= ok ? `Check-in link for ${e.name} copied. Paste it into a text or email to the marketers.` : `Copy this check-in link for ${e.name}: ${link}`; ui.noticeKind='ok'; render(); window.scrollTo(0,0); return; }
@@ -3512,6 +3550,7 @@ async function fetchLoc(){ const p=ui.panel; const r=await getLocation(); if(ui.
 function readEvalDraft(){ document.querySelectorAll('[data-ef]').forEach(el=>{ ui.evalDraft[el.dataset.ef]=el.value; }); }
 document.addEventListener('input', ev=>{ const el=ev.target; if(el.dataset.ex && ui.exp && el.type!=='checkbox' && el.type!=='radio'){ setPath(ui.exp, el.dataset.ex, el.value); if(el.type==='number') updateExpTotals(); } if(el.dataset.ef && ui.evalDraft) ui.evalDraft[el.dataset.ef]=el.value; if(el.dataset.asg && el.tagName!=='SELECT'){ asgDraft()[el.dataset.asg]=el.value; } if(el.dataset.asgstep!==undefined && el.type!=='date'){ const st=asgDraft().steps[+el.dataset.asgstep]; if(st) st[el.dataset.sf]=el.value; } if(el.dataset.act==='aq'){ ui.aq=el.value; render(); } });
 document.addEventListener('change', async ev=>{
+  if(ev.target && ev.target.matches && ev.target.matches('[data-viewas]')){ const v=ev.target.value; if(v) startViewAs(v); return; }
   const el=ev.target;
   if(el.dataset.remset){ const R=remDraft(); let v=el.value; if(el.dataset.remset==='week' && v) v=mondayOf(v); if(v||el.dataset.remset==='region') R[el.dataset.remset]=v; ui.remMsg=''; render(); return; }
   if(el.id==='srFile' && el.files[0]){ ui.srMsg='Reading the file…'; render(); try{ ui.srMsg=await importShowReport(el.files[0]); }catch(e){ ui.srMsg=e.message||String(e); } el.value=''; render(); return; }

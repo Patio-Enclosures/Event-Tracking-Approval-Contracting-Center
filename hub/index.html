@@ -392,8 +392,24 @@ const ORG = [
 ];
 function regionName(r){ return REGION_NAMES[r] ? `${REGION_NAMES[r]} (${r})` : r; }
 function divisionOf(r){ return ORG.find(d=>d.regions[r]) || null; }
-function inOffice(o){ const sc=ui.scope||[]; if(!sc.length) return true; const r=regionOf(o), d=divisionOf(r); return sc.includes('o:'+o) || (!!r && sc.includes('r:'+r)) || (!!d && sc.includes('d:'+d.division)); }
-function scopeLabel(){ const sc=ui.scope||[]; if(!sc.length) return 'All regions & offices'; const names=sc.map(x=>x.startsWith('d:')?x.slice(2)+' Division':x.startsWith('r:')?(REGION_NAMES[x.slice(2)]||x.slice(2))+' region':x.slice(2)); return names.length>3 ? names.slice(0,3).join(', ')+` +${names.length-3} more` : names.join(', '); }
+function tokMatch(sc,o){ const r=regionOf(o), d=divisionOf(r); return sc.includes('o:'+o) || (!!r && sc.includes('r:'+r)) || (!!d && sc.includes('d:'+d.division)); }
+function inOffice(o){ if(ATTN && !tokMatch(ATTN,o)) return false; const sc=ui.scope||[]; if(!sc.length) return true; return tokMatch(sc,o); }
+// "Needs your attention" only shows a manager the regions/offices they are assigned to.
+// Paula sees everything; division leaders (incl. Trevor for East) see their division; regional managers their regions;
+// office supervisors (Alert settings) and roster managers their offices. Anyone not assigned anywhere sees everything.
+var ATTN=false;
+function assignedScope(){
+  const em=String((S.user&&S.user.email)||'').toLowerCase(); if(!em || em===String(PAULA).toLowerCase() || (DEMO && !previewing())) return null;
+  const toks=new Set();
+  ORG.forEach(d=>{ if(String(d.leader.email||'').toLowerCase()===em) toks.add('d:'+d.division); Object.entries(d.regions).forEach(([r,x])=>{ if(String(x.email||'').toLowerCase()===em) toks.add('r:'+r); }); });
+  try{ Object.entries(alertCfg().offices||{}).forEach(([o,v])=>{ if(splitEmails(v).map(e=>String(e).toLowerCase()).includes(em)) toks.add('o:'+o); }); }catch(e){}
+  (S.sched.roster||[]).forEach(p=>{ if(p.mgr && p.office && String(p.email||'').toLowerCase()===em) toks.add('o:'+p.office); });
+  ORG.forEach(d=>{ if(toks.has('d:'+d.division)) Object.keys(d.regions).forEach(r=>toks.delete('r:'+r)); });
+  return toks.size ? [...toks] : null;
+}
+function withAssigned(fn){ const prev=ATTN; ATTN=assignedScope()||false; try{ return fn(); } finally{ ATTN=prev; } }
+function attnLabel(){ const a=assignedScope(); if(!a) return scopeLabel(); return 'Your area: '+scopeLabel(a)+((ui.scope||[]).length?' · filtered to '+scopeLabel():''); }
+function scopeLabel(list){ const sc=list||ui.scope||[]; if(!sc.length) return 'All regions & offices'; const names=sc.map(x=>x.startsWith('d:')?x.slice(2)+' Division':x.startsWith('r:')?(REGION_NAMES[x.slice(2)]||x.slice(2))+' region':x.slice(2)); return names.length>3 ? names.slice(0,3).join(', ')+` +${names.length-3} more` : names.join(', '); }
 function scopePicker(){
   const rm=regionMap(), regs=[...new Set(Object.values(rm))].sort(), sc=ui.scope||[];
   const offsFor=r=>offices().filter(o=>(rm[o]||'')===r);
@@ -1272,7 +1288,8 @@ function mgrBar(){
 // Uses ETACC events (dashboardEvents) for the offices in the scope picker, plus the schedule for staffing.
 // ETACC rule: an event must be submitted by the last day of the month before it starts.
 function submitDeadline(start){ const d=parseIso(start); return isoOf(new Date(d.getFullYear(), d.getMonth(), 0)); }
-function attentionData(){
+function attentionData(){ return withAssigned(attentionData_); }
+function attentionData_(){
   const t=todayIso(), in7=addDays(t,7), in14=addDays(t,14), in60=addDays(t,60), ago7=addDays(t,-7);
   const E=(S.etacc||[]).filter(x=>x.startDate && x.startDate>=t && inOffice(x.branch||''));
   const live=x=>x.status!=='declined' && x.status!=='not_pursuing';
@@ -1296,7 +1313,7 @@ function attentionCard(){
   const dl=A.deadlines.slice(0,6).map(d=>evRow(d.x,`${d.what} ${fmtMD(d.date)}`, d.late||d.date<=addDays(t,3))).join('')+more(A.deadlines);
   const rel=A.release.slice(0,6).map(d=>evRow(d.x,`${d.date<t?'Released':d.date===t?'Releases today':'Expected'} ${fmtMD(d.date)} · register right away`, d.date<=t)).join('')+more(A.release);
   const etaccNote = S.etaccErr?`<div class="small" style="color:var(--red)">Couldn’t read ETACC (${esc(S.etaccErr)}), so only staffing is shown.</div>`:(S.etacc===null?'<div class="small muted">Loading ETACC…</div>':'');
-  return `<div class="card attcard"><div class="row" style="margin-bottom:4px"><h2 style="margin:0">⚑ Events needing attention</h2><span class="small muted">${esc(scopeLabel())}</span></div>${etaccNote}
+  return `<div class="card attcard"><div class="row" style="margin-bottom:4px"><h2 style="margin:0">⚑ Events needing attention</h2><span class="small muted">${esc(attnLabel())}</span></div>${etaccNote}
     <div class="attgrid">
       ${sec('🗓️','Need a schedule',A.staff.length,staff,'Every event in the next 4 weeks has marketers.')}
       ${sec('⏰','Approaching deadlines',A.deadlines.length,dl,'No approval or payment deadlines in the next 1–2 weeks.')}
@@ -2346,7 +2363,8 @@ function scUpdatedLine(short){
   return `Last updated <b>${fmtStamp(u.at)}</b>${u.report?` · Tradeshow Master ${fmtStamp(u.report)}`:''}${u.rem?` · REM numbers ${fmtStamp(u.rem)}`:''}`;
 }
 // ---- One to-do list ----
-function todoGroups(){
+function todoGroups(){ return withAssigned(todoGroups_); }
+function todoGroups_(){
   if(!S.user) return [];
   const t=todayIso(), G=[]; const add=(key,ic,title,tab,items,btn)=>{ if(items.length) G.push({ key, ic, title, tab, items, btn }); };
   // alerts
@@ -2374,16 +2392,16 @@ function todoGroups(){
   // hotels
   add('hotels','🏨','Upcoming events that may need hotels','travel', travelNeeds().map(x=>({ text:x.e.name, sub:`${x.e.office||''} · ${fmtLong(x.e.start)}${x.hotelNights?` · ${x.hotelNights} hotel night${x.hotelNights===1?'':'s'}`:''}${x.borrowed.length?` · ${x.borrowed.length} borrowed marketer${x.borrowed.length===1?'':'s'}`:''}` })), 'Open Navan travel');
   // REM numbers (leaders only)
-  if(isRemUser()){ const P={ view:'week', ws:addDays(mondayOf(t),-7) }, M=scManual(), miss=[]; ORG.forEach(d=>Object.entries(d.regions).forEach(([r,x])=>{ const e=M[`w_${P.ws}_${r}`]; if(!(e&&(scHas(e.cancels)||scHas(e.meets)))) miss.push({ text:REGION_NAMES[r]||r, sub:`${x.name} · week of ${fmtMD(P.ws)}` }); })); add('rem','✍️','REM numbers missing for last week','remnums', miss, 'Enter REM numbers'); }
+  if(isRemUser()){ const P={ view:'week', ws:addDays(mondayOf(t),-7) }, M=scManual(), miss=[]; ORG.forEach(d=>Object.entries(d.regions).forEach(([r,x])=>{ if(ATTN && !ATTN.includes('r:'+r) && !ATTN.includes('d:'+d.division)) return; const e=M[`w_${P.ws}_${r}`]; if(!(e&&(scHas(e.cancels)||scHas(e.meets)))) miss.push({ text:REGION_NAMES[r]||r, sub:`${x.name} · week of ${fmtMD(P.ws)}` }); })); add('rem','✍️','REM numbers missing for last week','remnums', miss, 'Enter REM numbers'); }
   return G;
 }
 function todoCount(G){ return (G||todoGroups()).reduce((n,g)=>n+g.items.length,0); }
 function todoCard(opts){
   if(!S.user) return '';
   const o=opts||{}, G=todoGroups(), n=todoCount(G), lim=o.compact?3:6;
-  if(!n) return `<div class="card todo"><h2 style="margin:0">✅ Nothing needs your attention</h2><div class="small muted">${esc(scopeLabel())}</div></div>`;
+  if(!n) return `<div class="card todo"><h2 style="margin:0">✅ Nothing needs your attention</h2><div class="small muted">${esc(attnLabel())}</div></div>`;
   const shown=o.compact?G.slice(0,4):G;
-  return `<div class="card todo"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">⚑ Needs your attention <span class="pill p-warn">${n}</span></h2><span class="small muted">${esc(scopeLabel())}</span><span class="spacer"></span>${o.compact?`<button class="btn sm primary" data-tab="myday">See everything</button>`:''}</div>
+  return `<div class="card todo"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">⚑ Needs your attention <span class="pill p-warn">${n}</span></h2><span class="small muted">${esc(attnLabel())}</span><span class="spacer"></span>${o.compact?`<button class="btn sm primary" data-tab="myday">See everything</button>`:''}</div>
     <div class="todogrid">${shown.map(g=>`<div class="todog"><div class="todoh"><span>${g.ic} <b>${esc(g.title)}</b> <span class="pill ${g.items.some(i=>i.red)?'p-red':'p-warn'}">${g.items.length}</span></span><button class="btn sm" ${g.key==='alerts'?'data-tab="alerts"':`data-tab="${g.tab}"`}>${esc(g.btn)}</button></div>
       ${g.items.slice(0,lim).map(i=>`<div class="todoi ${i.red?'red':''}" ${i.act?`data-act="${i.act}" data-id="${esc(i.id)}"`:`data-tab="${g.tab}"`} role="button" tabindex="0"><b>${esc(i.text)}</b><span>${esc(i.sub||'')}</span></div>`).join('')}
       ${g.items.length>lim?`<div class="small muted" style="padding:2px 8px">…and ${g.items.length-lim} more</div>`:''}</div>`).join('')}</div>

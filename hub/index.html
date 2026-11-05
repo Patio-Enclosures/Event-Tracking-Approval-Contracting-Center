@@ -83,7 +83,7 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .tourbox.phelp{max-width:620px;text-align:left}.tourbox.phelp h3{margin:14px 0 4px;font-size:15px}.phl{margin:4px 0 0;padding-left:22px;line-height:1.5;color:var(--ink-soft)}.phl li{margin:3px 0}
 .gltab{width:100%;font-size:14px}.gltab td,.gltab th{padding:5px 8px;vertical-align:top}
 .tcontent{margin:4px 0 12px}.space{border:1px solid var(--line,#e2e2e2);border-radius:10px;margin:6px 0;padding:6px 10px;background:#fff}.space summary{cursor:pointer;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.space ul{margin:6px 0 4px 6px;padding-left:18px;line-height:1.5}.space li{margin:3px 0}.spl{display:inline-flex;width:26px;height:26px;border-radius:50%;background:var(--aqua);color:#fff;font-weight:700;align-items:center;justify-content:center;flex:none}
-.layouts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:8px}.layout{border:1px solid var(--line,#e2e2e2);border-radius:10px;padding:8px;background:#fff}.lyimg{border-radius:8px;overflow:hidden;background:#f1f3f3;margin-bottom:6px;position:relative;min-height:40px}.lyimg img{display:block;width:100%;height:auto;cursor:zoom-in}.lyph{display:none}.lyimg.noimg{display:none}.layout ol{margin:4px 0 0;padding-left:20px}.outdoor{display:grid;grid-template-columns:minmax(220px,380px) 1fr;gap:14px;align-items:start}.outdoor .lyimg{display:block}@media (max-width:640px){.outdoor{grid-template-columns:1fr}}
+.layouts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:8px}.layout{border:1px solid var(--line,#e2e2e2);border-radius:10px;padding:8px;background:#fff}.lyimg{border-radius:8px;overflow:hidden;background:#f1f3f3;margin-bottom:6px;position:relative;min-height:40px}.lyimg img{display:block;width:100%;height:auto;cursor:zoom-in}.lyph{display:none}.lyimg.noimg{display:none}.layout ol{margin:4px 0 0;padding-left:20px}.kitgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.kitcol{border:1px solid var(--line,#e2e2e2);border-radius:10px;padding:8px 10px;background:#fff}.kitcol ul{margin:4px 0 0;padding-left:18px;line-height:1.5}.outdoor{display:grid;grid-template-columns:minmax(220px,380px) 1fr;gap:14px;align-items:start}.outdoor .lyimg{display:block}@media (max-width:640px){.outdoor{grid-template-columns:1fr}}
 .viewas{max-width:200px;font-size:13px;padding:4px 6px;border-radius:8px;border:1px solid var(--line,#ccc);background:#fff}.viewasbar{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:#fff4d6;border:2px solid var(--gold,#e0a200);border-radius:12px;padding:10px 14px;margin:10px 0}
 .tourbox.hasimg{max-width:680px}.tourimgwrap{display:block;margin:10px 0 4px;border:1px solid var(--line,#ddd);border-radius:10px;overflow:hidden;background:#f4f6f6}.tourimg{display:block;width:100%;height:auto;max-height:46vh;object-fit:contain;object-position:top}.touric-sm{margin-right:4px}.brandlink{display:block;border-radius:8px;cursor:pointer}.brandlink:focus-visible{outline:3px solid var(--aqua);outline-offset:3px}
 .tourbox.welcome{max-width:560px;border-top-color:var(--gold)}.tourbox{max-height:92vh;overflow:auto}
@@ -614,7 +614,137 @@ async function auditFound(ids){
 }
 
 /* ---------------- views ---------------- */
+// Great Day Shop items picked for tracking (Nov 5, 2026). kind 'gear' = booth asset tracked one by one; 'consumable' = stock by quantity.
+const SHOP_CATALOG = [{"sku": "GRD1785", "name": "Aluminum Frame Canopy, 10 x 10'", "kind": "gear", "category": "Tent", "unit": "", "price": 538.46, "url": "https://www.greatdayshop.com/product/aluminum-frame-canopy-10-x-10-GRD1785"}, {"sku": "GRD1794", "name": "10x10 Recreational Grade Aluminum Pop-up Canopy Tent with Weight Bags", "kind": "gear", "category": "Tent", "unit": "", "price": 384.6, "url": "https://www.greatdayshop.com/product/10x10-recreational-grade-aluminum-pop-up-canopy-tent-with-weight-bags-GRD1794"}, {"sku": "GRD1779", "name": "Canopy Weights, pack of 4", "kind": "gear", "category": "Tent", "unit": "", "price": 63.0, "url": "https://www.greatdayshop.com/product/canopy-weights-pk-of-4-GRD1779"}, {"sku": "GRD1793", "name": "Impact Canopy Rubber Weight", "kind": "gear", "category": "Tent", "unit": "", "price": 321.43, "url": "https://www.greatdayshop.com/product/impact-canopy-rubber-weight-GRD1793"}, {"sku": "GRD1373", "name": "PE 6' Folding Table", "kind": "gear", "category": "Table", "unit": "", "price": 75.0, "url": "https://www.greatdayshop.com/product/pe-6-folding-table-GRD1373"}, {"sku": "GRD1860", "name": "PE 6' Spandex Stretch Table Cover", "kind": "gear", "category": "Table", "unit": "", "price": 111.0, "url": "https://www.greatdayshop.com/product/pe-6-spandex-stretch-table-cover-GRD1860"}, {"sku": "GRD1790", "name": "10' x 10' Interlocking Foam Mats, 26 tiles, Black Wood Grain", "kind": "gear", "category": "Flooring", "unit": "", "price": 384.0, "url": "https://www.greatdayshop.com/product/10-x-10-interlocking-foam-mats-set-of-26-flooring-tiles-black-wood-grain-GRD1790"}, {"sku": "GRD1791", "name": "10' x 10' Interlocking Foam Mats, 26 tiles, Gray Wood Grain", "kind": "gear", "category": "Flooring", "unit": "", "price": 430.75, "url": "https://www.greatdayshop.com/product/10-x-10-interlocking-foam-mats-set-of-26-flooring-tiles-gray-wood-grain-GRD1791"}, {"sku": "GRD1789", "name": "10' x 10' Interlocking Foam Mats, 26 tiles, Light Oak Wood Grain", "kind": "gear", "category": "Flooring", "unit": "", "price": 430.0, "url": "https://www.greatdayshop.com/product/10-x-10-interlocking-foam-mats-set-of-26-flooring-tiles-light-oak-wood-grain-GRD1789"}, {"sku": "GRD1792", "name": "Director's Chair", "kind": "gear", "category": "Other", "unit": "", "price": 244.62, "url": "https://www.greatdayshop.com/product/directors-chair-GRD1792"}, {"sku": "GRD1767", "name": "Surge Protectors", "kind": "gear", "category": "Tech", "unit": "", "price": 27.69, "url": "https://www.greatdayshop.com/product/surge-protectors-GRD1767"}, {"sku": "GRD1768", "name": "Extension Cord, 25 ft", "kind": "gear", "category": "Tech", "unit": "", "price": 35.38, "url": "https://www.greatdayshop.com/product/extension-cords-25-ft-GRD1768"}, {"sku": "GRD1763", "name": "Utility Wagon", "kind": "gear", "category": "Other", "unit": "", "price": 130.77, "url": "https://www.greatdayshop.com/product/utility-wagon-GRD1763"}, {"sku": "GRD0336", "name": "Patio Enclosures Catalog/Brochure, pack of 150", "kind": "consumable", "category": "Print", "unit": "pack of 150", "price": 174.0, "url": "https://www.greatdayshop.com/product/patio-enclosures-catalogbrochure-pk-100-GRD0336"}, {"sku": "GRD1598", "name": "Patio Enclosures Large Brochure, pack of 100 (old and new 2026 art)", "kind": "consumable", "category": "Print", "unit": "pack of 100", "price": 108.49, "url": "https://www.greatdayshop.com/product/patio-enclosures-large-brochure-bx-100-GRD1598"}, {"sku": "GRD1599", "name": "Patio Enclosures Tri-Fold, pack of 100", "kind": "consumable", "category": "Print", "unit": "pack of 100", "price": 8.44, "url": "https://www.greatdayshop.com/product/patio-enclosures-tri-fold-pk-100-GRD1599"}, {"sku": "GRD0338", "name": "Patio Enclosures Scratch Off, pack of 50", "kind": "consumable", "category": "Giveaway", "unit": "pack of 50", "price": 12.5, "url": "https://www.greatdayshop.com/product/patio-enclosures-scratch-off-GRD0338"}, {"sku": "GRD1841", "name": "PE Sept/Oct Easel Back Posters", "kind": "consumable", "category": "Print", "unit": "each", "price": 5.35, "url": "https://www.greatdayshop.com/product/pe-septoct-easel-back-posters-GRD1841"}, {"sku": "GRD1842", "name": "PE Sept/Oct Flyers, pack of 100", "kind": "consumable", "category": "Print", "unit": "pack of 100", "price": 11.75, "url": "https://www.greatdayshop.com/product/pe-septoct-flyers-pk100-GRD1842"}, {"sku": "GRD1909", "name": "PE Large Tradeshow ID Badge", "kind": "consumable", "category": "Other", "unit": "each", "price": 6.96, "url": "https://www.greatdayshop.com/product/pe-id-badges-grd1909"}];
+const SHOP_URL = 'https://www.greatdayshop.com/category/patio-enclosures';
+// Other approved booth items (not from the Great Day Shop; prices as listed by the supplier, Nov 5, 2026).
+[['OTH-RUNNER',"Logo'd table runner",'Table',39.99],['OTH-TABLECLOTH','Table cloth (black, fitted)','Table',19.99],['OTH-10PANEL','10-panel display','Display / sample',999.99],
+ ['OTH-SIGN11X17','11×17 sign holder','Banner / sign',19.99],['OTH-ACRYLIC','Acrylic sign / brochure holder','Banner / sign',9.69],['OTH-BANNER-OUT','Mesh Outdoor Banner','Banner / sign',99.99],
+ ['OTH-TV32','32" TV','Tech',88.00],['OTH-FLASH','Flash drive','Tech',7.99],['OTH-STOOL','Folding stool','Other',17.94]]
+ .forEach(([sku,name,category,price])=>SHOP_CATALOG.push({ sku, name, kind:'gear', category, unit:'', price, url:'', vendor:'Other supplier', other:true }));
+// Kit collateral and display items without a store listing yet (add price/link when known).
+[['KIT-STANEK-BROCH','Stanek Windows 8.5×11 brochure','Print','consumable','each'],['KIT-STANEK-TRI','Stanek Windows trifold','Print','consumable','each'],
+ ['KIT-TEARPAD','Lead generation tear pad','Print','consumable','pad'],['KIT-PRECONSULT','Pre-consultation checklist (printed)','Print','consumable','each'],
+ ['KIT-LANYARD','Lanyard','Other','consumable','each'],['KIT-SWEEPS','$100K Sweepstakes display (frame or acrylic holder)','Banner / sign','gear',''],['KIT-PHOTOBOOK','Photo book (easel binder)','Display / sample','gear','']]
+ .forEach(([sku,name,category,kind,unit])=>SHOP_CATALOG.push({ sku, name, kind, category, unit, price:null, url:'', vendor:'Other supplier', other:true }));
+// Pop-up (retractable) banners: one per design, per regional artwork set. Orderable from the Great Day Shop on Dec 1, 2026 (price and link added then).
+(()=>{ const designs=[['qr','Scan to Learn More (QR code)'],['enclose','Enclose Your Patio or Porch'],['benefits','Enjoy These Benefits'],['sunrooms','Sunrooms & Screen Rooms'],['financing','Financing Available']];
+  [['main','Main'],['tx','Texas'],['sw','Southwest']].forEach(([k,label])=>designs.forEach(([d,name])=>SHOP_CATALOG.push({ sku:`BNR-${k.toUpperCase()}-${d.toUpperCase()}`, name:`Pop-up banner (${label} set): ${name}`, kind:'gear', category:'Banner / sign', unit:'', price:null, url:SHOP_URL, available:'2026-12-01', bannerSet:k }))); })();
+/* ---------------- Add items from the Great Day Shop catalog ---------------- */
+function shopOverlay(){
+  const A=ui.shopAdd; if(!A) return '';
+  const offs=offices(), inOff=(sku)=>S.assets.filter(a=>!a.retired && a.shopSku===sku && (a.office||'')===(A.office||''));
+  const row=x=>{ const have=inOff(x.sku), g=x.kind==='gear';
+    const haveTxt=g ? (have.length?`${have.length} in hub`:'') : (have.length?`${stOf(have[0]).qty} on hand`:'');
+    return `<tr><td>${x.url?`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.name)}</a>`:`<b>${esc(x.name)}</b>`}<div class="small muted">${x.price!=null?`${x.sku} · $${x.price.toFixed(2)}`:`Price TBD${x.available&&x.available>todayIso()?` · orderable ${fmtLong(x.available)}`:''}`}${x.unit?' · '+esc(x.unit):''}${haveTxt?' · <b>'+haveTxt+'</b>':''}</div></td>
+      <td class="small">${g?'Booth asset':'Stock'}</td>
+      <td><input type="number" min="0" step="1" data-shopq="${x.sku}" data-keep="shopq-${esc(A.office||"")}-${x.sku}" value="${esc(A.qty[x.sku]??'')}" placeholder="0" style="width:80px" aria-label="${g?'Units':'Quantity on hand'} for ${esc(x.name)}"></td>
+      <td>${g?'<span class="small muted">—</span>':`<input type="number" min="0" step="1" data-shopr="${x.sku}" data-keep="shopr-${esc(A.office||"")}-${x.sku}" value="${esc(A.reorder[x.sku]??(have[0]&&have[0].reorderAt!==''&&have[0].reorderAt!=null?have[0].reorderAt:''))}" placeholder="—" style="width:80px" aria-label="Reorder point for ${esc(x.name)}">`}</td></tr>`; };
+  const gear=SHOP_CATALOG.filter(x=>x.kind==='gear'), cons=SHOP_CATALOG.filter(x=>x.kind!=='gear');
+  return `<div class="tourbg" data-act="shopClose"><div class="tourbox phelp" style="max-width:820px" role="dialog" aria-label="Add from Great Day Shop"><div class="tourstep">Asset inventory</div><h2>🛒 Add from the supply list</h2>
+    <p class="small muted" style="margin-top:0">Pick the office, then enter what it actually has. Booth assets get their own barcode (one per unit) so you can print labels. Stock adds to what’s on hand. Prices and links come from the <a href="${SHOP_URL}" target="_blank" rel="noopener">Great Day Shop</a> and your other suppliers.</p>
+    <div class="field" style="max-width:320px"><label>Office</label><select data-shopoff>${['',...offs].map(o=>`<option value="${esc(o)}" ${o===(A.office||'')?'selected':''}>${o?esc(o):'Choose an office…'}</option>`).join('')}</select></div>
+    <div style="max-height:52vh;overflow:auto"><table><thead><tr><th>Item</th><th>Type</th><th>Units / on hand</th><th>Reorder at</th></tr></thead><tbody>
+      <tr><td colspan="4" class="small" style="background:#f4f6f6"><b>Booth assets</b>: how many units this office has</td></tr>${gear.filter(x=>!x.bannerSet && !x.other).map(row).join('')}
+      <tr><td colspan="4" class="small" style="background:#f4f6f6"><b>Other booth items</b> (not from the Great Day Shop)</td></tr>${gear.filter(x=>x.other).map(row).join('')}
+      <tr><td colspan="4" class="small" style="background:#f4f6f6"><b>Pop-up banners</b>: count the new banners only (never legacy ones). Use the set for this office’s area. On order from the Great Day Shop starting ${fmtLong('2026-12-01')}.</td></tr>${gear.filter(x=>x.bannerSet).sort((a,b)=>(a.bannerSet===bannerSetFor(A.office)?0:1)-(b.bannerSet===bannerSetFor(A.office)?0:1)).map(row).join('')}
+      <tr><td colspan="4" class="small" style="background:#f4f6f6"><b>Print, giveaways and badges</b>: quantity on hand now (in the unit shown), and when to reorder</td></tr>${cons.map(row).join('')}
+    </tbody></table></div>
+    ${A.err?`<div class="notice err">${esc(A.err)}</div>`:''}
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn" data-act="shopClose">Cancel</button><button class="btn primary" data-act="shopSave" ${ui.busy?'disabled':''}>${ui.busy?'Adding…':'Add to inventory'}</button></div></div></div>`;
+}
+// Which banner artwork set an office uses (Texas offices → Texas set; Southwest region → Southwest set; everyone else → main).
+function bannerSetFor(office){ const r=regionOf(office||''); if(r==='SW') return 'sw'; if(r==='SC'||r==='SC-2') return 'tx'; return 'main'; }
+async function shopSave(){
+  const A=ui.shopAdd;
+  document.querySelectorAll('[data-shopq]').forEach(el=>{ A.qty[el.dataset.shopq]=el.value; });
+  document.querySelectorAll('[data-shopr]').forEach(el=>{ A.reorder[el.dataset.shopr]=el.value; });
+  if(!A.office){ A.err='Choose the office these items belong to.'; render(); return 0; }
+  let list=S.assets.slice(); const entries=[]; let made=0, codes=[];
+  const next=()=>{ let n=0; list.forEach(a=>{ const m=String(a.code||'').match(/^PE-(\d+)$/i); if(m) n=Math.max(n,+m[1]); }); return 'PE-'+String(n+1).padStart(5,'0'); };
+  SHOP_CATALOG.forEach(x=>{ const q=Math.max(0,Math.floor(num(A.qty[x.sku]))), r=A.reorder[x.sku];
+    const base={ name:x.name, category:x.category, office:A.office, cost:x.price!=null?x.price:'', vendor:x.vendor||'Great Day Shop', shopSku:x.sku, shopUrl:x.url||'', notes:'' };
+    if(x.kind==='gear'){ for(let i=0;i<q;i++){ const id='a_'+uid(), code=next(); list.push(Object.assign({ id, kind:'gear', code, createdAt:Date.now(), retired:false, condition:'Good', serial:'', purchaseDate:'' }, base)); codes.push(id); made++; } return; }
+    const ex=list.find(a=>!a.retired && a.shopSku===x.sku && (a.office||'')===A.office);
+    if(ex){ if(r!==undefined && r!=='') list=list.map(a=>a.id===ex.id?Object.assign({},a,{ reorderAt:num(r) }):a); if(q>0){ entries.push({ type:'restock', assetId:ex.id, qty:q, note:'Added from Great Day Shop list' }); made++; } return; }
+    if(q>0 || (r!==undefined && r!=='')){ const id='a_'+uid(); list.push(Object.assign({ id, kind:'consumable', code:next(), createdAt:Date.now(), retired:false, unit:x.unit||'each', reorderAt:(r===undefined||r==='')?'':num(r) }, base)); entries.push({ type:'count', assetId:id, qty:q, note:'Starting quantity' }); made++; }
+  });
+  if(!made){ A.err='Enter at least one quantity.'; render(); return 0; }
+  ui.busy=true; render();
+  try{ await saveAssets(list); if(entries.length) await logAsset(entries); }
+  finally{ ui.busy=false; }
+  ui.shopAdd=null; ui.labelSel=codes;
+  ui.notice=`Added to ${A.office}: ${made} item${made===1?'':'s'}.${codes.length?` ${codes.length} new booth asset${codes.length===1?'':'s'} are ticked below, ready to print labels.`:''}`; ui.noticeKind='ok';
+  render(); return made;
+}
+/* ---------------- Kit templates: build, check and print kits ---------------- */
+// Each requirement: [key, label, matcher, optional]. Banner requirements use the office's banner set.
+const BNR=d=>(a,set)=>a.shopSku===`BNR-${set.toUpperCase()}-${d}`;
+const KIT_REQ = {
+  coverReq:['cover','Branded table cover',a=>['GRD1860','OTH-RUNNER'].includes(a.shopSku)||/table cover|table throw|table runner/i.test(a.name),false],
+  tableReq:['table','6 ft table',a=>a.shopSku==='GRD1373'||(a.category==='Table'&&/\b6\s*(ft|')/i.test(a.name)&&!/cover|cloth|runner/i.test(a.name)),false],
+  chairReq:['chair','Director’s chair',a=>a.shopSku==='GRD1792'||/director/i.test(a.name),true] };
+const KIT_TYPES = {
+  A:{ label:'Indoor kit · Layout A (5 banners)', req:[['qr','Banner: Scan to Learn More (QR)',BNR('QR')],['enclose','Banner: Enclose Your Patio or Porch',BNR('ENCLOSE')],['benefits','Banner: Enjoy These Benefits',BNR('BENEFITS')],['sunrooms','Banner: Sunrooms & Screen Rooms',BNR('SUNROOMS')],['financing','Banner: Financing Available',BNR('FINANCING')],KIT_REQ.coverReq,KIT_REQ.tableReq,KIT_REQ.chairReq] },
+  B:{ label:'Indoor kit · Layout B (3 banners with benefits)', req:[['enclose','Banner: Enclose Your Patio or Porch',BNR('ENCLOSE')],['benefits','Banner: Enjoy These Benefits',BNR('BENEFITS')],['sunrooms','Banner: Sunrooms & Screen Rooms',BNR('SUNROOMS')],KIT_REQ.coverReq,KIT_REQ.tableReq,KIT_REQ.chairReq] },
+  C:{ label:'Indoor kit · Layout C (3 banners with QR code)', req:[['enclose','Banner: Enclose Your Patio or Porch',BNR('ENCLOSE')],['qr','Banner: Scan to Learn More (QR)',BNR('QR')],['sunrooms','Banner: Sunrooms & Screen Rooms',BNR('SUNROOMS')],KIT_REQ.coverReq,KIT_REQ.tableReq,KIT_REQ.chairReq] },
+  O:{ label:'Outdoor kit', req:[['tent','Canopy tent',a=>['GRD1785','GRD1794'].includes(a.shopSku)||(a.category==='Tent'&&/canopy|tent/i.test(a.name)&&!/weight/i.test(a.name)),false],['weights','Canopy weights',a=>['GRD1779','GRD1793'].includes(a.shopSku)||/weight/i.test(a.name),false],['backdrop','Backdrop banner (Mesh Outdoor Banner)',a=>a.shopSku==='OTH-BANNER-OUT'||/mesh|backdrop/i.test(a.name),false],KIT_REQ.coverReq,KIT_REQ.tableReq,KIT_REQ.chairReq] } };
+const KIT_COLLATERAL = ['Promo flyers (current promotion only)','Easel back poster (current promotion)','8.5×11 brochures, Patio Enclosures and Stanek Windows (3-month supply)','Trifolds, Patio Enclosures and Stanek Windows (3-month supply)','Scratch-off cards (current year)','Pre-consultation checklists','$100K Sweepstakes display in a frame or acrylic holder','Lead generation tear pads','Photo book / easel binder (optional)','Tradeshow ID badge and lanyard for each marketer'];
+function kitSet(kit){ return kit.bannerSet || bannerSetFor(kit.office); }
+function kitCheck(kit){ // missing required pieces (lost or retired items don't count)
+  const T=KIT_TYPES[kit.kitType]; if(!T) return null;
+  const items=(kit.contents||[]).map(assetById).filter(a=>a && !a.retired && stOf(a).status!=='lost'), used=new Set(), set=kitSet(kit), missing=[];
+  T.req.forEach(([k,label,fn,opt])=>{ const hit=items.find(a=>!used.has(a.id) && fn(a,set)); if(hit) used.add(hit.id); else if(!opt) missing.push(label); });
+  return missing;
+}
+function kitCandidates(office, fn, set, taken){ return S.assets.filter(a=>!a.retired && isGear(a) && a.kind!=='kit' && (stOf(a).office||a.office||'')===office && !kitOf(a.id) && !taken.has(a.id) && stOf(a).status!=='lost' && fn(a,set)); }
+function kitBuildOverlay(){
+  const B=ui.kitBuild; if(!B) return ''; const offs=offices(), T=KIT_TYPES[B.type], set=B.office?bannerSetFor(B.office):'main';
+  const taken=new Set(); const picks={};
+  if(B.office) T.req.forEach(([k,label,fn])=>{ const c=kitCandidates(B.office,fn,set,taken); const cur=B.pick[k]!==undefined?B.pick[k]:(c[0]?c[0].id:''); if(cur) taken.add(cur); picks[k]={ c, cur }; });
+  const people=(S.sched.roster||[]).filter(p=>!B.office||p.office===B.office).sort((a,b)=>a.name.localeCompare(b.name));
+  return `<div class="tourbg" data-act="kitClose"><div class="tourbox phelp" style="max-width:760px" role="dialog" aria-label="Build a kit"><div class="tourstep">Asset inventory</div><h2>🧰 Build a kit</h2>
+    <p class="small muted" style="margin-top:0">Pick the kit type and office. The hub fills each slot with one of that office’s available items (not already in a kit); change any pick if you like. The kit gets one barcode, so a single scan checks out everything.</p>
+    <div class="fields"><div class="field"><label>Kit type</label><select data-kitf="type">${Object.entries(KIT_TYPES).map(([k,t])=>`<option value="${k}" ${k===B.type?'selected':''}>${esc(t.label)}</option>`).join('')}</select></div>
+      <div class="field"><label>Office</label><select data-kitf="office">${['',...offs].map(o=>`<option value="${esc(o)}" ${o===B.office?'selected':''}>${o?esc(o):'Choose an office…'}</option>`).join('')}</select></div>
+      <div class="field"><label>Assigned to</label><select data-kitf="who"><option value="">The branch (office kit)</option>${people.map(p=>`<option value="${esc(p.id)}" ${p.id===B.who?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div></div>
+    ${B.office?`<div class="small" style="margin:4px 0 6px">Banner set for this office: <b>${set==='tx'?'Texas':set==='sw'?'Southwest':'Main'}</b></div>
+    <table><thead><tr><th>Slot</th><th>Item</th></tr></thead><tbody>${T.req.map(([k,label,fn,opt])=>{ const P=picks[k]; return `<tr><td class="small"><b>${esc(label)}</b>${opt?' <span class="muted">(optional)</span>':''}</td><td>${P.c.length?`<select data-kitpick="${k}"><option value="">— none —</option>${P.c.map(a=>`<option value="${a.id}" ${a.id===P.cur?'selected':''}>${esc(a.code||'')} · ${esc(a.name)}</option>`).join('')}</select>`:`<span class="pill ${opt?'p-gray':'p-warn'}">${opt?'None available':'Missing: none available in this office'}</span>`}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">Choose an office to see its available items.</p>'}
+    ${B.err?`<div class="notice err">${esc(B.err)}</div>`:''}
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn" data-act="kitClose">Cancel</button><button class="btn primary" data-act="kitSave" ${B.office&&!ui.busy?'':'disabled'}>Create kit</button></div></div></div>`;
+}
+async function kitSave(){
+  const B=ui.kitBuild, T=KIT_TYPES[B.type];
+  document.querySelectorAll('[data-kitpick]').forEach(el=>{ B.pick[el.dataset.kitpick]=el.value; });
+  const ids=[...new Set(Object.values(B.pick).filter(Boolean))];
+  // fill auto picks the user didn't change
+  const set=bannerSetFor(B.office), taken=new Set(ids);
+  T.req.forEach(([k,,fn])=>{ if(B.pick[k]===undefined){ const c=kitCandidates(B.office,fn,set,taken); if(c[0]){ ids.push(c[0].id); taken.add(c[0].id); } } });
+  if(!ids.length){ B.err='There’s nothing available in this office for this kit yet. Add items first.'; render(); return; }
+  const p=B.who?person(B.who):null, who=p?p.name:B.office;
+  let n=0; S.assets.forEach(a=>{ const m=String(a.code||'').match(/^PE-(\d+)$/i); if(m) n=Math.max(n,+m[1]); });
+  const kit={ id:'a_'+uid(), kind:'kit', code:'PE-'+String(n+1).padStart(5,'0'), name:`${T.label.split(' · ')[0].replace(' kit','')} kit ${B.type!=='O'?'('+B.type+') ':''}– ${who}`, category:'Kit', office:B.office, contents:ids, kitType:B.type, bannerSet:set,
+    assignedTo:p?{ personId:p.id, name:p.name }:{ office:B.office }, createdAt:Date.now(), retired:false, condition:'Good', vendor:'', notes:'' };
+  ui.busy=true; render();
+  try{ await saveAssets([...S.assets, kit]); await logAsset([{ type:'status', assetId:kit.id, status:'available', condition:'Good', note:`Kit built and assigned to ${who}` }]); }
+  finally{ ui.busy=false; }
+  const miss=kitCheck(kit)||[];
+  ui.kitBuild=null; ui.labelSel=[kit.id]; ui.notice=`Created ${kit.name} (${kit.code}).${miss.length?` Still missing: ${miss.join(', ')}.`:' It’s complete.'} Its label is ticked below, ready to print.`; ui.noticeKind=miss.length?'warn':'ok'; render();
+}
+function printKitList(kit){
+  const items=(kit.contents||[]).map(assetById).filter(Boolean), miss=kitCheck(kit)||[], who=(kit.assignedTo&&(kit.assignedTo.name||kit.assignedTo.office))||kit.office;
+  const box=document.getElementById('printArea');
+  box.innerHTML=`<div style="padding:10px"><h2 style="margin:0">${esc(kit.name)}</h2><div>${esc(kit.code||'')} · ${esc((KIT_TYPES[kit.kitType]||{}).label||'Kit')} · ${esc(kit.office||'')} · assigned to ${esc(who)}</div>
+    <h3>Booth assets</h3><table border="1" cellpadding="4"><tr><th>✓</th><th>Code</th><th>Item</th><th>Condition</th></tr>${items.map(a=>`<tr><td>☐</td><td>${esc(a.code||'')}</td><td>${esc(a.name)}</td><td>${esc(stOf(a).condition||'')}</td></tr>`).join('')}</table>
+    ${miss.length?`<p><b>Missing:</b> ${esc(miss.join(', '))}</p>`:''}
+    <h3>Paper collateral</h3><table border="1" cellpadding="4"><tr><th>✓</th><th>Item</th><th>Qty packed</th></tr>${KIT_COLLATERAL.map(c=>`<tr><td>☐</td><td>${esc(c)}</td><td style="width:90px"></td></tr>`).join('')}</table>
+    <p>Checked by ____________________ &nbsp; Date __________</p></div>`;
+  document.body.classList.add('printing-expense');
+  setTimeout(()=>{ window.print(); setTimeout(()=>document.body.classList.remove('printing-expense'),500); },150);
+}
 function assetsView(){
+
+
   const mgr=!!S.user, v=ui.av||'inventory';
   const subs=[['inventory','📦 Inventory'],['station','🔄 Check out / return'],['audit','📋 Annual inventory'],['log','🕘 Activity']];
   return `<div class="row" style="margin-bottom:12px">${subs.map(([k,l])=>`<button class="btn ${v===k?'primary':''}" data-act="av" data-v="${k}">${l}</button>`).join('')}<span class="spacer"></span>${scopePicker()}</div>
@@ -641,12 +771,12 @@ function inventoryView(){
     <input type="text" data-act="aq" data-keep="aq" placeholder="Search name, code, serial, person…" value="${esc(ui.aq||'')}" style="flex:1;min-width:180px">
     <select data-act="acat"><option value="">All categories</option>${ASSET_CATS.map(c=>`<option ${c===cat?'selected':''}>${c}</option>`).join('')}</select>
     <select data-act="ast"><option value="">Any status</option>${[['available','Available'],['out','Checked out'],['overdue','Overdue'],['repair','In repair'],['lost','Lost'],['low','Giveaways to reorder']].map(([x,l])=>`<option value="${x}" ${x===stf?'selected':''}>${l}</option>`).join('')}</select>
-    ${mgr?'<button class="btn primary" data-act="addAsset">+ Add item</button>':''}</div>
+    ${mgr?'<button class="btn" data-act="kitBuild" title="Build an indoor or outdoor kit from an office’s items">🧰 Build a kit</button>':''}${mgr?'<button class="btn" data-act="shopAdd" title="Add booth assets and supplies from the approved list">🛒 Add from supply list</button><button class="btn primary" data-act="addAsset">+ Add item</button>':''}</div>
     ${scanBox('lookup','Scan an item to look it up')}
     <div class="row small" style="margin:8px 0">${sel.length?`<b>${sel.length} selected</b> <button class="btn sm" data-act="labels">🏷 Print ${sel.length} label${sel.length===1?'':'s'}</button> <button class="btn sm" data-act="selNone">Clear</button>`:`<button class="btn sm" data-act="labelsAll">🏷 Print labels for everything shown</button> <span class="muted">or tick items to choose</span>`}</div>
     <h3>Booth assets & kits (${gear.length})</h3>
     ${gear.length?`<table><thead><tr><th style="width:26px"></th><th>Code</th><th>Item</th><th>Office</th><th>Status</th><th>Condition</th><th>Value</th></tr></thead><tbody>${gear.map(a=>{ const s=stOf(a), kit=kitOf(a.id);
-      return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td>${a.kind==='kit'?'🧰 ':''}${esc(a.name)}<div class="small muted">${esc(a.category||'')}${a.kind==='kit'?` · ${(a.contents||[]).length} items`:''}${kit?` · in ${esc(kit.name)}`:''}</div></td><td class="small">${esc(s.office||'Any')}</td><td>${statusPill(a)}</td><td class="small">${esc(s.condition||'')}</td><td class="small">${a.cost?money(a.cost):''}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No booth assets match.</p>'}
+      return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td>${a.kind==='kit'?'🧰 ':''}${esc(a.name)}<div class="small muted">${esc(a.category||'')}${a.kind==='kit'?` · ${(a.contents||[]).length} items`:''}${kit?` · in ${esc(kit.name)}`:''}${a.kind==='kit'&&a.assignedTo?` · assigned to ${esc(a.assignedTo.name||a.assignedTo.office||'')}`:''}</div>${a.kind==='kit'&&a.kitType?(()=>{ const m=kitCheck(a)||[]; return m.length?`<span class="pill p-warn" title="${esc(m.join(', '))}">missing ${m.length}</span>`:'<span class="pill p-green">complete</span>'; })():''}</td><td class="small">${esc(s.office||'Any')}</td><td>${statusPill(a)}</td><td class="small">${esc(s.condition||'')}</td><td class="small">${a.cost?money(a.cost):''}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No booth assets match.</p>'}
     <h3>Giveaways & print (${cons.length})</h3>
     ${cons.length?`<table><thead><tr><th style="width:26px"></th><th>Code</th><th>Item</th><th>Office</th><th>On hand</th><th>Reorder at</th><th>Used (30 days)</th><th>Last count</th></tr></thead><tbody>${cons.map(a=>{ const s=stOf(a);
       return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td>${esc(a.name)}<div class="small muted">${esc(a.category||'')}</div></td><td class="small">${esc(s.office||'Any')}</td><td>${statusPill(a)}</td><td class="small">${a.reorderAt!==''&&a.reorderAt!=null?esc(a.reorderAt):'—'}</td><td class="small">${usedLast(a,30)}</td><td class="small">${s.lastCount?fmtStamp(s.lastCount):'—'}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No giveaway or print items match.</p>'}
@@ -742,6 +872,7 @@ function itemPanel(){
   const hist=S.alog.filter(e=>e.assetId===a.id).sort((x,y)=>(y.at||0)-(x.at||0)).slice(0,40);
   const btn=(act,l,extra='')=>`<button class="btn sm" data-act="${act}" data-aid="${a.id}" ${extra}>${l}</button>`;
   return `<div class="panel"><div class="row"><h2>${a.kind==='kit'?'🧰 ':''}${esc(a.name)}</h2><span class="spacer"></span>${statusPill(a)}</div>
+    ${a.kind==='kit'&&a.kitType?(()=>{ const m=kitCheck(a)||[]; return `<div class="notice ${m.length?'':'ok'}" style="margin:6px 0">${esc((KIT_TYPES[a.kitType]||{}).label||'Kit')}${a.assignedTo?` · assigned to <b>${esc(a.assignedTo.name||a.assignedTo.office||'')}</b>`:''} · ${m.length?`<b>Missing:</b> ${esc(m.join(', '))}`:'<b>Complete</b>'} <button class="btn sm" data-act="kitPrint" data-id="${a.id}">🖨 Packing list</button></div>`; })():''}
     <div class="sub">${esc(a.category||'')} · ${esc(s.office||'Any office')}${kit?` · part of <a href="#" data-item="${kit.id}">${esc(kit.name)}</a>`:''}</div>
     <div class="row" style="align-items:flex-start;gap:16px"><svg class="bc" data-code="${esc(a.code||'')}"></svg>
     <table style="flex:1;min-width:240px"><tbody>
@@ -749,6 +880,7 @@ function itemPanel(){
       ${gear?`<tr><th>Condition</th><td>${esc(s.condition||'')}</td></tr>`:`<tr><th>On hand</th><td>${s.qty}${a.unit?' '+esc(a.unit):''} · reorder at ${a.reorderAt!==''&&a.reorderAt!=null?esc(a.reorderAt):'—'}</td></tr>`}
       ${s.holder?`<tr><th>With</th><td>${esc(s.holder.personName)}${s.holder.eventName?' · '+esc(s.holder.eventName):''}<div class="small muted">since ${fmtStamp(s.holder.at)}${s.holder.due?' · due '+fmtMD(s.holder.due):''}</div></td></tr>`:''}
       ${a.serial?`<tr><th>Serial #</th><td>${esc(a.serial)}</td></tr>`:''}
+      ${a.shopUrl&&a.vendor!=='Other supplier'?`<tr><th>Great Day Shop</th><td><a href="${esc(a.shopUrl)}" target="_blank" rel="noopener">${gear?'View item':'Reorder'} ↗</a> <span class="small muted">${esc(a.shopSku||'')}</span></td></tr>`:''}
       ${a.purchaseDate||a.cost||a.vendor?`<tr><th>Purchased</th><td>${esc([a.purchaseDate?fmtMD(a.purchaseDate)+'/'+a.purchaseDate.slice(0,4):'', a.cost?money(a.cost)+(gear?'':' each'):'', a.vendor].filter(Boolean).join(' · '))}</td></tr>`:''}
       ${a.kind==='kit'?`<tr><th>In this kit</th><td>${(a.contents||[]).map(id=>`<a href="#" data-item="${id}">${esc(assetName(id))}</a>`).join('<br>')||'—'}</td></tr>`:''}
       ${s.lastSeen?`<tr><th>Last counted</th><td>${fmtStamp(s.lastSeen)}</td></tr>`:''}
@@ -1421,6 +1553,8 @@ const DEFAULT_MGR_TASKS = [
   { id:'mo10', when:'dow:1', group:'Continuing work flow', text:'Attend the weekly REM meeting' },
   { id:'mo16', when:'dow:1', group:'Continuing work flow', text:'Coach one marketer: review their booth photos and results from last week and give feedback', tab:'today' },
   { id:'mo17', when:'dow:1', cond:'monthend', group:'Month-end', text:'Submit next month’s Researching events for approval in ETACC (due the last day of this month)', tab:'events' },
+  { id:'mo18', when:'dow:1', cond:'novdec', group:'Year-end inventory', text:'Inventory your kits: displays, signage and collateral. Note what you’ll need for next year, and restock each kit so it’s ready', tab:'assets' },
+  { id:'mo19', when:'dow:1', cond:'novdec', group:'Year-end inventory', text:'When the new scratch-off cards arrive, discard last year’s (they expire December 31)' },
   { id:'mo11', when:'dow:1', group:'Continuing work flow', text:'Event planning / research future events', tab:'events' },
   // Thursday
   { id:'ev1', when:'daily', cond:'shift', group:'Event day', text:'As shifts end, review check-outs with your team: results, booth photos, booth assets returned and any issues', tab:'today' },
@@ -1466,7 +1600,7 @@ function weekendHasEvents(date){ const dow=parseIso(date).getDay(), fri=addDays(
   return liveEvents().some(e=>inOffice(e.office) && (e.days||[]).some(x=>days.includes(x.date))); }
 const REM_USERS = ['paula.shoemaker@greatdayimprovements.com','trevor.morrissey@greatdayimprovements.com','angelique.critz@greatdayimprovements.com','chris.winston@greatdayimprovements.com'];
 function isRemUser(){ return !!(S.user && REM_USERS.includes(String(S.user.email||'').toLowerCase())) || (DEMO && !!S.user && !previewing()); }
-function condOk(x, date){ if(x.tab==='remnums' && !isRemUser()) return false; if(!x.cond) return true; if(x.cond==='payday') return isPayEnd(date); if(x.cond==='monthend'){ const d=parseIso(date); return new Date(d.getFullYear(), d.getMonth()+1, 0).getDate()-d.getDate() < 7; } if(x.cond==='shift') return shiftsOn(date).some(s=>inOffice(s.ev.office)); const ev=weekendHasEvents(date); return x.cond==='events'?ev:!ev; }
+function condOk(x, date){ if(x.tab==='remnums' && !isRemUser()) return false; if(!x.cond) return true; if(x.cond==='payday') return isPayEnd(date); if(x.cond==='novdec'){ const m=parseIso(date).getMonth(); return m===10||m===11; } if(x.cond==='monthend'){ const d=parseIso(date); return new Date(d.getFullYear(), d.getMonth()+1, 0).getDate()-d.getDate() < 7; } if(x.cond==='shift') return shiftsOn(date).some(s=>inOffice(s.ev.office)); const ev=weekendHasEvents(date); return x.cond==='events'?ev:!ev; }
 function workDays(){ const w=mgrDoc().workDays; return (w&&w.length)?w:DEFAULT_WORKDAYS; }
 // Weeks run Monday–Sunday. A date is a work day if it's a typical work day, unless the manager flexed it.
 function workWeekStart(iso){ return mondayOf(iso||todayIso()); }
@@ -1979,15 +2113,34 @@ function layoutsContent(){
     <h3 style="margin-top:16px">Approved outdoor booth</h3>
     <div class="outdoor"><a href="outdoor-booth.jpg" target="_blank" rel="noopener" title="Open full size" class="lyimg"><img src="outdoor-booth.jpg" alt="Approved outdoor booth: branded 10x10 tent with weights on every leg, back-wall banner, and a covered table with the logo runner" onerror="this.closest('.lyimg').classList.add('noimg')"></a>
       <ul class="small" style="margin:0;padding-left:18px;line-height:1.55">
-        <li><b>Branded 10×10 canopy</b> (teal, “Enclosures, Sunrooms, Screens” valance), fully raised and level.</li>
+        <li><b>Branded 10×10 canopy</b> (teal, “Enclosures, Sunrooms, Screens” valance), fully raised and level. A solid white canopy is acceptable.</li>
         <li><b>A weight bag on every tent leg</b>, every time, even on calm days. Never stake into the ground unless the venue allows it.</li>
-        <li><b>Outdoor back-wall banner</b> (“Enclose Your Patio”) hung across the back of the tent, taut and straight. The indoor banners are never used outside.</li>
+        <li><b>Backdrop banner</b> (the Mesh Outdoor Banner, “Enclose Your Patio”) hung across the back of the tent, taut and straight. Retractable banners are never used outside: wind and debris damage them.</li>
         <li><b>Table:</b> full-length black tablecloth with the white logo runner centered at the front, facing the aisle.</li>
         <li><b>Front of the table:</b> current promotion in its stand on one side, brochure holder on the other, catalogs and brochures neatly fanned. $100K Sweepstakes sign in its stand, never taped or laid flat.</li>
         <li>Nothing on the ground in front of the table; boxes and personal items stored out of sight behind or under the table.</li>
         <li>High wind or storms: lower the canopy and secure materials. Your safety and the public’s come first; call your manager.</li>
       </ul></div>
     <p class="small muted" style="margin:6px 0 0">The promotion in the picture is an example. Always display the current promotion.</p>
+    <h3 style="margin-top:16px">What’s in a kit</h3>
+    <p class="small" style="margin:0 0 6px">Each marketer or branch has a kit, kept stocked all year: swap in new materials as promotions change instead of letting them go stale. Take inventory of displays, signage and collateral in November and December, and use it to plan what you’ll need for the year ahead.</p>
+    <div class="kitgrid">
+      <div class="kitcol"><b>Indoor booth</b><ul class="small"><li>Retractable banners in Layout A, B or C (by booth size and banners available)</li><li>Branded table cover (with every layout)</li><li>6 ft table (the standard size)</li><li>Director’s chair (optional). Camp chairs are not an approved substitute.</li></ul></div>
+      <div class="kitcol"><b>Outdoor booth</b><ul class="small"><li>Branded canopy tent (solid white is acceptable), with a weight on every leg</li><li>Backdrop banner (Mesh Outdoor Banner)</li><li>Branded table cover</li><li>6 ft table</li><li>Director’s chair (optional). No camp chairs.</li></ul></div>
+    </div>
+    <h3 style="margin-top:12px">Paper collateral and who gets it</h3>
+    <div style="overflow-x:auto"><table class="small"><thead><tr><th>Item</th><th>Keep on hand</th><th>Who gets it</th></tr></thead><tbody>
+      <tr><td><b>Promo flyers</b></td><td>Current promotion only. Order as needed, or print in an emergency from the PDF in SharePoint › Marketing › Event Marketing. Discard outdated ones.</td><td>Anyone interested in our products</td></tr>
+      <tr><td><b>Easel back posters</b></td><td>Current promotion only. Order as needed; discard outdated ones.</td><td>Displayed at the booth</td></tr>
+      <tr><td><b>8.5×11 brochures</b> (Patio Enclosures and Stanek Windows)</td><td>A 3-month supply</td><td>Only interested attendees or customers who book an appointment. Don’t hand them out to everyone.</td></tr>
+      <tr><td><b>Trifolds</b> (Patio Enclosures and Stanek Windows)</td><td>A 3-month supply</td><td>Anyone interested in our products</td></tr>
+      <tr><td><b>Scratch-off cards</b></td><td>Order as needed. They expire at the end of each year: when the new supply arrives in November or December, discard what’s left.</td><td>Only customers who make an appointment, with the appointment date and time written on the card. A closing tool: offers are 3% off (90% of cards), 4% (8%) or 5% (2%), revealed only with the Design Consultant in the home. A card scratched beforehand isn’t valid.</td></tr>
+      <tr><td><b>Pre-consultation checklist</b></td><td>Ample supply</td><td>Only customers who make an appointment, with the date and time filled in</td></tr>
+      <tr><td><b>$100K Sweepstakes display</b></td><td>One per kit</td><td>Displayed in an inexpensive frame or acrylic holder</td></tr>
+      <tr><td><b>Lead generation tear pads</b></td><td>Ample supply</td><td>For capturing customer information when there’s no signal to enter the lead in the booking tool</td></tr>
+      <tr><td><b>Photo book</b> (easel binder)</td><td>Optional</td><td>Displayed at the booth</td></tr>
+      <tr><td><b>Tradeshow ID badge and lanyard</b></td><td>One per marketer</td><td>Worn at all times while representing the company at a show or event</td></tr>
+    </tbody></table></div>
     </div>`;
 }
 function trainingView(){
@@ -2905,7 +3058,7 @@ function todoGroups_(){
   const adp=adpRows(mondayOf(t)).filter(x=>x.flag); add('adp','⏱️','Timecards to double-check','adp', adp.map(x=>({ text:personName(x.s.personId), sub:`${x.s.ev.name} · ${fmtMD(x.d)} · ${x.issues.join(', ')}` })), 'Open ADP check');
   // equipment
   const gear=scopedAssets().filter(isGear).map(a=>[a,stOf(a)]).filter(([a,s])=>s.overdue), low=scopedAssets().filter(isLow);
-  add('gear','📦','Equipment overdue or low','assets', [...gear.map(([a,s])=>({ text:a.name||'Item', sub:'Overdue for return', red:true })), ...low.map(a=>({ text:a.name||'Item', sub:`Low stock: ${stOf(a).qty} left` }))], 'Open equipment');
+  add('gear','📦','Equipment overdue, low or incomplete','assets', [...gear.map(([a,s])=>({ text:a.name||'Item', sub:'Overdue for return', red:true })), ...low.map(a=>({ text:a.name||'Item', sub:`Low stock: ${stOf(a).qty} left` })), ...scopedAssets().filter(a=>a.kind==='kit'&&a.kitType).map(a=>[a,kitCheck(a)||[]]).filter(([a,m])=>m.length).map(([a,m])=>({ text:a.name, sub:`Kit incomplete: missing ${m.join(', ')}` }))], 'Open equipment');
   // hotels
   add('hotels','🏨','Upcoming events that may need hotels','travel', travelNeeds().map(x=>({ text:x.e.name, sub:`${x.e.office||''} · ${fmtLong(x.e.start)}${x.hotelNights?` · ${x.hotelNights} hotel night${x.hotelNights===1?'':'s'}`:''}${x.borrowed.length?` · ${x.borrowed.length} borrowed marketer${x.borrowed.length===1?'':'s'}`:''}` })), 'Open Navan travel');
   // REM numbers (leaders only)
@@ -3027,7 +3180,7 @@ function pageHelpData(){
     how:['Marketers and managers submit one report per week by Sunday night.','Managers review on Monday and <b>Approve</b> or <b>Return</b> with a note.',(apAutoOn()?'Approving emails the report to Accounts Payable automatically: a PDF with every receipt (big reports go in parts).':'After approving: <b>Save as PDF</b> (receipts included), email it to Accounts Payable, then click <b>Mark as sent</b>.')],
     rules:['Mileage: '+m(RATE_MARKETER)+' a mile for marketers, '+m(RATE_MANAGER)+' for managers (car allowance). Daily commute miles are subtracted first.','Per diem only on hotel dates: breakfast $'+PER_DIEM.b+', lunch $'+PER_DIEM.l+', dinner $'+PER_DIEM.d+'.','Receipts are required for everything except the phone stipend.','Bank details go only through the secure banking form, never in the hub.','Submitting alerts the supervisor; returning alerts the marketer.'] },
   assets:{ t:'Asset Inventory & Check-Out', what:'Booth assets, kits and giveaways for every office.',
-    how:['<b>Inventory</b>: find, add or edit items.','<b>Check out / return</b>: scan items out to a person and back in.','<b>Annual inventory</b>: scan every barcode at an office and count giveaways.','<b>Activity</b>: every move, with who and when.'],
+    how:['<b>Inventory</b>: find, add or edit items. <b>🧰 Build a kit</b> creates an indoor (Layout A, B or C) or outdoor kit for a marketer or branch from the office’s items, using that area’s banner set; kits show complete or what’s missing, and print a packing list. <b>🛒 Add from supply list</b> adds approved items (Great Day Shop and other suppliers): pick the office and enter what it has; booth assets get their own barcodes, and stock gets a reorder point and a Reorder link.','<b>Check out / return</b>: scan items out to a person and back in.','<b>Annual inventory</b>: scan every barcode at an office and count giveaways.','<b>Activity</b>: every move, with who and when.'],
     rules:['Gear is overdue once the shift it went out for has ended, or its due date has passed.','Supplies show as low at or below their reorder point.','In the annual inventory, anything not scanned shows as missing.'] },
   scorecard:{ t:'Event Marketing Scorecard', what:'How events performed, by region: leads, opps, costs, and REM numbers.',
     how:['Switch between <b>Week</b> and <b>Month to date</b>; use ◀ ▶ to step through weeks.','Download the scorecard as a spreadsheet (CSV) if you need it elsewhere.'],
@@ -3590,7 +3743,7 @@ function render(){
   const keep=captureInputs();
   document.body.classList.toggle('marketer', MARKETER_MODE);
   if(!ui.tourT && S.user){ ui.tourT=setTimeout(()=>{ maybeStartTour(); if(ui.tour!=null){ markWelcomed(); render(); } else if(S.user && !MARKETER_MODE && (S.mode==='live'||ui.forceWelcome) && welcomeDue()){ ui.welcomeBack=welcomedToday(); ui.welcome=true; markWelcomed(); touchSeen.at=0; touchSeen(); render(); } else touchSeen(); },3000); }
-  app.innerHTML = `<div class="wrap">${header()}${viewAsBanner()}${searchBox()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}${bottomNav()}${tourOverlay()}${welcomeOverlay()}${helpOverlay()}${glOverlay()}${scEvEditOverlay()}${undoToast()}`;
+  app.innerHTML = `<div class="wrap">${header()}${viewAsBanner()}${searchBox()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}${bottomNav()}${tourOverlay()}${welcomeOverlay()}${helpOverlay()}${glOverlay()}${shopOverlay()}${kitBuildOverlay()}${scEvEditOverlay()}${undoToast()}`;
   stackTables(app); document.body.classList.toggle('hasnav', !!(S.user && !MARKETER_MODE)); if(ui.tourT && !ui.welcome) touchSeen();
   restoreInputs(keep);
   // lazy-load any photos now on screen
@@ -4128,6 +4281,13 @@ document.addEventListener('click', async ev=>{
   if(a==='scEvClose'){ if(ev.target.closest('.tourbox') && t.classList.contains('tourbg')) return; ui.scEv=null; render(); return; }
   if(a==='scEvSave'||a==='scEvClear'){ if(a==='scEvClear' && !confirm('Undo this correction and go back to the numbers pulled in automatically?')) return; try{ await scEvSave(a==='scEvClear'); ui.scEv=null; ui.notice=a==='scEvClear'?'Correction removed.':'Scorecard updated.'; ui.noticeKind='ok'; }catch(e){ ui.scEv.err='Couldn’t save: '+(e.code||e.message); } render(); return; }
   if(a==='lySet'){ ui.lySet=t.dataset.v; render(); return; }
+  if(a==='kitBuild'){ ui.kitBuild={ type:'A', office:soleOffice()||'', who:'', pick:{} }; render(); return; }
+  if(a==='kitClose'){ if(ev.target.closest('.tourbox') && t.classList.contains('tourbg')) return; ui.kitBuild=null; render(); return; }
+  if(a==='kitSave'){ try{ await kitSave(); }catch(e){ console.error(e); if(ui.kitBuild) ui.kitBuild.err='Couldn’t save: '+(e.code||e.message); render(); } return; }
+  if(a==='kitPrint'){ const k=assetById(t.dataset.id); if(k) printKitList(k); return; }
+  if(a==='shopAdd'){ ui.shopAdd={ office:soleOffice()||'', qty:{}, reorder:{} }; render(); return; }
+  if(a==='shopClose'){ if(ev.target.closest('.tourbox') && t.classList.contains('tourbg')) return; ui.shopAdd=null; render(); return; }
+  if(a==='shopSave'){ try{ await shopSave(); }catch(e){ console.error(e); if(ui.shopAdd){ ui.shopAdd.err='Couldn’t save: '+(e.code||e.message); } render(); } return; }
   if(a==='glRef'){ ui.help=null; ui.glRef=true; render(); return; }
   if(a==='glClose'){ if(ev.target.closest('.tourbox') && t.classList.contains('tourbg')) return; ui.glRef=false; render(); return; }
   if(a==='helpClose'){ if(ev.target.closest('.tourbox') && t.classList.contains('tourbg')) return; ui.help=null; render(); return; }
@@ -4239,6 +4399,8 @@ async function fetchLoc(){ const p=ui.panel; const r=await getLocation(); if(ui.
 function readEvalDraft(){ document.querySelectorAll('[data-ef]').forEach(el=>{ ui.evalDraft[el.dataset.ef]=el.value; }); }
 document.addEventListener('input', ev=>{ const el=ev.target; if(el.dataset.ex && ui.exp && el.type!=='checkbox' && el.type!=='radio'){ setPath(ui.exp, el.dataset.ex, el.value); if(el.type==='number') updateExpTotals(); } if(el.dataset.ef && ui.evalDraft) ui.evalDraft[el.dataset.ef]=el.value; if(el.dataset.asg && el.tagName!=='SELECT'){ asgDraft()[el.dataset.asg]=el.value; } if(el.dataset.asgstep!==undefined && el.type!=='date'){ const st=asgDraft().steps[+el.dataset.asgstep]; if(st) st[el.dataset.sf]=el.value; } if(el.dataset.act==='aq'){ ui.aq=el.value; render(); } });
 document.addEventListener('change', async ev=>{
+  if(ev.target && ev.target.dataset && (ev.target.dataset.kitf||ev.target.dataset.kitpick) && ui.kitBuild){ const B=ui.kitBuild; document.querySelectorAll('[data-kitpick]').forEach(el=>{ B.pick[el.dataset.kitpick]=el.value; }); if(ev.target.dataset.kitf){ B[ev.target.dataset.kitf]=ev.target.value; if(ev.target.dataset.kitf!=='who'){ B.pick={}; if(ev.target.dataset.kitf==='office') B.who=''; } } B.err=''; render(); return; }
+  if(ev.target && ev.target.matches && ev.target.matches('[data-shopoff]') && ui.shopAdd){ document.querySelectorAll('[data-shopq]').forEach(el=>{ ui.shopAdd.qty[el.dataset.shopq]=el.value; }); document.querySelectorAll('[data-shopr]').forEach(el=>{ ui.shopAdd.reorder[el.dataset.shopr]=el.value; }); ui.shopAdd.office=ev.target.value; ui.shopAdd.err=''; render(); return; }
   if(ev.target && ev.target.matches && ev.target.matches('[data-viewas]')){ const v=ev.target.value; if(v) startViewAs(v); return; }
   const el=ev.target;
   if(el.dataset.remset){ const R=remDraft(); let v=el.value; if(el.dataset.remset==='week' && v) v=mondayOf(v); if(v||el.dataset.remset==='region') R[el.dataset.remset]=v; ui.remMsg=''; render(); return; }

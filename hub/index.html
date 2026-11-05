@@ -2563,9 +2563,9 @@ function welcomeOverlay(){
     isRemUser()&&cnt('rem')&&mon ? opt('data-act="welcomeGo" data-go="tab:remnums"','✍️','Enter REM numbers',`${cnt('rem')} regions missing`) : '',
     opt('data-act="welcomeGo" data-go="search"','🔎','Find something','Search events, marketers, equipment') ].filter(Boolean);
   return `<div class="tourbg" data-act="welcomeClose"><div class="tourbox welcome" role="dialog" aria-label="Welcome">
+    <div class="wquote" style="margin:0 0 14px"><span>💡 Today’s thought</span>“${esc(quoteOfDay())}”</div>
     <div class="tourstep">${esc(fmtLong(t))}</div><h2>${ui.welcomeBack?'Welcome back':hi}${nm?', '+esc(nm):''}! 👋</h2><p style="margin:0 0 12px">${ui.welcomeBack?'What would you like to do next?':'What would you like to do first?'}</p>
     <div class="wopts">${opts.join('')}</div>
-    <div class="wquote"><span>💡 Today’s thought</span>“${esc(quoteOfDay())}”</div>
     <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-act="welcomeClose">Just take me to the hub</button></div></div></div>`;
 }
 /* ---------- Undo after delete (the “Are you sure?” stays too) ---------- */

@@ -53,6 +53,10 @@ label.chk{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px}
 .trow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:3px 6px;align-items:center;margin-bottom:9px;max-width:300px}
 .trow>span:first-child{grid-column:1/-1;font-weight:600;font-size:12.5px}
 .trow>span:last-child{grid-column:1/-1}
+.trow .ddate{font:inherit;font-size:12.5px;font-weight:600;padding:2px 4px;border:1px solid var(--line,#ccc);border-radius:6px}
+.trow .dday{display:flex;gap:6px;align-items:center}
+.trow .dday button{border:0;background:none;color:var(--red,#c00);cursor:pointer;font-size:14px}
+.datechg{color:var(--warn,#b36b00);font-weight:600}
 .trow>span:last-child:empty{display:none}
 .trow select{width:100%;min-width:0;padding:5px 4px;font-size:13px}
 .chip a.chipname{color:inherit;text-decoration:none;border-bottom:1px dotted currentColor}
@@ -289,11 +293,11 @@ const cloud = { status:'connecting', user:null, fb:null, loaded:{}, pushed:{}, r
 function canEdit(){ return cloud.status!=='live' || !!cloud.user; }
 function clean(o){ return JSON.parse(JSON.stringify(o)); }
 function cloudPayload(name){
-  if(name==='events') return clean({ list:data.events.map(e=>Object.assign({}, e, { days:e.days.map(d=>({ date:d.date, start:('_s' in d)?d._s:d.start, stop:('_t' in d)?d._t:d.stop })) })), dataAsOf:data.dataAsOf||null, sourceFile:data.sourceFile||'', importedAt:data.importedAt||null });
+  if(name==='events') return clean({ list:data.events.map(e=>{ const o=Object.assign({}, e, { days:etaccDays(e).map(d=>({ date:d.date, start:d.start, stop:d.stop })), start:e._start||e.start, end:e._end||e.end }); delete o._days; delete o._start; delete o._end; return o; }), dataAsOf:data.dataAsOf||null, sourceFile:data.sourceFile||'', importedAt:data.importedAt||null });
   if(name==='roster') return clean({ list:data.roster, rosterAsOf:data.rosterAsOf||null, hpiAsOf:data.hpiAsOf||null });
   // Booth location / setup notes typed on event cards, kept apart from the ETACC import so re-imports keep them.
   if(name==='practices') return { text: data.practices||'' };
-  if(name==='details') return { list: Object.entries(data.details||{}).filter(([k,v])=>v && (v.booth||v.setup||Object.keys(v.times||{}).length)).map(([key,v])=>({ key, booth:v.booth||'', setup:v.setup||'', times:Object.entries(v.times||{}).map(([date,t])=>({ date, start:t.start||'', stop:t.stop||'' })) })) };
+  if(name==='details') return { list: Object.entries(data.details||{}).filter(([k,v])=>v && (v.booth||v.setup||Object.keys(v.times||{}).length||(v.dates&&v.dates.length))).map(([key,v])=>Object.assign({ key, booth:v.booth||'', setup:v.setup||'', times:Object.entries(v.times||{}).map(([date,t])=>({ date, start:t.start||'', stop:t.stop||'' })) }, v.dates&&v.dates.length?{ dates:v.dates.slice() }:{})) };
   // Firestore can't store an array inside an array, so each assignment is an object.
   // Partial shifts: hours for one marketer on one event day, kept with that day's assignment.
   return { list: Object.entries(data.assignments).filter(([k,v])=>v && v.length).map(([id,people])=>{ const times={}; people.forEach(pid=>{ const t=(data.shiftTimes||{})[id+'::'+pid]; if(t&&(t.start||t.stop)) times[pid]={start:t.start||'',stop:t.stop||''}; }); return Object.keys(times).length ? { id, people, times } : { id, people }; }) };
@@ -331,7 +335,7 @@ function applyCloud(name, d, force){
     if(name==='roster'){ data.roster = d.list||[]; data.rosterAsOf = d.rosterAsOf||null; data.hpiAsOf = d.hpiAsOf||null; }
     if(name==='assignments'){ data.assignments = Object.fromEntries((d.list||[]).map(x=>[x.id, x.people||[]]).filter(x=>x[0] && Array.isArray(x[1]))); data.shiftTimes={}; (d.list||[]).forEach(x=>Object.entries(x.times||{}).forEach(([pid,t])=>{ data.shiftTimes[x.id+'::'+pid]={start:t.start||'',stop:t.stop||''}; })); }
     if(name==='practices'){ data.practices = d.text||''; }
-    if(name==='details'){ data.details = Object.fromEntries((d.list||[]).filter(x=>x.key).map(x=>[x.key, { booth:x.booth||'', setup:x.setup||'', times:Object.fromEntries((x.times||[]).filter(t=>t.date).map(t=>[t.date,{start:t.start||'',stop:t.stop||''}])) }])); }
+    if(name==='details'){ data.details = Object.fromEntries((d.list||[]).filter(x=>x.key).map(x=>[x.key, { booth:x.booth||'', setup:x.setup||'', times:Object.fromEntries((x.times||[]).filter(t=>t.date).map(t=>[t.date,{start:t.start||'',stop:t.stop||''}])), dates:Array.isArray(x.dates)&&x.dates.length?x.dates.slice():null }])); }
     cloud.pushed[name] = JSON.stringify(cloudPayload(name));
   } else if(force){
     if(name==='events'){ data.events=[]; data.dataAsOf=null; data.sourceFile=''; data.importedAt=null; }
@@ -492,7 +496,7 @@ function importCSV(text, file){
     alert(why.join('\n\n')); ui.notice = why.join(' '); render(); return;
   }
   // keep assignments only for event days that still exist
-  const valid = new Set(); events.forEach(e=>e.days.forEach(d=>valid.add(dayId(e,d))));
+  const valid = new Set(); events.forEach(e=>{ e.days.forEach(d=>valid.add(dayId(e,d))); (((data.details||{})[e.key]||{}).dates||[]).forEach(dt=>valid.add(e.key+'#'+dt)); });
   let dropped=0;
   Object.keys(data.assignments).forEach(k=>{ if(!valid.has(k)){ if((data.assignments[k]||[]).length) dropped++; delete data.assignments[k]; } });
   Object.keys(data.shiftTimes||{}).forEach(k=>{ if(!valid.has(k.split('::')[0])) delete data.shiftTimes[k]; });
@@ -693,18 +697,27 @@ function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&
 /* ---------- render ---------- */
 // Hours typed by a manager on an event card override ETACC's (often blank) Days & Hours.
 // The ETACC values are kept in d._s / d._t so a save or re-import never loses either one.
+// ETACC's own days (hours as imported), kept even when a manager changes the dates on the event card.
+function etaccDays(e){
+  if(!e._days){ e._days=(e.days||[]).map(d=>({ date:d.date, start:('_s' in d)?d._s:(d.start||''), stop:('_t' in d)?d._t:(d.stop||'') })); e._start=e.start; e._end=e.end; }
+  return e._days;
+}
+function datesChanged(e){ const dd=((data.details||{})[e.key]||{}).dates; return !!(dd&&dd.length); }
 function applyManagerTimes(){
-  (data.events||[]).forEach(e=>{ const t=((data.details||{})[e.key]||{}).times||{};
+  (data.events||[]).forEach(e=>{ const det=(data.details||{})[e.key]||{}, t=det.times||{}, base=etaccDays(e);
+    const dates=(det.dates&&det.dates.length) ? det.dates.slice().sort() : base.map(d=>d.date);
+    e.days=dates.map(dt=>{ const b=base.find(x=>x.date===dt); return { date:dt, start:b?b.start:'', stop:b?b.stop:'', _s:b?b.start:'', _t:b?b.stop:'' }; });
+    if(e.days.length){ e.start=e.days[0].date; e.end=e.days[e.days.length-1].date; }
     (e.days||[]).forEach(d=>{ if(!('_s' in d)){ d._s=d.start||''; d._t=d.stop||''; }
       const o=t[d.date]; d.start=(o&&o.start)||d._s; d.stop=(o&&o.stop)||d._t; d.mgrTime=!!(o&&(o.start||o.stop)); }); });
 }
 function readDetDraft(){
   const bi=document.getElementById('detBooth'), si=document.getElementById('detSetup'); if(!(bi && si)) return null;
-  const times={}; document.querySelectorAll('[data-tdate]').forEach(el=>{ const dt=el.dataset.tdate; times[dt]=times[dt]||{start:'',stop:''}; times[dt][el.dataset.tpart]=el.value; });
-  return { booth:bi.value, setup:si.value, times };
+  const rows=[...document.querySelectorAll('[data-drow]')].map(r=>({ date:(r.querySelector('.ddate')||{}).value||'', start:(r.querySelector('[data-tpart=start]')||{}).value||'', stop:(r.querySelector('[data-tpart=stop]')||{}).value||'' }));
+  return { booth:bi.value, setup:si.value, rows };
 }
 function render(){
-  if(ui.editDet){ const dd=readDetDraft(); if(dd) ui.detDraft = dd; }
+  if(ui.editDet && !ui.detLock){ const dd=readDetDraft(); if(dd) ui.detDraft = dd; } ui.detLock=false;
   applyManagerTimes();
   const days = weekDays();
   const weekShifts = days.map(shiftsOn);
@@ -834,16 +847,28 @@ function buildHtml(days, weekShifts, weekEvents, label){
     ${weekEvents.length && data.roster.length ? `<div class="allrow">
       <span class="hint">Put a marketer on every day of an event this week:</span>
       <select id="allEv">${weekEvents.map(e=>`<option value="${esc(e.key)}">${esc(e.name)}</option>`).join('')}</select>
-      <select id="allPerson">${rosterSorted().map(r=>`<option value="${r.id}">${esc(r.name)}${r.office?' ('+esc(r.office)+')':''}</option>`).join('')}</select>
+      <select id="allPerson">${marketerOptions(weekEvents[0])}</select>
       <button class="btn sm" data-act="assignall">Add</button></div>` : ''}`}`;
+}
+// Marketer pick list for an event: everyone assigned to the event's branch first, then everyone else as borrowed
+// (same region first, then other regions, then anyone with no office set).
+function marketerOptions(ev, excludeIds, lbl){
+  const pool = rosterSorted().filter(r=>!(excludeIds||[]).includes(r.id));
+  const evOff = (ev&&ev.office)||'', evReg = regionOf(evOff);
+  const L = lbl || (r=>esc(r.name));
+  const same = pool.filter(r=>evOff && r.office===evOff).sort(byHpi);
+  const rest = pool.filter(r=>!(evOff && r.office===evOff));
+  const sameReg = rest.filter(r=>r.office && evReg && personRegion(r)===evReg).sort(byHpi);
+  const other = rest.filter(r=>r.office && !(evReg && personRegion(r)===evReg));
+  const none = rest.filter(r=>!r.office);
+  const og=(label,list,tail)=>list.length?`<optgroup label="${esc(label)}">${list.map(r=>`<option value="${r.id}">${L(r)}${tail?tail(r):''}</option>`).join('')}</optgroup>`:'';
+  return og(`Assigned to ${evOff||'this branch'} (${same.length})`, same)
+    + og(`Borrowed · other ${evReg||''} offices (${sameReg.length})`.replace('other  offices','other offices'), sameReg, r=>` · borrowed from ${esc(r.office)}`)
+    + og(`Borrowed · other regions (${other.length})`, other, r=>` · borrowed from ${esc(r.office)}${personRegion(r)?', '+esc(personRegion(r)):''}`)
+    + og(`Borrowed · no office set (${none.length})`, none, ()=>' · no office');
 }
 function shiftCard(s){
   const ids = assigned(s.id);
-  const pool = rosterSorted().filter(r=>!ids.includes(r.id));
-  const evReg = regionOf(s.ev.office);
-  const same = pool.filter(r=>r.office===s.ev.office).sort(byHpi);
-  const sameReg = pool.filter(r=>r.office!==s.ev.office && evReg && personRegion(r)===evReg).sort(byHpi);
-  const other = pool.filter(r=>r.office!==s.ev.office && !(evReg && personRegion(r)===evReg));
   const lbl = r => { const m=pbsMax(r), used=weekHoursFor(r.id);
     const cap = m===null ? '' : used>=m ? ` · AT PBS MAX (${+used.toFixed(1)}/${m} hrs)` : ` · ${+(m-used).toFixed(1)} of ${m} hrs left`;
     return `${esc(r.name)}${hpiText(r)?' · '+esc(hpiText(r)):''}${cap}`; };
@@ -858,9 +883,7 @@ function shiftCard(s){
     ${ids.map(pid=>shiftEditor(s,pid)).join('')}
     ${data.roster.length ? `<select data-assign="${esc(s.id)}">
       <option value="">+ Add marketer…</option>
-      ${same.length?`<optgroup label="${esc(s.ev.office||'Office')}">${same.map(r=>`<option value="${r.id}">${lbl(r)}</option>`).join('')}</optgroup>`:''}
-      ${sameReg.length?`<optgroup label="Borrow from another ${esc(evReg)} office">${sameReg.map(r=>`<option value="${r.id}">${lbl(r)} (${esc(r.office)})</option>`).join('')}</optgroup>`:''}
-      ${other.length?`<optgroup label="Borrow from another region">${other.map(r=>`<option value="${r.id}">${lbl(r)}${r.office?' ('+esc(r.office)+(personRegion(r)?', '+esc(personRegion(r)):'')+')':' (no office)'}</option>`).join('')}</optgroup>`:''}
+      ${marketerOptions(s.ev, ids, lbl)}
     </select>` : ''}
   </div>`;
 }
@@ -904,6 +927,10 @@ function gridHtml(days, me){
       return `<tr><th>${esc(p.name)}<span class="off">${esc(p.office||'')}</span>${hpiText(p)?`<span class="hpi ${hpiTier(p)}">${esc(hpiText(p))}</span>`:''}</th>${cells}<td class="hrs ${over?'over':''}"><b>${hrs?+hrs.toFixed(1):'0'}</b>${mx!==null?` / ${mx}`:''}${over?'<span class="d">over PBS</span>':''}${mx===null && !p.mgr?'<span class="d">not rated</span>':''}</td></tr>`;
     }).join('')}</tbody></table></div>`;
 }
+function detRows(e,draft){
+  if(draft && draft.rows) return draft.rows;
+  return e.days.map(d=>({ date:d.date, start:d.mgrTime?d.start:'', stop:d.mgrTime?d.stop:'' }));
+}
 function detailCard(e,days){
   const inWeek = e.days.filter(d=>days.includes(d.date));
   const staff = new Set(); inWeek.forEach(d=>assigned(dayId(e,d)).forEach(pid=>staff.add(pid)));
@@ -925,9 +952,11 @@ function detailCard(e,days){
     <div class="office">${esc(e.office)}${e.region && e.region!==e.office ? ' ('+esc(e.region)+')' : ''} · ${esc(e.status)}</div>
     <dl>
       ${editing
-        ? `<dt>Show hours</dt><dd>${e.days.map(d=>{ const o=(draft.times||{})[d.date]||{}; const sv=('start' in o)?o.start:(d.mgrTime?d.start:''), tv=('stop' in o)?o.stop:(d.mgrTime?d.stop:'');
-            return `<div class="trow"><span>${esc(fmtLong(d.date))}</span>${timeSelect(d.date,'start',sv)}<span>to</span>${timeSelect(d.date,'stop',tv)}${d._s||d._t?`<span class="hint">ETACC: ${esc(timeRange({start:d._s,stop:d._t}))}</span>`:'<span></span>'}</div>`; }).join('')}<div class="hint">Leave blank to use ETACC’s hours.</div></dd>`
-        : row('Days', inWeek.map(d=>`${esc(fmtLong(d.date))} ${(d.start||d.stop)?esc(timeRange(d)):'<span style="color:var(--warn);font-weight:600;">Times TBD</span>'}${d.mgrTime?' <span class="hint">(set by manager)</span>':''}`).join('<br>'))}
+        ? `<dt>Dates &amp; hours</dt><dd>${detRows(e,draft).map((r,i)=>{ const b=etaccDays(e).find(x=>x.date===r.date);
+            return `<div class="trow" data-drow="${i}"><span class="dday"><input type="date" class="ddate" value="${esc(r.date)}" aria-label="Day ${i+1} date"><button type="button" data-act="detdelday" data-i="${i}" title="Remove this day" aria-label="Remove this day">✕</button></span>${timeSelect(r.date,'start',r.start)}<span>to</span>${timeSelect(r.date,'stop',r.stop)}${b&&(b.start||b.stop)?`<span class="hint">ETACC: ${esc(timeRange(b))}</span>`:b?'<span></span>':'<span class="hint datechg">Not an ETACC date</span>'}</div>`; }).join('')}
+            <div><button type="button" class="btn sm" data-act="detaddday">+ Add a day</button>${datesChanged(e)?` <button type="button" class="btn sm" data-act="detresetdates">↺ Use ETACC dates</button>`:''}</div>
+            <div class="hint">Change a date, add or remove days. Leave hours blank to use ETACC’s. ETACC dates: ${etaccDays(e).map(d=>esc(fmtLong(d.date))).join(', ')||'none'}.</div></dd>`
+        : (datesChanged(e)?`<dt>Dates</dt><dd><span class="datechg">Changed by manager</span> <span class="hint">(ETACC: ${etaccDays(e).map(d=>esc(fmtLong(d.date))).join(', ')})</span></dd>`:'')+row('Days', inWeek.map(d=>`${esc(fmtLong(d.date))} ${(d.start||d.stop)?esc(timeRange(d)):'<span style="color:var(--warn);font-weight:600;">Times TBD</span>'}${d.mgrTime?' <span class="hint">(set by manager)</span>':''}`).join('<br>'))}
       ${row('Venue', esc(e.venueName))}
       ${row('Address', addr ? `${esc(addr)}${mapUrl?` <a class="no-print" href="${mapUrl}" target="_blank" rel="noopener">Map</a>`:''}` : '')}
       ${row('Booth #', esc(e.boothNumber))}
@@ -943,7 +972,7 @@ function detailCard(e,days){
       ${row('Notes', esc(e.notes))}
     </dl>
     <div class="no-print" style="margin-top:8px;"><button class="btn sm" data-act="copylink" data-key="${esc(e.key)}">🔗 Copy check-in link</button>${ui.copiedKey===e.key?' <span class="hint" style="color:var(--accent);font-weight:600;">Copied — paste it into a text or email</span>':''}</div>
-    ${!editing && canEdit() && !(cloud.status==='live' && !cloud.user) ? `<div class="no-print" style="margin-top:8px;"><a href="#" data-act="detedit" data-key="${esc(e.key)}">✎ ${e.days.some(d=>!d.start&&!d.stop) ? 'Add show hours, ' : 'Edit hours, '}booth location &amp; set up</a></div>` : ''}
+    ${!editing && canEdit() && !(cloud.status==='live' && !cloud.user) ? `<div class="no-print" style="margin-top:8px;"><a href="#" data-act="detedit" data-key="${esc(e.key)}">✎ ${e.days.some(d=>!d.start&&!d.stop) ? 'Add show hours, dates, ' : 'Edit dates, hours, '}booth location &amp; set up</a></div>` : ''}
   </div>`;
 }
 /* ---------- email the schedule (copy into Outlook) ---------- */
@@ -1074,14 +1103,41 @@ document.addEventListener('click', e=>{
     case 'detedit': e.preventDefault(); ui.editDet = t.dataset.key; ui.detDraft = null; render();
       setTimeout(()=>{ const el=document.getElementById('detBooth'); el && el.focus && el.focus(); },0); break;
     case 'detcancel': ui.editDet = null; ui.detDraft = null; render(); break;
+    case 'detaddday': case 'detdelday': case 'detresetdates': {
+      const ev=data.events.find(x=>x.key===ui.editDet); if(!ev) break;
+      const dd=readDetDraft()||{}; const rows=(dd.rows||detRows(ev,null)).slice();
+      if(a==='detaddday'){ const last=rows.map(r=>r.date).filter(Boolean).sort().pop()||ev.start||todayIso(); rows.push({ date:addDays(last,1), start:'', stop:'' }); }
+      if(a==='detdelday'){ const i=+t.dataset.i; if(rows.length<=1){ alert('An event needs at least one day.'); break; } rows.splice(i,1); }
+      let r2=rows; if(a==='detresetdates'){ const byDate=Object.fromEntries(rows.map(r=>[r.date,r])); r2=etaccDays(ev).map(b=>byDate[b.date]||{ date:b.date, start:'', stop:'' }); }
+      ui.detDraft=Object.assign({}, dd, { rows:r2 }); ui.detLock=true; render(); break;
+    }
     case 'detdone': {
       if(!canEdit()) break;
       const key=t.dataset.key, dd=readDetDraft()||{}, booth=(dd.booth||'').trim(), setup=(dd.setup||'').trim();
-      const times={}; Object.entries(dd.times||{}).forEach(([dt,v])=>{ if(v.start||v.stop) times[dt]={start:v.start||'',stop:v.stop||''}; });
+      const ev=data.events.find(x=>x.key===key); if(!ev) break;
+      const rows=(dd.rows||[]).filter(r=>r.date);
+      if(!rows.length){ alert('An event needs at least one day. Add a date, then click Done.'); break; }
+      if(rows.some(r=>!/^\d{4}-\d{2}-\d{2}$/.test(r.date))){ alert('One of the dates isn’t complete. Please fix it, then click Done.'); break; }
+      const newDates=[...new Set(rows.map(r=>r.date))].sort();
+      if(newDates.length!==rows.length){ alert('The same date is listed twice. Remove one, then click Done.'); break; }
+      const times={}; rows.forEach(v=>{ if(v.start||v.stop) times[v.date]={start:v.start||'',stop:v.stop||''}; });
       const bad=Object.entries(times).find(([dt,v])=>v.start&&v.stop&&toMin(v.stop)<=toMin(v.start));
       if(bad){ alert(`The end time on ${fmtLong(bad[0])} is before the start time. Please fix it, then click Done.`); break; }
+      // Move marketers on a day that was moved to the new date (removed days → added days, in date order).
+      const oldDates=ev.days.map(d=>d.date), gone=oldDates.filter(d=>!newDates.includes(d)), added=newDates.filter(d=>!oldDates.includes(d));
+      const hasPeople=dt=>(data.assignments[key+'#'+dt]||[]).length>0;
+      const lost=gone.filter((dt,i)=>hasPeople(dt) && i>=added.length);
+      if(lost.length && !confirm(`Marketers are scheduled on ${lost.map(fmtLong).join(', ')}, which you removed. Remove them from the schedule for ${lost.length===1?'that day':'those days'}?`)) break;
+      gone.forEach((dt,i)=>{ const nd=added[i], b=etaccDays(ev).find(x=>x.date===dt), cur=ev.days.find(x=>x.date===dt);
+        if(nd && !times[nd]){ const st=(cur&&cur.start)||(b&&b.start)||'', sp=(cur&&cur.stop)||(b&&b.stop)||''; if((st||sp) && !etaccDays(ev).some(x=>x.date===nd)) times[nd]={start:st,stop:sp}; } });
+      gone.forEach((dt,i)=>{ const from=key+'#'+dt, to=i<added.length?key+'#'+added[i]:null;
+        if(to && data.assignments[from]){ data.assignments[to]=[...new Set([...(data.assignments[to]||[]), ...data.assignments[from]])]; }
+        delete data.assignments[from];
+        Object.keys(data.shiftTimes||{}).forEach(k=>{ if(k.split('::')[0]===from){ if(to) data.shiftTimes[to+'::'+k.split('::')[1]]=data.shiftTimes[k]; delete data.shiftTimes[k]; } }); });
+      const base=etaccDays(ev).map(d=>d.date).sort(), dates=(newDates.join()===base.join())?null:newDates;
       data.details = data.details||{};
-      if(booth || setup || Object.keys(times).length) data.details[key] = { booth, setup, times }; else delete data.details[key];
+      if(booth || setup || Object.keys(times).length || dates) data.details[key] = Object.assign({ booth, setup, times }, dates?{ dates }:{}); else delete data.details[key];
+      if(dates || gone.length) ui.notice = dates ? `${ev.name}: dates changed to ${newDates.map(fmtLong).join(', ')}. ETACC still shows ${base.map(fmtLong).join(', ')}; update ETACC too if the event really moved.` : `${ev.name}: back to the ETACC dates.`;
       ui.editDet = null; ui.detDraft = null; save(); render(); break;
     }
     case 'discard': discardChanges(); break;
@@ -1154,6 +1210,7 @@ document.addEventListener('click', e=>{
 });
 document.addEventListener('change', e=>{
   const t=e.target;
+  if(t.id==='allEv'){ const ap=document.getElementById('allPerson'), ev=data.events.find(x=>x.key===t.value); if(ap) ap.innerHTML=marketerOptions(ev); return; }
   if(t.dataset.moveperson){ const p=person(t.dataset.moveperson); if(p){ p.office=t.value; save(); render(); } return; }
   if(t.dataset.emailperson){ const p=person(t.dataset.emailperson); if(p){ p.email=t.value.trim(); save(); } return; }
   if(t.dataset.phoneperson){ const p=person(t.dataset.phoneperson); if(p){ p.phone=t.value.trim(); save(); } return; }

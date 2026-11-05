@@ -23,9 +23,6 @@ h1,h2,h3,b,strong,th{font-weight:700}
 .wrap{max-width:1300px;margin:0 auto;padding:14px}
 header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:-14px -14px 14px;padding:10px 18px;background:#fff;border-bottom:4px solid var(--aqua)}
 .brandlogo{height:64px;width:auto;display:block}
-.homelogo{border:0;background:none;padding:0;margin:0;cursor:pointer;border-radius:6px;line-height:0}
-.homelogo:hover .brandlogo{opacity:.85}
-.homelogo:focus-visible{outline:3px solid var(--aqua);outline-offset:3px}
 @media (max-width:560px){.brandlogo{height:44px}header.top{padding:8px 12px;gap:10px}}
 .brand{background:var(--accent);color:#fff;border-radius:9px;padding:7px 14px;line-height:1.15}
 .brand b{font-size:17px;display:block}.brand span{font-size:10.5px;opacity:.85;text-transform:uppercase;letter-spacing:.09em}
@@ -83,6 +80,7 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .tourbg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
 .tourbox{background:#fff;border-radius:16px;max-width:460px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35);border-top:6px solid var(--aqua)}.tourbox h2{margin:6px 0 8px}.tourbox p{color:var(--ink-soft);line-height:1.5}
 .touric{font-size:40px}.tourstep{font-size:12px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em}.tourdots{display:flex;gap:6px;justify-content:center;margin:12px 0}.tourdots i{width:8px;height:8px;border-radius:50%;background:#ddd}.tourdots i.on{background:var(--aqua)}
+.tourbox.hasimg{max-width:680px}.tourimgwrap{display:block;margin:10px 0 4px;border:1px solid var(--line,#ddd);border-radius:10px;overflow:hidden;background:#f4f6f6}.tourimg{display:block;width:100%;height:auto;max-height:46vh;object-fit:contain;object-position:top}.touric-sm{margin-right:4px}.brandlink{display:block;border-radius:8px;cursor:pointer}.brandlink:focus-visible{outline:3px solid var(--aqua);outline-offset:3px}
 .tourbox.welcome{max-width:560px;border-top-color:var(--gold)}.tourbox{max-height:92vh;overflow:auto}
 .wopts{display:grid;grid-template-columns:1fr 1fr;gap:8px}@media (max-width:520px){.wopts{grid-template-columns:1fr}}
 .wopt{display:flex;align-items:center;gap:10px;text-align:left;background:#fff;border:2px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;font:inherit;color:inherit;min-height:56px}
@@ -1252,14 +1250,14 @@ function dayChecklist(date){
   const m=mgrDoc(), log=(m.days||{})[date]||{}, done=log.done||{}, AC=autoCounts(), isToday=date===todayIso();
   const autos=isToday?DAILY_AUTOS.map(k=>Object.assign({ id:k, auto:k, group:'Daily checks' }, AC[k])):[];
   const mine=[...tasksFor('daily',date), ...extraTasks('day',date)];
-  const all=[...mine, ...autos];
-  const n=all.filter(x=>isDone(x,done,AC)).length;
-  return { total:all.length, n, html: (all.length ? groupRows(all,done,'d:'+date,AC) : '<p class="muted small">Nothing scheduled.</p>')+quickAdd('day',date) };
+  const all=[...mine, ...autos], A=asgItems('day',date);
+  const n=all.filter(x=>isDone(x,done,AC)).length+A.filter(x=>x.done).length;
+  return { total:all.length+A.length, n, html: asgGroupHtml(A)+(all.length ? groupRows(all,done,'d:'+date,AC) : (A.length?'':'<p class="muted small">Nothing scheduled.</p>'))+quickAdd('day',date) };
 }
 function weekChecklist(ws){
   const m=mgrDoc(), log=(m.weeks||{})[ws]||{}, done=log.done||{}, AC=autoCounts();
-  const mine=[...tasksFor('weekly',ws), ...extraTasks('week',ws)], n=mine.filter(x=>isDone(x,done,AC)).length;
-  return { total:mine.length, n, html: (mine.length ? groupRows(mine,done,'w:'+ws,AC) : '<p class="muted small">No weekly tasks.</p>')+quickAdd('week',ws) };
+  const mine=[...tasksFor('weekly',ws), ...extraTasks('week',ws)], A=asgItems('week',ws), n=mine.filter(x=>isDone(x,done,AC)).length+A.filter(x=>x.done).length;
+  return { total:mine.length+A.length, n, html: asgGroupHtml(A)+(mine.length ? groupRows(mine,done,'w:'+ws,AC) : (A.length?'':'<p class="muted small">No weekly tasks.</p>'))+quickAdd('week',ws) };
 }
 function mgrBar(){
   if(!S.user) return '';
@@ -1563,8 +1561,8 @@ function mailShell(title, bodyHtml){
     <p style="margin-top:16px"><a href="${SITE}hub/" style="background:#00A7B7;color:#000;text-decoration:none;padding:7px 12px;border-radius:6px;font-weight:600">Open the Event Hub</a></p>
     <p style="color:#5a6760;font-size:12px">Automatic alert from the Event Activity Hub.</p></div></div>`;
 }
-const ALERT_TAB = { late:'today', noshow:'today', noout:'today', issue:'today', expense:'expenses', summary:'summary', newmgr:'alerts', test:'alerts', rem:'remnums' };
-const ALERT_ICON = { late:'⏰', noshow:'🚫', noout:'⌛', issue:'⚠️', expense:'🧾', summary:'📊', newmgr:'👋', test:'🔔', rem:'✍️' };
+const ALERT_TAB = { late:'today', noshow:'today', noout:'today', issue:'today', expense:'expenses', summary:'summary', newmgr:'alerts', test:'alerts', rem:'remnums', task:'myday' };
+const ALERT_ICON = { late:'⏰', noshow:'🚫', noout:'⌛', issue:'⚠️', expense:'🧾', summary:'📊', newmgr:'👋', test:'🔔', rem:'✍️', task:'📌' };
 function htmlText(h){ const m=String(h||'').match(/<p>([\s\S]*?)<\/p>/); const d=document.createElement('div'); d.innerHTML=m?m[1]:''; return (d.textContent||'').trim().slice(0,300); }
 async function queueMail(id, src){
   const mail={ to:cleanList(src.to||[]), cc:cleanList(src.cc||[]), message:{ subject:src.subject, html:src.html }, kind:src.kind||'', createdAt:Date.now() };
@@ -1629,6 +1627,7 @@ async function sweepAlerts(){
     }
   }
   try{ await remReminderSweep(); }catch(e){ console.warn('rem reminder',e); }
+  try{ await asgOverdueSweep(); }catch(e){ console.warn('task reminders',e); }
   // Weekly activation summary: Monday 8 am, covering last Monday–Sunday, all regions.
   const now=new Date();
   if(now.getDay()===SUMMARY_SEND.dow && now.getHours()>=SUMMARY_SEND.hour && S.etacc!==null && S.evalsLoaded){
@@ -1843,6 +1842,176 @@ function guideView(){
   <div class="row" style="margin-bottom:10px">${Object.entries(GUIDES).map(([k,x])=>`<button class="btn ${k===which?'primary':''}" data-act="guidePick" data-g="${k}">${k==='marketer'?'📱 Marketers':'🧭 Managers'}</button>`).join('')}<span class="spacer"></span><button class="btn" data-act="guidePrint">🖨️ Print</button></div>
   <div class="card guide" id="guideBody"><h2>${esc(g.title)}</h2>${which==='manager'&&S.user?'<button class="btn sm primary" data-act="tourStart" style="margin-bottom:8px">▶ Take the 1-minute tour</button>':''}${g.sections.map(([h,items])=>`<h3 data-gsec="${esc(h)}" class="${ui.guideSec===h?'flash':''}">${esc(h)}</h3><ol>${items.map(i=>`<li>${i}</li>`).join('')}</ol>`).join('')}</div>`;
 }
+/* ---------------- Assigned tasks & sprints (Paula, Trevor, Angelique, Chris assign; managers complete) ----------------
+   peHubTasks/{id}: { title, note, link, required, kind:'day'|'week'|'sprint', steps:[{id,text,due,scope}], audience, assignees:[emails],
+                      createdBy, createdByName, createdAt, archived }
+   peHubTaskDone/{taskId__stepId__mgrKey}: { taskId, stepId, email, at, note }                                        */
+const ASG_KINDS = { day:'One-off task (a day)', week:'Task for a week', sprint:'Sprint (several steps)' };
+const OVERDUE_MAIL_HOUR = 8;   // overdue reminder goes the morning after the due date, from 8 am
+function emKey(e){ return String(e||'').toLowerCase().replace(/[^a-z0-9]+/g,'_'); }
+function myEmail(){ return String((S.user&&S.user.email)||'').toLowerCase(); }
+function asgTasks(){ return Object.values(S.asg||{}).filter(t=>!t.archived); }
+function asgDoneRec(tid, sid, email){ return (S.asgDone||{})[`${tid}__${sid}__${emKey(email)}`]; }
+function stepWeekEnd(st){ return addDays(mondayOf(st.due),6); }
+function stepLate(st, t){ return st.scope==='week' ? stepWeekEnd(st)<t : st.due<t; }
+function asgByName(t){ return (t.createdByName||'').split(' ')[0] || 'leadership'; }
+// Everyone who can get an assignment: leaders, regional managers, office supervisors and roster managers with an email.
+function asgPeople(){
+  const m={}, add=(email,name,region)=>{ email=String(email||'').trim().toLowerCase(); if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return; const x=m[email]=m[email]||{ email, name:'', regions:new Set() }; if(name&&!x.name) x.name=name; if(region) x.regions.add(region); };
+  LEADERSHIP.forEach(p=>add(p.email,p.name));
+  ORG.forEach(d=>{ Object.entries(d.regions).forEach(([r,x])=>{ add(x.email,x.name,r); add(d.leader.email,d.leader.name,r); }); });
+  const c=alertCfg(); Object.entries(c.offices||{}).forEach(([o,v])=>splitEmails(v).forEach(e=>add(e,'',regionOf(o))));
+  (S.sched.roster||[]).forEach(p=>{ if(p.email && (p.mgr || m[String(p.email).toLowerCase()])) add(p.email,p.name,regionOf(p.office)); });
+  return Object.values(m).map(x=>Object.assign(x,{ name:x.name||x.email.split('@')[0].replace(/[._]/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) })).sort((a,b)=>a.name.localeCompare(b.name));
+}
+function asgResolve(a){
+  const P=asgPeople();
+  if(a.mode==='all') return P.map(p=>p.email);
+  if(a.mode==='division'){ const d=ORG.find(x=>x.division===a.value); if(!d) return []; const rs=Object.keys(d.regions); return P.filter(p=>[...p.regions].some(r=>rs.includes(r)) || p.email===d.leader.email.toLowerCase()).map(p=>p.email); }
+  if(a.mode==='region') return P.filter(p=>p.regions.has(a.value)).map(p=>p.email);
+  return cleanList(a.people||[]);
+}
+function asgAudienceLabel(a){ return a.mode==='all'?'Everyone':a.mode==='division'?`${a.value} Division`:a.mode==='region'?regionName(a.value):`${(a.people||[]).length} people`; }
+
+/* ----- what a manager sees ----- */
+function asgMine(){ const me=myEmail(); return asgTasks().filter(t=>(t.assignees||[]).includes(me)); }
+function asgItems(scope, key){
+  const me=myEmail(), t=todayIso(), out=[];
+  asgMine().forEach(task=>(task.steps||[]).forEach(st=>{
+    const done=!!asgDoneRec(task.id, st.id, me);
+    let show=false, late=false;
+    if(scope==='day'){ if(st.scope==='day' && st.due===key) show=true; else if(key===t && !done && stepLate(st,t)){ show=true; late=true; } }
+    else if(st.scope==='week' && mondayOf(st.due)===key) show=true;
+    if(show) out.push({ task, st, done, late });
+  }));
+  return out;
+}
+function asgRow(x){
+  const { task, st, done, late }=x, rec=asgDoneRec(task.id, st.id, myEmail());
+  const multi=(task.steps||[]).length>1, label=multi?`${task.title}: ${st.text}`:task.title;
+  const due=st.scope==='week'?`this week`:`due ${fmtMD(st.due)}`;
+  return `<div class="mtask ${done?'done':''}"><label class="chk" style="flex:1"><input type="checkbox" data-atask="${esc(task.id)}|${esc(st.id)}" ${done?'checked':''}> <span>${task.required?'<span class="pill p-red">Required</span> ':''}${esc(label)} <span class="small ${late?'':'muted'}" style="${late?'color:var(--red);font-weight:700':''}">${late?'Overdue · ':''}${due}</span>${task.note?`<div class="small muted">${esc(task.note)}</div>`:''}</span></label>
+    <span class="acts">${task.link?`<a class="btn sm" href="${esc(task.link)}" target="_blank" rel="noopener">Open ↗</a>`:''}</span></div>
+    ${done?`<div class="row" style="margin:-2px 0 6px 28px"><input type="text" data-anote="${esc(task.id)}|${esc(st.id)}" data-keep="an-${esc(task.id)}-${esc(st.id)}" value="${esc((rec&&rec.note)||'')}" placeholder="Optional note for ${esc(asgByName(task))} (e.g. what you did)" style="flex:1;min-width:200px"></div>`:''}`;
+}
+function asgGroupHtml(items){
+  if(!items.length) return '';
+  const by={}; items.forEach(x=>{ const k=asgByName(x.task); (by[k]=by[k]||[]).push(x); });
+  return Object.entries(by).map(([n,list])=>`<div class="mgroup">📌 From ${esc(n)}</div>${list.map(asgRow).join('')}`).join('');
+}
+function asgTodo(){
+  const me=myEmail(), t=todayIso(), out=[];
+  asgMine().forEach(task=>(task.steps||[]).forEach(st=>{
+    if(asgDoneRec(task.id, st.id, me)) return;
+    const late=stepLate(st,t), dueNow=st.scope==='day'?st.due===t:(mondayOf(st.due)===mondayOf(t));
+    if(late||dueNow) out.push({ text:((task.steps||[]).length>1?`${task.title}: ${st.text}`:task.title), sub:`From ${asgByName(task)} · ${late?'overdue, ':''}${st.scope==='week'?'week of '+fmtMD(mondayOf(st.due)):'due '+fmtMD(st.due)}`, red:late||!!task.required });
+  }));
+  return out;
+}
+async function asgSetDone(tid, sid, on, note){
+  const me=myEmail(), id=`${tid}__${sid}__${emKey(me)}`;
+  S.asgDone=Object.assign({}, S.asgDone||{});
+  if(on){ const rec={ taskId:tid, stepId:sid, email:me, at:(S.asgDone[id]&&S.asgDone[id].at)||Date.now(), note:note!=null?note:((S.asgDone[id]&&S.asgDone[id].note)||'') }; S.asgDone[id]=rec;
+    if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubTaskDone',id), rec); } }
+  else { delete S.asgDone[id]; if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.deleteDoc(fsM.doc(db,'peHubTaskDone',id)); } }
+  if(S.mode!=='live') localSave(); render();
+}
+
+/* ----- assign page (Paula, Trevor, Angelique, Chris) ----- */
+function asgDraft(){ if(!ui.asg) ui.asg={ id:uid(), title:'', note:'', link:'', required:false, kind:'day', due:todayIso(), steps:[{ id:'s'+uid(), text:'', due:todayIso() }], mode:'all', value:'', people:[], notify:true }; return ui.asg; }
+function asgView(){
+  if(!isRemUser()) return '<div class="card"><p class="muted">Tasks are assigned by Paula, Trevor, Angelique and Chris. Yours show up on My day and My week.</p></div>';
+  const d=asgDraft(), P=asgPeople(), regs=[...new Set(ORG.flatMap(x=>Object.keys(x.regions)))];
+  const who=asgResolve(d), f=(k,ph,w)=>`<input type="text" data-asg="${k}" data-keep="asg-${d.id}-${k}" value="${esc(d[k]||'')}" placeholder="${esc(ph)}" style="width:${w||'100%'}">`;
+  const steps=d.kind==='sprint'?`<div class="field"><label>Steps</label>${d.steps.map((s,i)=>`<div class="row" style="margin-bottom:4px"><input type="text" data-asgstep="${i}" data-sf="text" data-keep="asgs-${s.id}" value="${esc(s.text)}" placeholder="Step ${i+1}, e.g. Audit your banners" style="flex:1;min-width:200px"><input type="date" data-asgstep="${i}" data-sf="due" data-keep="asgd-${s.id}" value="${esc(s.due)}">${d.steps.length>1?`<button class="btn sm" data-act="asgStepDel" data-i="${i}" title="Remove step">✕</button>`:''}</div>`).join('')}<button class="btn sm" data-act="asgStepAdd">+ Add a step</button></div>`
+    :`<div class="field"><label>${d.kind==='week'?'Week of (any day that week)':'Due date'}</label><input type="date" data-asg="due" data-keep="asg-${d.id}-due" value="${esc(d.due)}">${d.kind==='week'?`<span class="small muted"> Shows on My week for the week of ${fmtMD(mondayOf(d.due||todayIso()))}.</span>`:''}</div>`;
+  const aud=`<div class="field"><label>Assign to</label><div class="row">${[['all','Everyone'],['division','A division'],['region','A region'],['people','Pick people']].map(([k,l])=>`<label class="chk"><input type="radio" name="asgmode" data-asgmode="${k}" ${d.mode===k?'checked':''}> ${l}</label>`).join('')}</div>
+    ${d.mode==='division'?`<select data-asg="value"><option value="">Choose a division…</option>${ORG.map(x=>`<option ${d.value===x.division?'selected':''} value="${esc(x.division)}">${esc(x.division)} Division (${esc(x.leader.name)})</option>`).join('')}</select>`:''}
+    ${d.mode==='region'?`<select data-asg="value"><option value="">Choose a region…</option>${regs.map(r=>`<option ${d.value===r?'selected':''} value="${esc(r)}">${esc(regionName(r))}</option>`).join('')}</select>`:''}
+    ${d.mode==='people'?`<div class="asgpeople" style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:6px">${P.map(p=>`<label class="chk" style="display:block"><input type="checkbox" data-asgperson="${esc(p.email)}" ${d.people.includes(p.email)?'checked':''}> ${esc(p.name)} <span class="small muted">${esc(p.email)}</span></label>`).join('')}</div>`:''}
+    <div class="small ${who.length?'muted':''}" style="margin-top:4px;${who.length?'':'color:var(--red)'}">${who.length?`Goes to ${who.length} manager${who.length===1?'':'s'}: ${esc(who.map(e=>(P.find(p=>p.email===e)||{name:e}).name).slice(0,8).join(', '))}${who.length>8?'…':''}`:'No one selected yet.'}</div></div>`;
+  return `<div class="card"><h2>📌 Assign a task or sprint</h2><div class="sub">It shows on each manager’s <b>My day</b> or <b>My week</b> with a “From ${esc(asgByName({createdByName:(LEADERSHIP.find(p=>p.email===myEmail())||{}).name||''}))}” label. They check it off; you see who’s done below. Anything not done gets one reminder email the morning after it’s due.</div>
+    <div class="field"><label>Task</label>${f('title','e.g. Send me 3 photos of your booth setup')}</div>
+    <div class="row"><label class="small">Type</label>${Object.entries(ASG_KINDS).map(([k,l])=>`<label class="chk"><input type="radio" name="asgkind" data-asgkind="${k}" ${d.kind===k?'checked':''}> ${l}</label>`).join('')}</div>
+    ${steps}
+    <div class="field"><label>Note <span class="small muted">(optional: why it matters, details)</span></label>${f('note','')}</div>
+    <div class="field"><label>Link <span class="small muted">(optional: a form, doc or Teams post)</span></label>${f('link','https://…')}</div>
+    <label class="chk"><input type="checkbox" data-asgflag="required" ${d.required?'checked':''}> Mark as <b>Required</b> (shows in red)</label>
+    ${aud}
+    <label class="chk"><input type="checkbox" data-asgflag="notify" ${d.notify?'checked':''}> Email them now that they have a new task</label>
+    <div class="row" style="margin-top:10px"><button class="btn primary" data-act="asgSave" ${ui.busy?'disabled':''}>${ui.busy?'Saving…':'Assign'}</button>${ui.asgMsg?`<span class="small">${esc(ui.asgMsg)}</span>`:''}</div></div>
+    ${asgBoard()}`;
+}
+function asgProgress(task){
+  const t=todayIso(), P=asgPeople(), rows=(task.assignees||[]).map(e=>{ const p=P.find(x=>x.email===e)||{ name:e };
+    const cells=(task.steps||[]).map(st=>{ const r=asgDoneRec(task.id, st.id, e); return { st, r, late:!r&&stepLate(st,t) }; });
+    return { e, name:p.name, cells, done:cells.every(c=>c.r), late:cells.some(c=>c.late) }; });
+  return { rows, done:rows.filter(r=>r.done).length, late:rows.filter(r=>r.late).length };
+}
+function asgBoard(){
+  const list=Object.values(S.asg||{}).filter(t=>ui.asgShowOld?true:!t.archived).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const old=Object.values(S.asg||{}).filter(t=>t.archived).length;
+  if(!list.length) return `<div class="card"><h2>Assigned tasks</h2><p class="muted">Nothing assigned yet.</p>${old?`<button class="btn sm" data-act="asgOld">Show ${old} archived</button>`:''}</div>`;
+  return `<div class="card"><div class="row"><h2 style="margin:0;flex:1">Assigned tasks</h2>${old?`<button class="btn sm" data-act="asgOld">${ui.asgShowOld?'Hide':'Show'} archived (${old})</button>`:''}</div>
+    ${list.map(task=>{ const g=asgProgress(task), open=ui.asgOpen===task.id, n=(task.assignees||[]).length;
+      const due=(task.steps||[]).map(s=>s.scope==='week'?'week of '+fmtMD(mondayOf(s.due)):fmtMD(s.due));
+      return `<div class="asgcard" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0;${task.archived?'opacity:.6':''}">
+        <div class="row"><div style="flex:1"><b>${task.required?'<span class="pill p-red">Required</span> ':''}${esc(task.title)}</b>${task.archived?' <span class="pill p-gray">Archived</span>':''}
+          <div class="small muted">${esc(ASG_KINDS[task.kind]||'')} · ${esc(due.length>1?due[0]+' – '+due[due.length-1]:due[0]||'')} · ${esc(asgAudienceLabel(task.audience||{}))} · by ${esc(task.createdByName||task.createdBy||'')}</div></div>
+          <span class="pill ${g.done===n?'p-green':g.late?'p-red':'p-warn'}">${g.done} of ${n} done</span>${g.late?`<span class="pill p-red">${g.late} overdue</span>`:''}</div>
+        <div class="prog" style="margin:6px 0"><span style="width:${n?Math.round(g.done/n*100):0}%"></span></div>
+        <div class="row"><button class="btn sm" data-act="asgOpen" data-id="${esc(task.id)}">${open?'Hide':'See'} who’s done</button>${g.late&&!task.archived?`<button class="btn sm primary" data-act="asgRemind" data-id="${esc(task.id)}">Remind the ${g.late} who are late</button>`:''}<span class="spacer"></span><button class="btn sm" data-act="asgArchive" data-id="${esc(task.id)}">${task.archived?'Restore':'Archive'}</button><button class="btn sm" data-act="asgDelete" data-id="${esc(task.id)}">Delete</button></div>
+        ${open?`<table style="margin-top:6px"><thead><tr><th>Manager</th>${(task.steps||[]).map(s=>`<th class="small">${esc((task.steps.length>1?s.text:'Status'))}</th>`).join('')}<th>Note</th></tr></thead><tbody>${g.rows.sort((a,b)=>(b.late-a.late)||(a.done-b.done)||a.name.localeCompare(b.name)).map(r=>`<tr><td>${esc(r.name)}</td>${r.cells.map(c=>`<td class="small">${c.r?`<span style="color:var(--green)">✓ ${fmtStamp(c.r.at)}</span>`:c.late?'<span style="color:var(--red);font-weight:700">Overdue</span>':'<span class="muted">Not yet</span>'}</td>`).join('')}<td class="small">${esc(r.cells.map(c=>c.r&&c.r.note).filter(Boolean).join(' · '))}</td></tr>`).join('')}</tbody></table>`:''}
+        ${task.note?`<div class="small muted" style="margin-top:4px">${esc(task.note)}</div>`:''}</div>`; }).join('')}</div>`;
+}
+async function asgSave(){
+  const d=asgDraft(), title=(d.title||'').trim(); ui.asgMsg='';
+  if(!title){ ui.asgMsg='Type the task first.'; render(); return; }
+  let steps;
+  if(d.kind==='sprint'){ steps=d.steps.filter(s=>s.text.trim()).map(s=>({ id:s.id, text:s.text.trim(), due:s.due||todayIso(), scope:'day' })); if(!steps.length){ ui.asgMsg='Add at least one step.'; render(); return; } if(steps.some(s=>!s.due)){ ui.asgMsg='Give every step a date.'; render(); return; } steps.sort((a,b)=>a.due.localeCompare(b.due)); }
+  else { if(!d.due){ ui.asgMsg='Pick a date.'; render(); return; } steps=[{ id:'s1', text:title, due:d.due, scope:d.kind==='week'?'week':'day' }]; }
+  const audience={ mode:d.mode, value:d.value||'', people:d.mode==='people'?d.people.slice():[] }, assignees=asgResolve(audience);
+  if(!assignees.length){ ui.asgMsg='Choose who gets it.'; render(); return; }
+  const me=myEmail(), id='t'+uid(), task={ id, title, note:(d.note||'').trim(), link:(d.link||'').trim(), required:!!d.required, kind:d.kind, steps, audience, assignees, createdBy:me, createdByName:(LEADERSHIP.find(p=>p.email===me)||{}).name||me, createdAt:Date.now(), archived:false };
+  ui.busy=true; render();
+  try{
+    if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubTasks',id), task); }
+    S.asg=Object.assign({}, S.asg||{}, { [id]:task }); if(S.mode!=='live') localSave();
+    if(d.notify){ const when=steps.length>1?`${steps.length} steps, ${fmtMD(steps[0].due)} – ${fmtMD(steps[steps.length-1].due)}`:(steps[0].scope==='week'?`the week of ${fmtLong(mondayOf(steps[0].due))}`:`due ${fmtLong(steps[0].due)}`);
+      await queueMail('task-'+id, { to:assignees, cc:[me], kind:'task', subject:`${task.required?'Required: ':''}New task from ${asgByName(task)}: ${title}`,
+        html:mailShell('You have a new task', `<p><b>${esc(title)}</b> (${esc(when)})</p>${task.note?`<p>${esc(task.note)}</p>`:''}${steps.length>1?`<ul>${steps.map(s=>`<li>${esc(s.text)}: by ${fmtLong(s.due)}</li>`).join('')}</ul>`:''}${task.link?`<p><a href="${esc(task.link)}">Open the link</a></p>`:''}<p>It’s on your <b>${steps[0].scope==='week'?'My week':'My day'}</b> checklist in the hub. Check it off there when it’s done.</p>`),
+        text:`${title} (${when})` }); }
+    actTrack('action','asgSave'); ui.asg=null; ui.asgMsg=`Assigned to ${assignees.length} manager${assignees.length===1?'':'s'}.`; ui.asgOpen=id;
+  }catch(e){ ui.asgMsg='Couldn’t save: '+(e.code==='permission-denied'?'permission denied. Publish the updated hub rules in Firebase.':(e.message||e.code)); }
+  ui.busy=false; render();
+}
+async function asgUpdate(id, patch){
+  const task=Object.assign({}, (S.asg||{})[id], patch); S.asg=Object.assign({}, S.asg, { [id]:task });
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubTasks',id), task); } else localSave(); render();
+}
+async function asgDelete(id){
+  const all=Object.assign({}, S.asg||{}); delete all[id]; S.asg=all;
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.deleteDoc(fsM.doc(db,'peHubTasks',id)); } else localSave(); render();
+}
+async function asgRemind(id, auto){
+  const task=(S.asg||{})[id]; if(!task) return 0; const t=todayIso(), g=asgProgress(task); let n=0;
+  for(const r of g.rows.filter(x=>x.late)){
+    const lateSteps=r.cells.filter(c=>c.late).map(c=>c.st), key=lateSteps.map(s=>s.id).join('-');
+    const mailId=auto?`taskdue-${id}-${key}-${emKey(r.e)}`:`taskrem-${id}-${emKey(r.e)}-${t}`;
+    const ok=await queueMail(mailId, { to:[r.e], cc:[task.createdBy].filter(e=>e&&e!==r.e), kind:'task', subject:`Overdue: ${task.title}`,
+      html:mailShell('A task is overdue', `<p>Hi ${esc(String(r.name).split(' ')[0])},</p><p>This task from ${esc(task.createdByName||'leadership')} isn’t checked off yet:</p><p><b>${esc(task.title)}</b></p>${lateSteps.length&&task.steps.length>1?`<ul>${lateSteps.map(s=>`<li>${esc(s.text)}: was due ${fmtLong(s.due)}</li>`).join('')}</ul>`:`<p>It was due ${lateSteps[0]&&lateSteps[0].scope==='week'?'the week of '+fmtLong(mondayOf(lateSteps[0].due)):fmtLong((lateSteps[0]||{}).due)}.</p>`}<p>Open the hub → <b>My day</b> and check it off when it’s done.</p>`),
+      text:`${task.title} is overdue.` });
+    if(ok) n++;
+  }
+  return n;
+}
+// Morning after the due date: one reminder per overdue step per manager (any manager with the hub open sends it).
+async function asgOverdueSweep(){
+  if(S.mode!=='live' || !S.user || !S.asgLoaded || !S.asgDoneLoaded) return;
+  if(new Date().getHours()<OVERDUE_MAIL_HOUR) return;
+  for(const task of asgTasks()){ const g=asgProgress(task); if(g.late) await asgRemind(task.id, true); }
+}
+
 /* ---------------- quick-add tasks on My day / My week ---------------- */
 function quickAdd(scope, key){
   const dow=scope==='day'?parseIso(key).getDay():null;
@@ -2044,7 +2213,7 @@ function scReportLine(){ const R=showReport(); if(!R) return `<span style="color
    one small document per manager per day: peHubActivity/{yyyy-mm-dd}_{email key}
    { email, day, firstAt, lastAt, sessions, views:{section:n}, actions:{action:n} }.
    Only Paula, Trevor, Angelique and Chris can read it. Kept 180 days. Marketers (no sign-in) aren't tracked. */
-const ACT_LABELS = { startWeek:'Started week', startDay:'Started day', task:'Checked off a task', qAdd:'Added a quick task', saveEval:'Saved an evaluation', expApprove:'Approved an expense report', expReturn:'Returned an expense report', expSubmit:'Submitted own expense report', submitIn:'Checked a marketer in', submitOut:'Checked a marketer out', itemOut:'Checked out equipment', itemReturn:'Returned equipment', itemTransfer:'Transferred equipment', addAsset:'Added equipment', auditStart:'Started an inventory count', remSave:'Entered REM numbers', srFile:'Uploaded Tradeshow Master', sumCopy:'Copied the activation summary', costCsv:'Downloaded a report', scCsv:'Downloaded a report', auditCsv:'Downloaded a report', alertSave:'Changed alert settings', ratesSave:'Changed pay rates', copyLink:'Copied a check-in link' };
+const ACT_LABELS = { startWeek:'Started week', startDay:'Started day', task:'Checked off a task', qAdd:'Added a quick task', saveEval:'Saved an evaluation', expApprove:'Approved an expense report', expReturn:'Returned an expense report', expSubmit:'Submitted own expense report', submitIn:'Checked a marketer in', submitOut:'Checked a marketer out', itemOut:'Checked out equipment', itemReturn:'Returned equipment', itemTransfer:'Transferred equipment', addAsset:'Added equipment', auditStart:'Started an inventory count', remSave:'Entered REM numbers', srFile:'Uploaded Tradeshow Master', sumCopy:'Copied the activation summary', costCsv:'Downloaded a report', scCsv:'Downloaded a report', auditCsv:'Downloaded a report', alertSave:'Changed alert settings', ratesSave:'Changed pay rates', copyLink:'Copied a check-in link', asgSave:'Assigned a task', atask:'Checked off an assigned task' };
 const ACT_KEYS = new Set(Object.keys(ACT_LABELS));
 const ACT_KEEP_DAYS = 180;
 let actLastTab=null, actSessionSent=false;
@@ -2144,6 +2313,7 @@ function todoGroups(){
   if(!S.user) return [];
   const t=todayIso(), G=[]; const add=(key,ic,title,tab,items,btn)=>{ if(items.length) G.push({ key, ic, title, tab, items, btn }); };
   // alerts
+  add('assigned','📌','Assigned to you','myday', asgTodo(), 'Open My day');
   add('alerts','🔔','New alerts','alerts', unreadAlerts().map(a=>({ text:a.subject||'Alert', sub:a.text||'', act:'alOpen', id:a.id, red:true })), 'See alerts');
   // today’s check-ins
   const sh=shiftsOn(t).filter(s=>inOffice(s.ev.office)), late=sh.filter(s=>['late','noout'].includes(shiftStatus(s).k));
@@ -2191,7 +2361,7 @@ function toolsByUse(){ const u=toolUse(); return TOOL_ORDER.slice().sort((a,b)=>
 function searchIndex(q){
   q=String(q||'').trim().toLowerCase(); if(q.length<2) return [];
   const out=[], has=s=>String(s||'').toLowerCase().includes(q);
-  Object.entries(SECTIONS).forEach(([k,[ic,l]])=>{ if(k==='remnums'||k==='activity'||k==='alerts'){ if(!isRemUser() && k!=='alerts') return; } if(has(l)) out.push({ kind:'Page', ic, text:l, tab:k }); });
+  Object.entries(SECTIONS).forEach(([k,[ic,l]])=>{ if(k==='remnums'||k==='activity'||k==='alerts'||k==='assign'){ if(!isRemUser() && k!=='alerts') return; } if(has(l)) out.push({ kind:'Page', ic, text:l, tab:k }); });
   [['PCMS','📇',LINKS.pcms],['Tableau','📊',LINKS.tableau],['Navan','🏨',NAVAN_URL],['ADP','⏱️',null],['Teams Resource Hub','👥',TEAMS_HUB_URL]].forEach(([l,ic,u])=>{ if(has(l)) out.push(u?{ kind:'Link', ic, text:l, url:u }:{ kind:'Page', ic, text:l, tab:'adp' }); });
   Object.entries(GUIDES).forEach(([gk,g])=>g.sections.forEach(([h,items])=>{ if(has(h) || items.some(has)) out.push({ kind:'How-to', ic:'📖', text:h, sub:g.title, guide:gk, sec:h }); }));
   const t=todayIso();
@@ -2244,17 +2414,18 @@ function helpBtn(){ const h=HELP_FOR[ui.tab]; return h?`<button class="btn sm he
 function pageHelp(){ const h=HELP_FOR[ui.tab]; if(!h) return; ui.guide=h[0]; ui.guideSec=h[1]; ui.tab='guide'; history.pushState(null,'','#guide'); render(); setTimeout(()=>{ const el=document.querySelector('[data-gsec="'+CSS.escape(h[1])+'"]'); if(el){ el.scrollIntoView({behavior:'smooth',block:'start'}); el.classList.add('flash'); } },60); }
 // ---- First-time tour ----
 const TOUR = [
-  ['👋','Welcome to the Event Activity Hub','Everything for running events lives here: your daily checklist, check-ins, events, expenses, equipment and the scorecard. This 1-minute tour shows the basics. You can reopen it anytime from How-to guides.'],
-  ['☀️','Start your day','Tap <b>Start my day</b> (or <b>Start my week</b> on Mondays) at the top of the home page. You get a checklist for the day, and anything that needs you is listed above it.'],
-  ['⚑','Needs your attention','Everything that needs you is collected in one list: late check-ins, events that need marketers, ETACC deadlines and contract releases, evaluations, expense reports, timecards, equipment and hotels. Tap an item to go straight to it. Once it’s taken care of, it comes off the list.'],
-  ['📍','Checking in a marketer','Marketers check themselves in with their event’s link. Copy it from <b>Today’s Activity</b> or the schedule and text it to them. You can also check someone in from <b>Check-in</b> if their phone won’t cooperate.'],
-  ['🧾','Approving expenses','Each Monday, open <b>Expense reports</b>, review your team’s reports and approve or return them. Approved reports go to Accounts Payable automatically. Submit your own report the same day.'],
-  ['🔎','Finding anything','Use the <b>search box</b> at the top to jump to an event, marketer, piece of equipment or page. On a phone, the menu at the bottom gets you Home, My day, Check-in, Events and Alerts.'],
-  ['❓','Help on every page','Tap <b>? Help</b> next to a page title to see how that page works. The <b>🏆 Scorecard</b> on the home page shows how last week’s events did.'] ];
+  ['👋','Welcome to the Event Activity Hub','Everything for running events lives here: your daily checklist, check-ins, events, expenses, equipment and the scorecard. This 1-minute tour shows the basics. You can reopen it anytime from How-to guides.','tour/1-home.jpg','The home page'],
+  ['☀️','Start your day','Tap <b>Start my day</b> (or <b>Start my week</b> on Mondays) at the top of the home page. You get a checklist for the day, and anything that needs you is listed above it.','tour/2-start.jpg','Start my week and Start my day buttons'],
+  ['📌','Your checklist and assigned tasks','Your day’s checklist lives on <b>My day</b> (and <b>My week</b>). Tasks Paula, Trevor, Angelique or Chris send you show up in a <b>📌 From Paula</b> group with a due date. Check each one off when it’s done, and add a note if they asked for one.','tour/4-checklist.jpg','My day checklist with an assigned task'],
+  ['⚑','Needs your attention','Everything that needs you is collected in one list: late check-ins, events that need marketers, ETACC deadlines and contract releases, evaluations, expense reports, timecards, equipment and hotels. Tap an item to go straight to it. Once it’s taken care of, it comes off the list.','tour/3-attention.jpg','Needs your attention list'],
+  ['📍','Checking in a marketer','Marketers check themselves in with their event’s link. Copy it from <b>Today’s Activity</b> or the schedule and text it to them. You can also check someone in from <b>Check-in</b> if their phone won’t cooperate.','tour/5-checkin.jpg','Today’s Activity with Copy check-in link'],
+  ['🧾','Approving expenses','Each Monday, open <b>Expense reports</b>, review your team’s reports and approve or return them. Approved reports go to Accounts Payable automatically. Submit your own report the same day.','tour/6-expenses.jpg','Expense reports page'],
+  ['🔎','Finding anything','Use the <b>search box</b> at the top to jump to an event, marketer, piece of equipment or page. On a phone, the menu at the bottom gets you Home, My day, Check-in, Events and Alerts.','tour/7-search.jpg','Search results for an event'],
+  ['❓','Help on every page','Tap <b>? Help</b> next to a page title to see how that page works. The <b>🏆 Scorecard</b> on the home page shows how last week’s events did.','tour/8-help.jpg','Page header with the Help button'] ];
 function tourDone(){ const m=mgrDoc(); return !!(m.tourDone) || lsGet('peHub.tourDone.'+String((S.user&&S.user.email)||'').toLowerCase())==='1'; }
 function tourOverlay(){
   if(ui.tour===undefined || ui.tour===null) return ''; const i=ui.tour, s=TOUR[i];
-  return `<div class="tourbg"><div class="tourbox" role="dialog" aria-label="Hub tour"><div class="tourstep">Step ${i+1} of ${TOUR.length}</div><div class="touric">${s[0]}</div><h2>${s[1]}</h2><p>${s[2]}</p>
+  return `<div class="tourbg"><div class="tourbox${s[3]?' hasimg':''}" role="dialog" aria-label="Hub tour"><div class="tourstep">Step ${i+1} of ${TOUR.length}</div>${s[3]?`<a class="tourimgwrap" href="${s[3]}" target="_blank" rel="noopener" title="Open full size"><img class="tourimg" src="${s[3]}" alt="${esc(s[4]||'')}" onerror="this.parentNode.style.display='none'"></a>`:''}<h2><span class="touric-sm">${s[0]}</span> ${s[1]}</h2><p>${s[2]}</p>
     <div class="tourdots">${TOUR.map((_,k)=>`<i class="${k===i?'on':''}"></i>`).join('')}</div>
     <div class="row" style="justify-content:space-between"><button class="btn sm" data-act="tourEnd">Skip tour</button><span>${i?'<button class="btn" data-act="tourBack">Back</button>':''} <button class="btn primary" data-act="${i===TOUR.length-1?'tourEnd':'tourNext'}">${i===TOUR.length-1?'Got it':'Next'}</button></span></div></div></div>`;
 }
@@ -2611,7 +2782,7 @@ function mergeMgrTimes(){
 const DB = { fb:null };
 const LOCAL_KEY='peHub.local';
 function localLoad(){ try{ return JSON.parse(lsGet(LOCAL_KEY)||'{}'); }catch(e){ return {}; } }
-function localSave(){ lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, alertCfg:S.alertCfg, rates:S.rates, scManual:S.scManual, activity:S.activity, showReport:S.showReport, alerts:S.alerts, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
+function localSave(){ lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, alertCfg:S.alertCfg, rates:S.rates, scManual:S.scManual, activity:S.activity, showReport:S.showReport, alerts:S.alerts, asg:S.asg, asgDone:S.asgDone, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
 setInterval(()=>{ sweepAlerts(); }, 5*60000);
 async function initDB(){
   if(DEMO){ goLocal('demo'); return; }
@@ -2660,6 +2831,8 @@ async function initDB(){
         unsubs.push(F.onSnapshot(F.collection(db,'peHubShowReport'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.showReport=showReportFromDocs(m); render(); }, err=>console.warn('showReport',err)));
         unsubs.push(F.onSnapshot(F.collection(db,'peHubScorecard'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.scManual=m; S.scLoaded=true; render(); }, err=>console.warn('scorecard',err)));
         unsubs.push(F.onSnapshot(F.doc(db,'peHubRates','main'), snap=>{ S.rates=snap.exists()?snap.data():null; render(); }, err=>console.warn('rates',err)));
+        unsubs.push(F.onSnapshot(F.collection(db,'peHubTasks'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=Object.assign({id:d.id},d.data())); S.asg=m; S.asgLoaded=true; render(); }, err=>console.warn('tasks',err)));
+        unsubs.push(F.onSnapshot(F.collection(db,'peHubTaskDone'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.asgDone=m; S.asgDoneLoaded=true; render(); }, err=>console.warn('task done',err)));
         unsubs.push(F.onSnapshot(F.collection(db,'peHubEvals'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.evals=m; S.evalsLoaded=true; render(); }, err=>console.warn('evals',err)));
       }
       render();
@@ -2671,7 +2844,7 @@ function goLocal(why){
   const L=localLoad();
   if(DEMO && !L.sched) seedDemo(); else {
     if(L.sched) S.sched=L.sched;
-    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; S.mgr=L.mgr||{}; S.training=L.training||null; S.alertCfg=L.alertCfg||null; S.rates=L.rates||null; S.scManual=L.scManual||{}; S.activity=L.activity||{}; S.showReport=L.showReport||null; S.alerts=L.alerts||{}; ui.localPhotos=L.photos||{};
+    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; S.mgr=L.mgr||{}; S.training=L.training||null; S.alertCfg=L.alertCfg||null; S.rates=L.rates||null; S.scManual=L.scManual||{}; S.activity=L.activity||{}; S.showReport=L.showReport||null; S.alerts=L.alerts||{}; S.asg=L.asg||{}; S.asgDone=L.asgDone||{}; S.asgLoaded=S.asgDoneLoaded=true; ui.localPhotos=L.photos||{};
   }
   if(DEMO){ S.user={email:'demo.manager@patio'}; }
   S.schedLoaded=true; render();
@@ -2781,11 +2954,11 @@ function header(){
   const signin = MARKETER_MODE ? `<a class="small" href="${location.pathname}">Manager view</a>` :
     S.user ? `<div class="signin small">${(()=>{ const n=unreadAlerts().length; return `<button class="btn sm bell" data-tab="alerts" title="Alerts">🔔${n?`<span class="bdot">${n}</span>`:''}</button>`; })()}<span class="muted">${esc(S.user.email)}</span><button class="btn sm" data-act="signOut">Sign out</button></div>` :
     `<form class="signin" data-form="signin"><input type="email" name="email" placeholder="Manager email" data-keep="si-email" autocomplete="username" style="width:170px"><input type="password" name="pw" placeholder="Password" data-keep="si-pw" autocomplete="current-password" style="width:120px"><button class="btn sm primary">Sign in</button><button type="button" class="btn sm" data-act="pwReset" title="Email me a link to set a new password">Forgot password?</button>${S.authErr?`<span class="small" style="color:var(--red)">${esc(S.authErr)}</span>`:''}</form>`;
-  return `<header class="top"><button type="button" class="homelogo" data-tab="${MARKETER_MODE?'checkin':'home'}" title="${MARKETER_MODE?'Back to check-in':'Back to Hub home'}" aria-label="${MARKETER_MODE?'Back to check-in':'Back to Hub home'}"><img class="brandlogo" src="pe-logo.png" alt="Patio Enclosures by Great Day Improvements"></button>
+  return `<header class="top">${MARKETER_MODE?'<img class="brandlogo" src="pe-logo.png" alt="Patio Enclosures by Great Day Improvements">':'<a href="#" class="brandlink" data-tab="home" title="Back to Hub home" aria-label="Back to Hub home"><img class="brandlogo" src="pe-logo.png" alt="Patio Enclosures by Great Day Improvements"></a>'}
     <div><h1>${MARKETER_MODE?'Event Check-In':'Event Activity Hub'}</h1><div class="asof">${stat}${S.mode==='local'&&!DEMO?` · not saving to the shared database (${esc(S.err)})`:''}</div></div>
     <div class="spacer"></div>${signin}</header>`;
 }
-const SECTIONS={ today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Marketer Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Asset Inventory & Check-Out'], evals:['📝','Post-Event Evaluations'], expenses:['🧾','Expense Reports'], travel:['🏨','Navan Travel'], adp:['⏱️','ADP Timecards'], myday:['☀️','My Day'], myweek:['▶️','My Week'], summary:['📊','Event Activation Summary'], training:['📚','Training'], alerts:['🔔','Alerts'], guide:['📖','How-to Guides'], costs:['💲','Cost per Lead'], scorecard:['🏆','Event Marketing Scorecard'], remnums:['✍️','REM Weekly Numbers'], activity:['👀','Hub Activity'] };
+const SECTIONS={ today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Marketer Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Asset Inventory & Check-Out'], evals:['📝','Post-Event Evaluations'], expenses:['🧾','Expense Reports'], travel:['🏨','Navan Travel'], adp:['⏱️','ADP Timecards'], myday:['☀️','My Day'], myweek:['▶️','My Week'], summary:['📊','Event Activation Summary'], training:['📚','Training'], alerts:['🔔','Alerts'], guide:['📖','How-to Guides'], costs:['💲','Cost per Lead'], scorecard:['🏆','Event Marketing Scorecard'], remnums:['✍️','REM Weekly Numbers'], activity:['👀','Hub Activity'], assign:['📌','Assign Tasks'] };
 function tabs(){
   if(ui.tab==='home' || !SECTIONS[ui.tab]) return '';
   const [ic,l]=SECTIONS[ui.tab];
@@ -2832,6 +3005,7 @@ function tilesView(){
   if(!S.user) return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span>${scopePicker()}</div>${banners}<div class="tiles">${TOOL_ORDER.map(k=>T[k]()).join('')}</div>${leaderCard()}</div>`;
   const order=toolsByUse(), mine=order.slice(0,6), rest=order.slice(6);
   const leader=isRemUser()?`<h3 class="homeh">Leader tools</h3><div class="minis">
+    <div class="mini" data-tab="assign" role="button" tabindex="0" style="--tc:var(--red);--tcs:#fde2e1"><span class="ic">📌</span><span class="mt"><b>Assign tasks</b><small>One-offs & sprints</small></span></div>
     <div class="mini" data-tab="remnums" role="button" tabindex="0" style="--tc:var(--gold);--tcs:#fef0dc"><span class="ic">✍️</span><span class="mt"><b>REM weekly numbers</b><small>Cancels, meets, sales</small></span></div>
     <div class="mini" data-tab="activity" role="button" tabindex="0" style="--tc:#000;--tcs:#ededed"><span class="ic">👀</span><span class="mt"><b>Hub activity</b><small>Who’s using the hub</small></span></div>
     <div class="mini" data-tab="alerts" role="button" tabindex="0" style="--tc:var(--aqua);--tcs:#e0f4f6"><span class="ic">🔔</span><span class="mt"><b>Alert settings</b><small>Who gets alerts</small></span></div>
@@ -2866,6 +3040,7 @@ function body(){
     case 'costs': return costView();
     case 'scorecard': return scorecardView();
     case 'remnums': return remNumsView();
+    case 'assign': return S.user?asgView():'<div class="card">Sign in to assign tasks.</div>';
     case 'activity': return activityView();
     case 'myday': return S.user?myDayView():'<div class="card">Sign in to see your day.</div>';
     case 'myweek': return S.user?myWeekView():'<div class="card">Sign in to see your week.</div>';
@@ -3175,7 +3350,7 @@ document.addEventListener('click', async ev=>{
   if(t.dataset.item && !t.dataset.act){ ev.preventDefault(); ui.item=t.dataset.item; render(); return; }
   if(t.dataset.audit && !t.dataset.act){ ui.audit=t.dataset.audit; ui.scanMsg=null; render(); return; }
   if(t.dataset.zoom){ ui.lightbox=t.dataset.zoom; render(); return; }
-  if(t.dataset.tab){ ui.tab=t.dataset.tab; ui.evalKey=null; ui.evalDraft=null; ui.scanMsg=null; ui.audit=null; ui.exp=null; ui.expView=null; stopCamera(); history.pushState(null,'',ui.tab==='home'?location.pathname+location.search:'#'+ui.tab); render(); window.scrollTo(0,0); return; }
+  if(t.dataset.tab){ if(t.tagName==='A') ev.preventDefault(); if(t.classList.contains('brandlink')){ ui.item=null; ui.detail=null; ui.tour=null; } ui.tab=t.dataset.tab; ui.evalKey=null; ui.evalDraft=null; ui.scanMsg=null; ui.audit=null; ui.exp=null; ui.expView=null; stopCamera(); history.pushState(null,'',ui.tab==='home'?location.pathname+location.search:'#'+ui.tab); render(); window.scrollTo(0,0); return; }
   if(t.dataset.detail && !t.dataset.act){ ui.detail={cid:t.dataset.detail, dayId:t.dataset.day||'', pid:t.dataset.pid||''}; render(); return; }
   if(t.dataset.eval && !t.dataset.act){ ui.evalKey=t.dataset.eval; ui.evalDraft=null; render(); window.scrollTo(0,0); return; }
   const a=t.dataset.act;
@@ -3262,6 +3437,14 @@ document.addEventListener('click', async ev=>{
     try{ await DB.fb.authM.sendPasswordResetEmail(DB.fb.auth, em); S.authErr=`If ${em} has an account, a reset link is on its way. Check junk mail too.`; }
     catch(e){ S.authErr = e.code==='auth/user-not-found' ? 'No account found for that email. Ask Paula to set one up.' : `Couldn’t send the reset email: ${e.code||e.message}`; }
     render(); return; }
+  if(a==='asgSave'){ await asgSave(); return; }
+  if(a==='asgStepAdd'){ const d=asgDraft(), last=d.steps[d.steps.length-1]; d.steps.push({ id:'s'+uid(), text:'', due:(last&&last.due)?addDays(last.due,1):todayIso() }); render(); return; }
+  if(a==='asgStepDel'){ const d=asgDraft(); d.steps.splice(+t.dataset.i,1); render(); return; }
+  if(a==='asgOpen'){ ui.asgOpen=ui.asgOpen===t.dataset.id?null:t.dataset.id; render(); return; }
+  if(a==='asgOld'){ ui.asgShowOld=!ui.asgShowOld; render(); return; }
+  if(a==='asgArchive'){ const x=(S.asg||{})[t.dataset.id]; if(x) await guard(()=>asgUpdate(x.id,{ archived:!x.archived })); return; }
+  if(a==='asgDelete'){ const x=(S.asg||{})[t.dataset.id]; if(!x || !confirm(`Delete “${x.title}” for everyone? Managers’ check-offs are kept but the task disappears. (Archive instead to keep the record.)`)) return; await guard(()=>asgDelete(x.id)); return; }
+  if(a==='asgRemind'){ const n=await asgRemind(t.dataset.id,false); ui.notice=n?`Reminder sent to ${n} manager${n===1?'':'s'}.`:'Already reminded today.'; ui.noticeKind=''; render(); return; }
   if(a==='alertSave'){ const vals=[...document.querySelectorAll('[data-alert]')].map(el=>({ kind:el.dataset.alert, key:el.dataset.key, value:el.value })); const ccEl=document.querySelector('[data-alertcc]'); if(ccEl) vals.ccDivision=ccEl.checked; ui.busy=true; render(); try{ await saveAlertCfg(vals); ui.alertMsg='Saved.'; }catch(e){ ui.alertMsg='Couldn’t save: '+(e.code||e.message); } ui.busy=false; render(); return; }
   if(a==='alertTest'){ const ok=await queueMail('test-'+Date.now(), { to:[(S.user&&S.user.email)||PAULA], kind:'test', subject:'Event Hub test alert', html:mailShell('Test alert','<p>If you’re reading this, automatic alerts are working.</p>') }); ui.alertMsg=ok?'Test queued: check your inbox in a minute.':'Couldn’t queue the test email.'; render(); return; }
   if(a==='backCheckin'){ ui.tab='checkin'; history.replaceState(null,'',location.pathname+location.search); render(); return; }
@@ -3327,7 +3510,7 @@ document.addEventListener('click', async ev=>{
 async function guard(fn){ try{ await fn(); }catch(e){ console.error(e); ui.notice='Couldn’t save: '+(e.code==='permission-denied'?'permission denied. Check that you’re signed in and the hub rules are published.':(e.message||e.code)); ui.noticeKind='err'; } render(); }
 async function fetchLoc(){ const p=ui.panel; const r=await getLocation(); if(ui.panel!==p) return; p.loc=r.loc; p.locNote=r.note||''; render(); }
 function readEvalDraft(){ document.querySelectorAll('[data-ef]').forEach(el=>{ ui.evalDraft[el.dataset.ef]=el.value; }); }
-document.addEventListener('input', ev=>{ const el=ev.target; if(el.dataset.ex && ui.exp && el.type!=='checkbox' && el.type!=='radio'){ setPath(ui.exp, el.dataset.ex, el.value); if(el.type==='number') updateExpTotals(); } if(el.dataset.ef && ui.evalDraft) ui.evalDraft[el.dataset.ef]=el.value; if(el.dataset.act==='aq'){ ui.aq=el.value; render(); } });
+document.addEventListener('input', ev=>{ const el=ev.target; if(el.dataset.ex && ui.exp && el.type!=='checkbox' && el.type!=='radio'){ setPath(ui.exp, el.dataset.ex, el.value); if(el.type==='number') updateExpTotals(); } if(el.dataset.ef && ui.evalDraft) ui.evalDraft[el.dataset.ef]=el.value; if(el.dataset.asg && el.tagName!=='SELECT'){ asgDraft()[el.dataset.asg]=el.value; } if(el.dataset.asgstep!==undefined && el.type!=='date'){ const st=asgDraft().steps[+el.dataset.asgstep]; if(st) st[el.dataset.sf]=el.value; } if(el.dataset.act==='aq'){ ui.aq=el.value; render(); } });
 document.addEventListener('change', async ev=>{
   const el=ev.target;
   if(el.dataset.remset){ const R=remDraft(); let v=el.value; if(el.dataset.remset==='week' && v) v=mondayOf(v); if(v||el.dataset.remset==='region') R[el.dataset.remset]=v; ui.remMsg=''; render(); return; }
@@ -3357,6 +3540,14 @@ document.addEventListener('change', async ev=>{
   if(el.dataset.gear){ const p=ui.panel; p.note=(document.querySelector('[data-keep="in-note"]')||{}).value; p.gear = el.checked ? [...p.gear, el.dataset.gear] : p.gear.filter(x=>x!==el.dataset.gear); return; }
   const a=el.dataset.act;
   if(a==='sumFrom'||a==='sumTo'){ const r=Object.assign({}, sumRange()); r[a==='sumFrom'?'from':'to']=el.value; if(r.to<r.from) r.to=r.from; r.label='Custom'; ui.sumRange=r; ui.sumNote=''; render(); return; }
+  if(el.dataset.atask){ const [tid,sid]=el.dataset.atask.split('|'); if(el.checked) actTrack('action','atask'); await guard(()=>asgSetDone(tid,sid,el.checked)); return; }
+  if(el.dataset.anote){ const [tid,sid]=el.dataset.anote.split('|'); await guard(()=>asgSetDone(tid,sid,true,el.value.trim())); return; }
+  if(el.dataset.asgkind){ asgDraft().kind=el.dataset.asgkind; render(); return; }
+  if(el.dataset.asgmode){ const d=asgDraft(); d.mode=el.dataset.asgmode; d.value=''; render(); return; }
+  if(el.dataset.asgflag){ asgDraft()[el.dataset.asgflag]=el.checked; render(); return; }
+  if(el.dataset.asgperson){ const d=asgDraft(), e=el.dataset.asgperson; d.people=el.checked?[...new Set([...d.people,e])]:d.people.filter(x=>x!==e); render(); return; }
+  if(el.dataset.asg){ asgDraft()[el.dataset.asg]=el.value; render(); return; }
+  if(el.dataset.asgstep!==undefined){ const st=asgDraft().steps[+el.dataset.asgstep]; if(st){ st[el.dataset.sf]=el.value; } if(el.type==='date') render(); return; }
   if(el.dataset.mtask && el.checked) actTrack('action','task');
   if(el.dataset.mtask){ const [kk,id]=el.dataset.mtask.split('|'), [kind,key]=[kk.slice(0,1),kk.slice(2)], m=mgrDoc(), coll=kind==='d'?'days':'weeks';
     const all=Object.assign({}, m[coll]||{}); const rec=Object.assign({}, all[key]||{}); const done=Object.assign({}, rec.done||{});

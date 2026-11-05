@@ -104,6 +104,15 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .mini .mt{display:flex;flex-direction:column;min-width:0}.mini b{font-size:15px}.mini small{font-size:12px;color:var(--ink-soft)}.mini small.warn{color:var(--warn);font-weight:600}
 .mini .flag{position:absolute;top:-8px;right:-8px;background:var(--warn);color:#fff;border-radius:12px;padding:1px 8px;font-size:12px;font-weight:700}
 .tile{position:relative;aspect-ratio:1/1;background:var(--surface);border:2px solid var(--tc,var(--line));border-radius:14px;padding:20px;cursor:pointer;display:flex;flex-direction:column;text-align:left;transition:transform .12s,box-shadow .12s,border-color .12s}
+.athumb{border-radius:6px;object-fit:contain;background:#fff;border:1px solid var(--line);flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;font-size:18px}
+.athumb.none{background:var(--soft,#f4f6f7);color:var(--muted)}
+.arow{display:flex;gap:10px;align-items:center}
+.aphoto{width:180px;flex:0 0 180px}.aphoto img{width:180px;height:180px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff}
+details.hsec>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px}
+details.hsec>summary::-webkit-details-marker{display:none}
+details.hsec>summary::before{content:'▸';color:var(--muted);font-size:14px;transition:transform .15s;flex:0 0 auto}
+details.hsec[open]>summary::before{transform:rotate(90deg)}
+details.hsec>summary .homeh{margin:14px 0 8px}
 .tile .tilebtn{margin-top:10px;align-self:flex-start}
 .tile.off{cursor:default;opacity:.55;filter:grayscale(1)}
 .tile.off:hover{transform:none;box-shadow:none;border-width:2px;padding:20px}
@@ -351,6 +360,11 @@ function shiftGoal(ev, day, personId, dId){
 function goalRound(n){ return n>=1 ? Math.round(n) : Math.round(n*10)/10; }
 function goalNote(g){ if(!g) return '';
   return `<div class="notice" style="margin:8px 0"><b>🎯 Opps goal:</b> this event’s target is <b>${g.target} opps</b> over ${g.nDays} day${g.nDays===1?'':'s'}. Today’s team goal is <b>${goalRound(g.dayGoal)}</b>, and your goal for this shift is <b>about ${goalRound(g.mine)}</b> (your ${round1(g.hours)} hours of ${round1(g.dayPH)} scheduled marketer-hours today).</div>`; }
+// Opps far above normal for this shift (a likely typo). Same threshold the check-out screen flags as you type.
+function oppsHigh(c){ const g=checkinGoal(c); return { hi:g?Math.max(Math.round(g.mine*3), Math.round(g.mine)+5):15, goal:g?goalRound(g.mine):null }; }
+// Early check-out: leaving more than EARLY_MIN minutes before the scheduled shift end (same day only).
+const EARLY_MIN = 30;
+function earlyBy(c, at){ const stop=toMin(c.shiftStop); if(stop===null || c.date!==isoOf(new Date(at||Date.now()))) return 0; const d=new Date(at||Date.now()), m=d.getHours()*60+d.getMinutes(); return stop-m>EARLY_MIN ? stop-m : 0; }
 function checkinGoal(c){ const e=S.sched.events.find(x=>x.key===c.eventKey); if(!e) return null; const d=(e.days||[]).find(x=>x.date===c.date); return d ? shiftGoal(e, d, c.personId, dayId(e,d)) : null; }
 function breakPlan(hours){ if(!(hours>0)) return null;
   return { hours, meals:hours>BREAKS.mealAfterH?1:0, meal2:hours>BREAKS.meal2AfterH, rests:Math.floor(hours/BREAKS.restEveryH) }; }
@@ -458,15 +472,15 @@ function withAssigned(fn){ const prev=ATTN; ATTN=assignedScope()||false; try{ re
 function attnLabel(){ const a=assignedScope(); if(!a) return scopeLabel(); return 'Your area: '+scopeLabel(a)+((ui.scope||[]).length?' · filtered to '+scopeLabel():''); }
 function scopeLabel(list){ const sc=list||ui.scope||[]; if(!sc.length) return 'All regions & offices'; const names=sc.map(x=>x.startsWith('d:')?x.slice(2)+' Division':x.startsWith('r:')?(REGION_NAMES[x.slice(2)]||x.slice(2))+' region':x.slice(2)); return names.length>3 ? names.slice(0,3).join(', ')+` +${names.length-3} more` : names.join(', '); }
 function scopePicker(){
-  const rm=regionMap(), regs=[...new Set(Object.values(rm))].sort(), sc=ui.scope||[];
-  const offsFor=r=>offices().filter(o=>(rm[o]||'')===r);
-  const noReg=offices().filter(o=>!rm[o]);
+  const rm=regionMap(), mineO=o=>!ATTN||tokMatch(ATTN,o), regs=[...new Set(Object.entries(rm).filter(([o])=>mineO(o)).map(([,r])=>r))].sort(), sc=ui.scope||[];
+  const offsFor=r=>offices().filter(o=>(rm[o]||'')===r && mineO(o));
+  const noReg=offices().filter(o=>!rm[o] && mineO(o));
   const box=(tok,label,cls='')=>`<label class="chk ${cls}"><input type="checkbox" data-scope="${esc(tok)}" ${sc.includes(tok)?'checked':''}> ${esc(label)}</label>`;
   return `<div class="scopewrap"><button class="btn" data-act="scopeToggle">📍 ${esc(scopeLabel())} ▾</button>
     ${ui.scopeOpen?`<div class="scopepanel"><div class="row" style="margin-bottom:6px"><b>Show regions & offices</b><span class="spacer"></span><button class="btn sm" data-act="scopeClear">All</button><button class="btn sm primary" data-act="scopeToggle">Finished</button></div>
       ${(()=>{ const reg=r=>`<div class="scopereg">${box('r:'+r, regionName(r)+' region (all offices)')}<div class="scopeoffs">${offsFor(r).map(o=>box('o:'+o,o)).join('')}</div></div>`;
         const inOrg=new Set(ORG.flatMap(d=>Object.keys(d.regions)));
-        return ORG.map(d=>{ const rs=Object.keys(d.regions).filter(r=>regs.includes(r)); return `<div class="scopediv">${box('d:'+d.division, d.division+' Division ('+d.leader.name+')','divbox')}${rs.map(reg).join('')}</div>`; }).join('') + regs.filter(r=>!inOrg.has(r)).map(reg).join(''); })()}
+        return ORG.filter(d=>Object.keys(d.regions).some(r=>regs.includes(r))).map(d=>{ const rs=Object.keys(d.regions).filter(r=>regs.includes(r)); return `<div class="scopediv">${box('d:'+d.division, d.division+' Division ('+d.leader.name+')','divbox')}${rs.map(reg).join('')}</div>`; }).join('') + regs.filter(r=>!inOrg.has(r)).map(reg).join(''); })()}
       ${noReg.length?`<div class="scopereg"><div class="small muted">No region</div><div class="scopeoffs">${noReg.map(o=>box('o:'+o,o)).join('')}</div></div>`:''}</div>`:''}</div>`;
 }
 function rosterSorted(){ return S.sched.roster.slice().sort((a,b)=>a.name.localeCompare(b.name)); }
@@ -474,7 +488,7 @@ function rosterSorted(){ return S.sched.roster.slice().sort((a,b)=>a.name.locale
 function shiftsOn(date){
   const out=[];
   liveEvents().forEach(e=>e.days.forEach(d=>{
-    if(d.date!==date) return;
+    if(d.date!==date || d.off) return;
     const id=dayId(e,d);
     (S.sched.assignments[id]||[]).forEach(pid=>out.push({ ev:e, day:personDay(id,d,pid), dayId:id, personId:pid, cid:checkinId(id,pid), c:S.checkins[checkinId(id,pid)]||null }));
   }));
@@ -490,7 +504,7 @@ function shiftsOn(date){
 function personDay(id,d,pid){ const o=((S.sched.shiftTimes||{})[id+'::'+pid]); return o&&(o.start||o.stop) ? Object.assign({}, d, { start:o.start||d.start, stop:o.stop||d.stop, partial:true }) : d; }
 function shiftStatus(s){
   const c=s.c;
-  if(c && c.status==='out') return { k:'out', label:`Checked out ${fmtClock(c.outAt)}`, cls:'p-green' };
+  if(c && c.status==='out') return c.earlyMin ? { k:'out', label:`Checked out early ${fmtClock(c.outAt)}`, cls:'p-warn' } : { k:'out', label:`Checked out ${fmtClock(c.outAt)}`, cls:'p-green' };
   if(c && c.status==='in') {
     const ended = s.day.date<todayIso() || (s.day.date===todayIso() && toMin(s.day.stop)!==null && nowMin()>toMin(s.day.stop)+60);
     return ended ? { k:'noout', label:`No check-out (in ${fmtClock(c.inAt)})`, cls:'p-warn' } : { k:'in', label:`Checked in ${fmtClock(c.inAt)}`, cls:'p-blue' };
@@ -553,6 +567,16 @@ function computeStates(){
 }
 function stOf(a){ return (a && ST[a.id]) || {}; }
 function assetInScope(a){ const o=stOf(a).office||a.office||''; return !o || inOffice(o); }
+// Item pictures: built-in photos for supply-list items (hub/items/<SKU>.jpg), or a photo a manager adds.
+// A photo added to an item with a supply-list SKU is shared by every item with that SKU.
+const ITEM_IMG = Object.fromEntries(['OTH-TABLECLOTH','OTH-TV32','OTH-STOOL','OTH-BANNER-OUT','OTH-ACRYLIC','OTH-SIGN11X17','OTH-FLASH','OTH-10PANEL','OTH-RUNNER'].map(k=>[k,'items/'+k+'.jpg']));
+function photoKey(a){ return a.shopSku || a.id; }
+function assetPhoto(a){ if(!a) return ''; const P=S.assetPhotos||{}; return P[a.id] || (a.shopSku&&P[a.shopSku]) || ITEM_IMG[a.shopSku] || ''; }
+function assetThumb(a, size){ const u=assetPhoto(a), z=size||40; return u?`<img class="athumb" src="${esc(u)}" alt="" loading="lazy" style="width:${z}px;height:${z}px">`:`<span class="athumb none" style="width:${z}px;height:${z}px">${a&&a.kind==='kit'?'🧰':'📦'}</span>`; }
+async function saveAssetPhoto(key, dataUrl){
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; if(dataUrl) await fsM.setDoc(fsM.doc(db,'peHubAssetPhotos',key), { data:dataUrl, at:Date.now(), by:(S.user&&S.user.email)||'' }); else await fsM.deleteDoc(fsM.doc(db,'peHubAssetPhotos',key)); }
+  S.assetPhotos=Object.assign({}, S.assetPhotos||{}); if(dataUrl) S.assetPhotos[key]=dataUrl; else delete S.assetPhotos[key]; if(S.mode!=='live') localSave(); render();
+}
 function scopedAssets(){ return S.assets.filter(a=>!a.retired && assetInScope(a)); }
 function usedLast(a, days){ const cut=Date.now()-days*864e5; return S.alog.filter(e=>e.assetId===a.id && e.type==='use' && (e.at||0)>cut).reduce((t,e)=>t+num(e.qty),0); }
 function isLow(a){ return a.kind==='consumable' && a.reorderAt!=='' && a.reorderAt!=null && stOf(a).qty<=num(a.reorderAt); }
@@ -787,12 +811,10 @@ function inventoryView(){
     ${mgr?'<button class="btn" data-act="kitBuild" title="Build an indoor or outdoor kit from an office’s items">🧰 Build a kit</button>':''}${mgr?'<button class="btn" data-act="shopAdd" title="Add booth assets and supplies from the approved list">🛒 Add from supply list</button><button class="btn primary" data-act="addAsset">+ Add item</button>':''}</div>
     ${scanBox('lookup','Scan an item to look it up')}
     <div class="row small" style="margin:8px 0">${sel.length?`<b>${sel.length} selected</b> <button class="btn sm" data-act="labels">🏷 Print ${sel.length} label${sel.length===1?'':'s'}</button> <button class="btn sm" data-act="selNone">Clear</button>`:`<button class="btn sm" data-act="labelsAll">🏷 Print labels for everything shown</button> <span class="muted">or tick items to choose</span>`}</div>
-    <h3>Booth assets & kits (${gear.length})</h3>
-    ${gear.length?`<table><thead><tr><th style="width:26px"></th><th>Code</th><th>Item</th><th>Office</th><th>Status</th><th>Condition</th><th>Value</th></tr></thead><tbody>${gear.map(a=>{ const s=stOf(a), kit=kitOf(a.id);
-      return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td>${a.kind==='kit'?'🧰 ':''}${esc(a.name)}<div class="small muted">${esc(a.category||'')}${a.kind==='kit'?` · ${(a.contents||[]).length} items`:''}${kit?` · in ${esc(kit.name)}`:''}${a.kind==='kit'&&a.assignedTo?` · assigned to ${esc(a.assignedTo.name||a.assignedTo.office||'')}`:''}</div>${a.kind==='kit'&&a.kitType?(()=>{ const m=kitCheck(a)||[]; return m.length?`<span class="pill p-warn" title="${esc(m.join(', '))}">missing ${m.length}</span>`:'<span class="pill p-green">complete</span>'; })():''}</td><td class="small">${esc(s.office||'Any')}</td><td>${statusPill(a)}</td><td class="small">${esc(s.condition||'')}</td><td class="small">${a.cost?money(a.cost):''}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No booth assets match.</p>'}
-    <h3>Giveaways & print (${cons.length})</h3>
-    ${cons.length?`<table><thead><tr><th style="width:26px"></th><th>Code</th><th>Item</th><th>Office</th><th>On hand</th><th>Reorder at</th><th>Used (30 days)</th><th>Last count</th></tr></thead><tbody>${cons.map(a=>{ const s=stOf(a);
-      return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td>${esc(a.name)}<div class="small muted">${esc(a.category||'')}</div></td><td class="small">${esc(s.office||'Any')}</td><td>${statusPill(a)}</td><td class="small">${a.reorderAt!==''&&a.reorderAt!=null?esc(a.reorderAt):'—'}</td><td class="small">${usedLast(a,30)}</td><td class="small">${s.lastCount?fmtStamp(s.lastCount):'—'}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No giveaway or print items match.</p>'}
+    ${hsec('a-gear',`<h3 style="display:inline">Booth assets & kits (${gear.length})</h3>`,`${gear.length?`<table><thead><tr><th style="width:26px"></th><th>Code</th><th>Item</th><th>Office</th><th>Status</th><th>Condition</th><th>Value</th></tr></thead><tbody>${gear.map(a=>{ const s=stOf(a), kit=kitOf(a.id);
+      return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td><div class="arow">${assetThumb(a)}<div>${a.kind==='kit'?'🧰 ':''}${esc(a.name)}<div class="small muted">${esc(a.category||'')}${a.kind==='kit'?` · ${(a.contents||[]).length} items`:''}${kit?` · in ${esc(kit.name)}`:''}${a.kind==='kit'&&a.assignedTo?` · assigned to ${esc(a.assignedTo.name||a.assignedTo.office||'')}`:''}</div>${a.kind==='kit'&&a.kitType?(()=>{ const m=kitCheck(a)||[]; return m.length?`<span class="pill p-warn" title="${esc(m.join(', '))}">missing ${m.length}</span>`:'<span class="pill p-green">complete</span>'; })():''}</div></div></td><td class="small">${esc(s.office||'Any')}</td><td>${statusPill(a)}</td><td class="small">${esc(s.condition||'')}</td><td class="small">${a.cost?money(a.cost):''}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No booth assets match.</p>'}`)}
+    ${hsec('a-cons',`<h3 style="display:inline">Giveaways & print (${cons.length})</h3>`,`${cons.length?`<table><thead><tr><th style="width:26px"></th><th>Code</th><th>Item</th><th>Office</th><th>On hand</th><th>Reorder at</th><th>Used (30 days)</th><th>Last count</th></tr></thead><tbody>${cons.map(a=>{ const s=stOf(a);
+      return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td><div class="arow">${assetThumb(a)}<div>${esc(a.name)}<div class="small muted">${esc(a.category||'')}</div></div></div></td><td class="small">${esc(s.office||'Any')}</td><td>${statusPill(a)}</td><td class="small">${a.reorderAt!==''&&a.reorderAt!=null?esc(a.reorderAt):'—'}</td><td class="small">${usedLast(a,30)}</td><td class="small">${s.lastCount?fmtStamp(s.lastCount):'—'}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No giveaway or print items match.</p>'}`)}
   </div>`;
 }
 function stationView(){
@@ -911,7 +933,9 @@ function itemPanel(){
   return `<div class="panel"><div class="row"><h2>${a.kind==='kit'?'🧰 ':''}${esc(a.name)}</h2><span class="spacer"></span>${statusPill(a)}</div>
     ${a.kind==='kit'&&a.kitType?(()=>{ const m=kitCheck(a)||[]; return `<div class="notice ${m.length?'':'ok'}" style="margin:6px 0">${esc((KIT_TYPES[a.kitType]||{}).label||'Kit')}${a.assignedTo?` · assigned to <b>${esc(a.assignedTo.name||a.assignedTo.office||'')}</b>`:''} · ${m.length?`<b>Missing:</b> ${esc(m.join(', '))}`:'<b>Complete</b>'} <button class="btn sm" data-act="kitPrint" data-id="${a.id}">🖨 Packing list</button></div>`; })():''}
     <div class="sub">${esc(a.category||'')} · ${esc(s.office||'Any office')}${kit?` · part of <a href="#" data-item="${kit.id}">${esc(kit.name)}</a>`:''}</div>
-    <div class="row" style="align-items:flex-start;gap:16px"><svg class="bc" data-code="${esc(a.code||'')}"></svg>
+    <div class="row" style="align-items:flex-start;gap:16px"><div class="aphoto">${assetPhoto(a)?`<img src="${esc(assetPhoto(a))}" alt="${esc(a.name)}">`:'<div class="small muted" style="padding:30px 8px;text-align:center">No picture yet</div>'}
+      ${mgr?`<label class="btn sm" style="margin-top:6px">📷 ${assetPhoto(a)?'Replace':'Add'} picture<input type="file" accept="image/*" data-itemphoto="${esc(a.id)}" style="display:none"></label>${(S.assetPhotos||{})[photoKey(a)]||(S.assetPhotos||{})[a.id]?` <button class="btn sm" data-act="itemPhotoDel" data-aid="${a.id}">Remove</button>`:''}${a.shopSku?`<div class="small muted" style="margin-top:4px">Shared by every ${esc(a.shopSku)} item.</div>`:''}`:''}</div>
+      <svg class="bc" data-code="${esc(a.code||'')}"></svg>
     <table style="flex:1;min-width:240px"><tbody>
       <tr><th>Code</th><td><code>${esc(a.code||'—')}</code></td></tr>
       ${gear?`<tr><th>Condition</th><td>${esc(s.condition||'')}</td></tr>`:`<tr><th>On hand</th><td>${s.qty}${a.unit?' '+esc(a.unit):''} · reorder at ${a.reorderAt!==''&&a.reorderAt!=null?esc(a.reorderAt):'—'}</td></tr>`}
@@ -1646,6 +1670,9 @@ function isWorkDay(d){ const f=flexOf(d); if(f==='work') return true; if(f==='of
 function weekDates(start){ return Array.from({length:7},(_,i)=>addDays(start,i)); }
 function workWeekDates(start){ return weekDates(start).filter(isWorkDay); }
 // Days off right before a work day (within the week) whose day-specific tasks roll onto it.
+// Where a day off's tasks go: the day the manager picked (flexMove), or by default the next work day that week.
+function defaultRollTarget(d){ const ws=workWeekStart(d), we=addDays(ws,6); let x=addDays(d,1); while(x<=we){ if(isWorkDay(x)) return x; x=addDays(x,1); } return ''; }
+function rollTarget(d){ if(isWorkDay(d)) return ''; const pick=(mgrDoc().flexMove||{})[d]; if(pick && isWorkDay(pick) && workWeekStart(pick)===workWeekStart(d)) return pick; return defaultRollTarget(d); }
 function rolledFrom(date){ const out=[], ws=workWeekStart(date); let d=addDays(date,-1); while(d>=ws && !isWorkDay(d)){ out.push(d); d=addDays(d,-1); } return out; }
 // Firestore can't store arrays inside arrays, so task links are saved as {label,url} objects.
 function mgrToFs(d){ const o=JSON.parse(JSON.stringify(d)); if(Array.isArray(o.tasks)) o.tasks=o.tasks.map(x=>Array.isArray(x.links)?Object.assign({},x,{links:x.links.map(l=>Array.isArray(l)?{label:l[0]||'',url:l[1]||''}:l)}):x); return o; }
@@ -1677,6 +1704,7 @@ function autoCounts(){
   };
 }
 const DAILY_AUTOS = ['a-late','a-iss','a-gear'];
+function tasksForDow(d){ const dow=parseIso(d).getDay(); return (mgrDoc().tasks||[]).filter(x=>x.when==='dow:'+dow && condOk(x,d)); }
 function tasksFor(kind, date){
   const tasks=mgrDoc().tasks||[];
   if(kind==='weekly') return tasks.filter(x=>x.when==='weekly');
@@ -1684,7 +1712,7 @@ function tasksFor(kind, date){
   const own=tasks.filter(x=>(x.when==='daily' || x.when==='dow:'+dow) && condOk(x,date));
   if(!isWorkDay(date)) return own;
   // tasks from flex/regular days off just before this work day move here
-  const rolled=rolledFrom(date).flatMap(d=>tasks.filter(x=>x.when==='dow:'+parseIso(d).getDay() && condOk(x,d)).map(x=>Object.assign({}, x, { group:(x.group||'Tasks')+` (moved from ${DOW_NAMES[parseIso(d).getDay()]})` })));
+  const ws=workWeekStart(date), rolled=weekDates(ws).filter(d=>d!==date && rollTarget(d)===date).flatMap(d=>tasks.filter(x=>x.when==='dow:'+parseIso(d).getDay() && condOk(x,d)).map(x=>Object.assign({}, x, { group:(x.group||'Tasks')+` (moved from ${DOW_NAMES[parseIso(d).getDay()]})` })));
   return [...own, ...rolled];
 }
 // Credit card coding quick reference (department EVT for all)
@@ -1915,11 +1943,16 @@ function attentionData_(){
   const E=(S.etacc||[]).filter(x=>x.startDate && x.startDate>=t && inOffice(x.branch||''));
   const live=x=>x.status!=='declined' && x.status!=='not_pursuing';
   const deadlines=[], decide=[], release=[];
+  // Same rules as ETACC: an event must be submitted for approval by the last day of the month before it starts.
+  // Deadlines show from 7 days before (ETACC's warning window) until the deadline; once it has passed the event
+  // drops off (ETACC treats it as past the cutoff). "Needs a decision" = Researching events starting next calendar month.
+  const nm=new Date(parseIso(t).getFullYear(), parseIso(t).getMonth()+1, 1), nmStart=isoOf(nm), nmEnd=isoOf(new Date(nm.getFullYear(), nm.getMonth()+1, 0));
   E.filter(x=>x.status==='researching').forEach(x=>{ const dl=submitDeadline(x.startDate);
-    if(dl<=in7) deadlines.push({ x, date:dl, what:dl<t?'Approval submission was due':'Submit for approval by', late:dl<t });
-    else if(x.startDate<=in60) decide.push({ x, date:dl }); });
-  E.filter(x=>live(x) && x.paymentDueDate && x.paymentDueDate>=ago7 && x.paymentDueDate<=in14).forEach(x=>deadlines.push({ x, date:x.paymentDueDate, what:x.paymentDueDate<t?'Payment was due':'Payment due', late:x.paymentDueDate<t }));
-  E.filter(x=>live(x) && x.status!=='submitted' && x.contractReleaseDate && x.contractReleaseDate>=ago7 && x.contractReleaseDate<=in14).forEach(x=>release.push({ x, date:x.contractReleaseDate }));
+    if(dl<t) return;
+    if(dl<=in7) deadlines.push({ x, date:dl, what:'Submit for approval by', late:false });
+    else if(x.startDate>=nmStart && x.startDate<=nmEnd) decide.push({ x, date:dl }); });
+  E.filter(x=>live(x) && x.paymentDueDate && x.paymentDueDate>=t && x.paymentDueDate<=in14).forEach(x=>deadlines.push({ x, date:x.paymentDueDate, what:'Payment due', late:false }));
+  E.filter(x=>live(x) && x.status!=='submitted' && x.contractReleaseDate && x.contractReleaseDate>=t && x.contractReleaseDate<=in14).forEach(x=>release.push({ x, date:x.contractReleaseDate }));
   const by=(a,b)=>a.date.localeCompare(b.date);
   return { staff:needsStaffing(), decide:decide.sort(by), deadlines:deadlines.sort(by), release:release.sort(by) };
 }
@@ -1959,7 +1992,7 @@ function myWeekView(){
     <button class="btn sm" data-act="mgrWk" data-n="-7">◀</button>${ws!==workWeekStart(todayIso())?'<button class="btn sm" data-act="mgrWk" data-n="0">This week</button>':''}<button class="btn sm" data-act="mgrWk" data-n="7">▶</button><button class="btn sm" data-act="startDay">☀️ My day</button><button class="btn sm" data-act="mgrEdit">✎ Edit my tasks</button>${scopePicker()}</div>
     ${todoCard()}
     <div class="card"><h2>This week’s checklist <span class="small muted">${w.n} of ${w.total} done</span></h2><div class="prog"><span style="width:${w.total?Math.round(w.n/w.total*100):100}%"></span></div>${w.html}</div>
-    <div class="small muted" style="margin:-4px 0 10px">Typical work days: ${WEEK_ORDER.filter(i=>workDays().includes(i)).map(i=>DOW_NAMES[i].slice(0,3)).join(', ')}. Use a <b>flex day</b> to work a day off when there’s an event, or take a work day off. Tasks from a day off move to your next work day.</div>
+    <div class="small muted" style="margin:-4px 0 10px">Typical work days: ${WEEK_ORDER.filter(i=>workDays().includes(i)).map(i=>DOW_NAMES[i].slice(0,3)).join(', ')}. Use a <b>flex day</b> to work a day off when there’s an event, or take a work day off. On a day off, choose which work day its tasks move to (default: your next work day.</div>
     <div class="weekgrid">${weekDates(ws).map(d=>{ const work=isWorkDay(d), f=flexOf(d), typical=workDays().includes(parseIso(d).getDay());
       const ev=liveEvents().filter(e=>inOffice(e.office)&&e.days.some(x=>x.date===d)), sh=shiftsOn(d).filter(s=>inOffice(s.ev.office));
       const flexBtn = typical
@@ -1970,6 +2003,8 @@ function myWeekView(){
       return `<div class="card daycard ${d===todayIso()?'today':''} ${work?'':'offday'}"><h3 style="margin-top:0">${esc(DOW_NAMES[parseIso(d).getDay()])} <span class="small muted">${fmtMD(d)}</span> ${d===todayIso()?'<span class="pill p-blue">Today</span>':''} ${tag}</h3>
         <div class="small" style="margin-bottom:6px">${ev.length} event${ev.length===1?'':'s'} · ${sh.length} shift${sh.length===1?'':'s'}${ev.length?`<div class="muted">${ev.slice(0,4).map(e=>esc(e.name)).join(', ')}${ev.length>4?'…':''}</div>`:''}${!work&&ev.length?'<div style="color:var(--warn);font-weight:600">Events on your day off — consider a flex work day.</div>':''}</div>
         <div style="margin-bottom:6px">${flexBtn}</div>
+        ${!work && tasksForDow(d).length ? (()=>{ const targets=weekDates(ws).filter(x=>x!==d && isWorkDay(x)), cur=rollTarget(d), def=defaultRollTarget(d), pick=(mgrDoc().flexMove||{})[d]||'';
+          return targets.length?`<label class="small" style="display:block;margin-bottom:6px">Move this day’s ${tasksForDow(d).length} task${tasksForDow(d).length===1?'':'s'} to <select data-flexmove="${d}">${targets.map(x=>`<option value="${x===def&&!pick?'':x}" ${x===cur?'selected':''}>${esc(DOW_NAMES[parseIso(x).getDay()])} ${fmtMD(x)}${x===def?' (next work day)':''}</option>`).join('')}</select></label>`:'<div class="small muted" style="margin-bottom:6px">No other work day this week for its tasks.</div>'; })() : ''}
         ${work?`<div class="small muted" style="margin-bottom:4px">${c.n} of ${c.total} tasks done</div>${c.html}`:`${tasksFor('daily',d).length?`<div class="small muted">${tasksFor('daily',d).length} task${tasksFor('daily',d).length===1?'':'s'} for this day will move to your next work day.</div>`:''}`}</div>`; }).join('')}</div>`;
 }
 function mgrEditPanel(){
@@ -2006,8 +2041,10 @@ function activationData(from, to){
     const leads=done.reduce((s,c)=>s+num(c.leads),0), appts=done.reduce((s,c)=>s+num(c.appts),0), hrs=done.reduce((s,c)=>s+hoursOf(c),0);
     const scheduled=e.days.filter(d=>d.date>=from&&d.date<=to).reduce((n,d)=>n+(S.sched.assignments[dayId(e,d)]||[]).length,0);
     let status=ev.eventActivationStatus||'', reason=ev.notActivatedReason||'';
+    const rd=e.days.filter(d=>d.date>=from&&d.date<=to&&d.date<=t), offD=rd.filter(d=>d.off);
+    if(!status && !inRange.length && offD.length && offD.length===rd.length){ status='Not Activated'; reason=offD[0].off.reason+(offD[0].off.note?': '+offD[0].off.note:''); }
     if(!status) status = inRange.length ? 'Activated' : 'Not Activated';
-    const inferred = !ev.eventActivationStatus;
+    const inferred = !ev.eventActivationStatus && !(offD.length && offD.length===rd.length);
     if(status!=='Activated' && !reason) reason = inRange.length ? '' : (scheduled ? 'No check-ins recorded. Reason needed (complete the evaluation).' : 'No marketers scheduled and no check-ins. Reason needed.');
     return { e, ev, status, inferred, reason, leads, appts, hrs, scheduled, cs:inRange, done,
       names:[...new Set(inRange.map(c=>c.personName))], issues:inRange.filter(c=>(c.issues||[]).length||c.issueText).map(c=>`${c.personName}: ${[...(c.issues||[]),c.issueText].filter(Boolean).join('; ')}`),
@@ -2295,8 +2332,8 @@ function mailShell(title, bodyHtml){
     <p style="margin-top:16px"><a href="${SITE}hub/" style="background:#00A7B7;color:#000;text-decoration:none;padding:7px 12px;border-radius:6px;font-weight:600">Open the Event Hub</a></p>
     <p style="color:#5a6760;font-size:12px">Automatic alert from the Event Activity Hub.</p></div></div>`;
 }
-const ALERT_TAB = { banner:'assets', late:'today', noshow:'today', noout:'today', issue:'today', expense:'expenses', summary:'summary', newmgr:'alerts', test:'alerts', rem:'remnums', task:'myday' };
-const ALERT_ICON = { banner:'🚩', late:'⏰', noshow:'🚫', noout:'⌛', issue:'⚠️', expense:'🧾', summary:'📊', newmgr:'👋', test:'🔔', rem:'✍️', task:'📌' };
+const ALERT_TAB = { early:'today', banner:'assets', late:'today', noshow:'today', noout:'today', issue:'today', expense:'expenses', summary:'summary', newmgr:'alerts', test:'alerts', rem:'remnums', task:'myday' };
+const ALERT_ICON = { early:'🏃', banner:'🚩', late:'⏰', noshow:'🚫', noout:'⌛', issue:'⚠️', expense:'🧾', summary:'📊', newmgr:'👋', test:'🔔', rem:'✍️', task:'📌' };
 function htmlText(h){ const m=String(h||'').match(/<p>([\s\S]*?)<\/p>/); const d=document.createElement('div'); d.innerHTML=m?m[1]:''; return (d.textContent||'').trim().slice(0,300); }
 async function queueMail(id, src){
   const mail={ to:cleanList(src.to||[]), cc:cleanList(src.cc||[]), message:{ subject:src.subject, html:src.html }, kind:src.kind||'', createdAt:Date.now() };
@@ -2329,6 +2366,11 @@ async function alertCheckout(c){
   const r=alertRecipients(c.office);
   await queueMail('issue-'+c.id, { ...r, office:c.office, kind:'issue', subject:`Issue reported: ${c.eventName} (${c.personName})`,
     html:mailShell('Issue reported at check-out', shiftTable(c, row2('Issues',iss.map(esc).join('<br>'))+row2('Booth assets',bad.join('<br>'))+row2('Equipment tonight',esc(EQUIP_WHERE[c.equipWhere]||'')+(c.equipNote?' – '+esc(c.equipNote):''))+row2('Opps / unset opps',`${num(c.appts)} / ${unsetOf(c)}`))) });
+}
+async function alertEarlyCheckout(c){
+  const r=alertRecipients(c.office), m=num(c.earlyMin), dur=m>=90?`${Math.round(m/60*10)/10} hours`:`${m} minutes`;
+  await queueMail('early-'+c.id, { ...r, office:c.office, kind:'early', subject:`Early check-out: ${c.personName} at ${c.eventName} (${dur} early)`,
+    html:mailShell('Early check-out', `<p>${esc(c.personName)} checked out at <b>${fmtClock(c.outAt)}</b>, <b>${dur}</b> before the shift ends (${esc(fmt12(c.shiftStop))}).</p>`+shiftTable(c, row2('Reason',esc(c.earlyWhy||'')))) });
 }
 async function alertExpenseSubmitted(x){
   const r=alertRecipients(x.office||(person(x.personId)||{}).office||'');
@@ -2365,8 +2407,8 @@ async function sweepAlerts(){
   // Weekly activation summary: Monday 8 am, covering last Monday–Sunday, all regions.
   const now=new Date();
   if(now.getDay()===SUMMARY_SEND.dow && now.getHours()>=SUMMARY_SEND.hour && S.etacc!==null && S.evalsLoaded){
-    const mon=mondayOf(t), from=addDays(mon,-7), to=addDays(mon,-1), keep=ui.scope; ui.scope=[];
-    try{ await queueMail('summary-'+mon, { to:SUMMARY_TO, kind:'summary', subject:summarySubject(from,to), html:summaryHtml(from,to,true), text:'Last week’s event activation summary and cost per opp are ready.' }); } finally { ui.scope=keep; }
+    const mon=mondayOf(t), from=addDays(mon,-7), to=addDays(mon,-1), keep=ui.scope, keepA=ATTN; ui.scope=[]; ATTN=false;
+    try{ await queueMail('summary-'+mon, { to:SUMMARY_TO, kind:'summary', subject:summarySubject(from,to), html:summaryHtml(from,to,true), text:'Last week’s event activation summary and cost per opp are ready.' }); } finally { ui.scope=keep; ATTN=keepA; }
   }
 }
 // Delete booth photos older than 12 months (receipts and training files are kept).
@@ -2447,7 +2489,7 @@ function alertsView(){
     <tr><td><b>Late check-in</b></td><td>Marketer checks in more than ${LATE_MIN} minutes after the shift starts.</td></tr>
     <tr><td><b>Not checked in</b></td><td>30 minutes after the shift starts with no check-in.</td></tr>
     <tr><td><b>No check-out</b></td><td>An hour after the shift ends with no check-out.</td></tr>
-    <tr><td><b>Banner standards</b></td><td>Legacy and new banners checked out together, or retractable banners checked out for an event tagged <b>outdoor</b> in ETACC.</td></tr><tr><td><b>Issue reported</b></td><td>Marketer reports an issue, or damaged or missing gear, at check-out.</td></tr>
+    <tr><td><b>Early check-out</b></td><td>A marketer checks out more than ${EARLY_MIN} minutes before the shift ends. They must give a reason, which is included.</td></tr><tr><td><b>Banner standards</b></td><td>Legacy and new banners checked out together, or retractable banners checked out for an event tagged <b>outdoor</b> in ETACC.</td></tr><tr><td><b>Issue reported</b></td><td>Marketer reports an issue, or damaged or missing gear, at check-out.</td></tr>
     <tr><td><b>Expense report</b></td><td>Submitted (to the supervisor), and returned for changes (to the marketer).</td></tr>
     <tr><td><b>Activation summary</b></td><td>Mondays from 8 am, last week (Mon–Sun), all regions, to ${SUMMARY_TO.map(esc).join(', ')}.</td></tr>
     <tr><td><b>New manager</b></td><td>Someone signs in without hub access: they’re asked to contact Paula, and Paula gets an email.</td></tr>
@@ -2934,9 +2976,10 @@ function scManualFor(region, P){
   wks.forEach(w=>{ const d=M[`w_${w}_${region}`]; if(!d) return; [['cancels','cancels'],['meets','meets'],['labor','laborIn'],['expenses','expensesIn']].forEach(([f,k])=>{ if(scHas(d[f])) o[k]=(o[k]||0)+num(d[f]); }); });
   const s=M[`m_${P.ym}_${region}`]; o.sales=(s&&scHas(s.sales))?num(s.sales):null; return o;
 }
-function scScopeHas(r){ const sc=ui.scope||[]; if(!sc.length) return true; const d=divisionOf(r); return sc.includes('r:'+r) || (!!d && sc.includes('d:'+d.division)) || sc.some(x=>x.startsWith('o:') && regionOf(x.slice(2))===r); }
+function attnRegion(r){ if(!ATTN) return true; const d=divisionOf(r); return ATTN.includes('r:'+r) || (!!d && ATTN.includes('d:'+d.division)) || ATTN.some(x=>x.startsWith('o:') && regionOf(x.slice(2))===r); }
+function scScopeHas(r){ if(!attnRegion(r)) return false; const sc=ui.scope||[]; if(!sc.length) return true; const d=divisionOf(r); return sc.includes('r:'+r) || (!!d && sc.includes('d:'+d.division)) || sc.some(x=>x.startsWith('o:') && regionOf(x.slice(2))===r); }
 function scOfficeFor(code){ code=String(code||'').trim().toUpperCase(); return Object.keys(regionMap()).find(o=>o.toUpperCase().startsWith(code+' ')||o.toUpperCase()===code) || code; }
-function scInScope(region, office){ const sc=ui.scope||[]; if(!sc.length) return true; if(sc.some(x=>x.startsWith('o:'))){ if(sc.includes('o:'+office)) return true; } return scScopeHas(region); }
+function scInScope(region, office){ if(ATTN && !(office && tokMatch(ATTN,office)) && !attnRegion(region)) return false; const sc=ui.scope||[]; if(!sc.length) return true; if(sc.some(x=>x.startsWith('o:'))){ if(sc.includes('o:'+office)) return true; } return scScopeHas(region); }
 function showReport(){ const R=S.showReport; return (R && R.rows && R.rows.length) ? R : null; }
 // Hub labor/expenses for events in a region whose first day is in the period
 function scHubCosts(P){ const by={}; liveEvents().filter(e=>e.start>=P.from && e.start<=P.to).forEach(e=>{ const r=regionOf(e.office)||'—', c=eventCost(e); const o=by[r]=by[r]||{ labor:0, expenses:0 }; o.labor+=c.cost.labor; o.expenses+=Math.max(0,c.total-c.cost.fee-c.cost.labor); }); return by; }
@@ -3138,16 +3181,22 @@ function todoGroups_(){
   return G;
 }
 function todoCount(G){ return (G||todoGroups()).reduce((n,g)=>n+g.items.length,0); }
+// Collapsible sections: remembered on this device.
+let hsecClosed=(()=>{ try{ return new Set(JSON.parse(localStorage.getItem('peHub.closedSecs')||'[]')); }catch(e){ return new Set(); } })();
+function hsecOpen(k){ return !hsecClosed.has(k); }
+function hsecSet(k,open){ if(open) hsecClosed.delete(k); else hsecClosed.add(k); try{ localStorage.setItem('peHub.closedSecs', JSON.stringify([...hsecClosed])); }catch(e){} }
+document.addEventListener('toggle', e=>{ const d=e.target; if(d && d.dataset && d.dataset.hsec) hsecSet(d.dataset.hsec, d.open); }, true);
+function hsec(key, head, inner, cls, tag){ return `<details class="hsec ${cls||''}" data-hsec="${key}" ${hsecOpen(key)?'open':''}><summary>${head}</summary>${inner}</details>`; }
 function todoCard(opts){
   if(!S.user) return '';
   const o=opts||{}, G=todoGroups(), n=todoCount(G), lim=o.compact?3:6;
   if(!n) return `<div class="card todo"><h2 style="margin:0">✅ Nothing needs your attention</h2><div class="small muted">${esc(attnLabel())}</div></div>`;
   const shown=o.compact?G.slice(0,4):G;
-  return `<div class="card todo"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">⚑ Needs your attention <span class="pill p-warn">${n}</span></h2><span class="small muted">${esc(attnLabel())}</span><span class="spacer"></span>${o.compact?`<button class="btn sm primary" data-tab="myday">See everything</button>`:''}</div>
+  return `<details class="card todo hsec" data-hsec="attn" ${hsecOpen('attn')?'open':''}><summary class="row" style="margin-bottom:6px"><h2 style="margin:0">⚑ Needs your attention <span class="pill p-warn">${n}</span></h2><span class="small muted">${esc(attnLabel())}</span><span class="spacer"></span>${o.compact?`<button class="btn sm primary" data-tab="myday">See everything</button>`:''}</div>
     <div class="todogrid">${shown.map(g=>`<div class="todog"><div class="todoh"><span>${g.ic} <b>${esc(g.title)}</b> <span class="pill ${g.items.some(i=>i.red)?'p-red':'p-warn'}">${g.items.length}</span></span><button class="btn sm" ${g.key==='alerts'?'data-tab="alerts"':`data-tab="${g.tab}"`}>${esc(g.btn)}</button></div>
       ${g.items.slice(0,lim).map(i=>`<div class="todoi ${i.red?'red':''}" ${i.act?`data-act="${i.act}" data-id="${esc(i.id)}"`:`data-tab="${g.tab}"`} role="button" tabindex="0"><b>${esc(i.text)}</b><span>${esc(i.sub||'')}</span></div>`).join('')}
       ${g.items.length>lim?`<div class="small muted" style="padding:2px 8px">…and ${g.items.length-lim} more</div>`:''}</div>`).join('')}</div>
-    ${o.compact&&G.length>4?`<div class="small muted" style="margin-top:6px">${G.length-4} more group${G.length-4===1?'':'s'} on My day.</div>`:''}</div>`;
+    ${o.compact&&G.length>4?`<div class="small muted" style="margin-top:6px">${G.length-4} more group${G.length-4===1?'':'s'} on My day.</div>`:''}</details>`;
 }
 // ---- Usage-ordered tools (this device) ----
 const TOOL_ORDER = ['today','events','schedule','checkin','evals','expenses','assets','costs','adp','travel'];
@@ -3162,10 +3211,10 @@ function searchIndex(q){
   [['PCMS','📇',LINKS.pcms],['Tableau','📊',LINKS.tableau],['Navan','🏨',NAVAN_URL],['ADP','⏱️',null],['Teams Resource Hub','👥',TEAMS_HUB_URL]].forEach(([l,ic,u])=>{ if(has(l)) out.push(u?{ kind:'Link', ic, text:l, url:u }:{ kind:'Page', ic, text:l, tab:'adp' }); });
   Object.entries(GUIDES).forEach(([gk,g])=>g.sections.forEach(([h,items])=>{ if(has(h) || items.some(has)) out.push({ kind:'How-to', ic:'📖', text:h, sub:g.title, guide:gk, sec:h }); }));
   const t=todayIso();
-  liveEvents().filter(e=>has(e.name)||has(e.venueName)||has(e.office)).sort((a,b)=>Math.abs(daysBetween(t,a.start))-Math.abs(daysBetween(t,b.start))).slice(0,8).forEach(e=>{ const next=(e.days.find(d=>d.date>=t)||e.days[e.days.length-1]||{}).date||e.start; out.push({ kind:'Event', ic:'📅', text:e.name, sub:`${e.office||''} · ${fmtMD(e.start)}${e.end&&e.end!==e.start?'–'+fmtMD(e.end):''}`, tab:'today', date:next }); });
-  (S.etacc||[]).filter(x=>(has(x.eventName)||has(x.branch)) && !liveEvents().some(e=>normName(e.name)===normName(x.eventName))).slice(0,5).forEach(x=>out.push({ kind:'ETACC', ic:'📋', text:x.eventName, sub:`${x.branch||''} · ${x.startDate?fmtMD(x.startDate):'no date'} · ${({researching:'Researching',execute:'Submitted for Approval',submitted:'Submitted for Contract',declined:'Declined',not_pursuing:'Not Pursuing'})[x.status]||x.status||''}`, tab:'events' }));
-  (S.sched.roster||[]).filter(p=>has(p.name)).slice(0,6).forEach(p=>out.push({ kind:'Marketer', ic:'🧑', text:p.name, sub:[p.office,p.phone].filter(Boolean).join(' · '), tab:'today' }));
-  (S.assets||[]).filter(a=>!a.retired && (has(a.name)||has(a.code)||has(a.barcode))).slice(0,6).forEach(a=>out.push({ kind:'Equipment', ic:'📦', text:a.name, sub:[a.code||a.barcode,a.office].filter(Boolean).join(' · '), item:a.id }));
+  liveEvents().filter(e=>inOffice(e.office) && (has(e.name)||has(e.venueName)||has(e.office))).sort((a,b)=>Math.abs(daysBetween(t,a.start))-Math.abs(daysBetween(t,b.start))).slice(0,8).forEach(e=>{ const next=(e.days.find(d=>d.date>=t)||e.days[e.days.length-1]||{}).date||e.start; out.push({ kind:'Event', ic:'📅', text:e.name, sub:`${e.office||''} · ${fmtMD(e.start)}${e.end&&e.end!==e.start?'–'+fmtMD(e.end):''}`, tab:'today', date:next }); });
+  (S.etacc||[]).filter(x=>inOffice(x.branch||'') && (has(x.eventName)||has(x.branch)) && !liveEvents().some(e=>normName(e.name)===normName(x.eventName))).slice(0,5).forEach(x=>out.push({ kind:'ETACC', ic:'📋', text:x.eventName, sub:`${x.branch||''} · ${x.startDate?fmtMD(x.startDate):'no date'} · ${({researching:'Researching',execute:'Submitted for Approval',submitted:'Submitted for Contract',declined:'Declined',not_pursuing:'Not Pursuing'})[x.status]||x.status||''}`, tab:'events' }));
+  (S.sched.roster||[]).filter(p=>(!p.office||inOffice(p.office)) && has(p.name)).slice(0,6).forEach(p=>out.push({ kind:'Marketer', ic:'🧑', text:p.name, sub:[p.office,p.phone].filter(Boolean).join(' · '), tab:'today' }));
+  (S.assets||[]).filter(a=>!a.retired && assetInScope(a) && (has(a.name)||has(a.code)||has(a.barcode))).slice(0,6).forEach(a=>out.push({ kind:'Equipment', ic:'📦', text:a.name, sub:[a.code||a.barcode,a.office].filter(Boolean).join(' · '), item:a.id }));
   return out.slice(0,14);
 }
 function searchResHtml(){
@@ -3217,7 +3266,7 @@ function pageHelpData(){
   return {
   home:{ t:'Hub home', what:'Your starting point each day: what needs you, your checklist and every tool.',
     how:['Tap <b>Start my day</b> (or <b>Start my week</b> on Mondays) for today’s checklist.','Work down <b>Needs your attention</b>. Tap an item to go straight to it; it drops off once handled.','Use the <b>search box</b> to jump to any event, marketer, piece of equipment or page.','Use <b>📍 All regions & offices</b> to narrow what you see.'],
-    rules:['<b>Needs your attention</b> shows only your area: your offices, region or division. Paula sees everything.','Late or missing check-ins: no check-in '+LATE_MIN+' minutes after the shift starts, or no check-out an hour after it ends.','Events needing marketers: Approved or Submitted for Contract events in the next 28 days with an unstaffed day.','ETACC deadlines: Researching events must be submitted for approval by the last day of the month before the event; they show 7 days ahead. Payment due and contract release dates show from 7 days before to 14 days after.','Events needing a decision: Researching events starting within 60 days.','The Good Morning pop-up shows once a day, and again after 2 hours away.'] },
+    rules:['<b>Needs your attention</b> shows only your area: your offices, region or division. Paula sees everything.','Late or missing check-ins: no check-in '+LATE_MIN+' minutes after the shift starts, or no check-out an hour after it ends.','Events needing marketers: Approved or Submitted for Contract events in the next 28 days with an unstaffed day.','Nothing in the past is shown: items drop off once their date has passed.','ETACC deadlines (same rules as ETACC): Researching events must be submitted for approval by the last day of the month before the event; they show from 7 days before the deadline. Payment due and contract release dates show up to 14 days ahead.','Events needing a decision: Researching events starting next month (ETACC’s Needs a Decision list).','The Good Morning pop-up shows once a day, and again after 2 hours away.'] },
   today:{ t:'Today’s Activity', what:'Every marketer scheduled on the chosen date, with live check-in status, results and booth photos.',
     how:['Use ◀ ▶ or the date box to change the day.','Tap a row for the marketer’s booth photo, location, results and any issues.','Tap <b>Copy check-in link</b> and text it to the marketers working that event.','Follow up right away on anyone marked late.'],
     rules:['<b>Late</b>: no check-in '+LATE_MIN+' minutes after the shift starts. An alert goes out at 30 minutes.','<b>No check-out</b>: still checked in an hour after the shift ends.','Only Approved and Submitted for Contract events from the schedule appear.','Opps and unset opps come from what marketers enter at check-out. An <b>opp</b> (opportunity) is a set appointment; an <b>unset opp</b> is a customer who couldn’t be set and goes to the call center to be scheduled.','Booth photos are deleted after 12 months.','Under each shift time you’ll see its breaks, e.g. “30m meal · 2×15m rest”. Plan them with each marketer so the booth stays covered.'] },
@@ -3231,8 +3280,8 @@ function pageHelpData(){
     how:['Type the task, and add a note or link if helpful.','Pick a day task, a week task, or a sprint with dated steps.','Choose who gets it: everyone, a division, a region, an office, or specific people.','Tick <b>Email them</b> to send a heads-up. Track who’s done on the board below.'],
     rules:['Only Paula, Trevor, Angelique and Chris can assign tasks.','It shows under “From [your name]” and in their Needs your attention.','Anything not done gets one reminder email the morning after it’s due. Use <b>Remind</b> to send another.','Archive a task to take it off everyone’s list.'] },
   checkin:{ t:'Check In / Out', what:'Where marketers check in and out of their shifts. Managers can check someone in if their phone won’t cooperate.',
-    how:['Marketers open their event’s link, tap their name, then <b>Check in</b>.','At check-in: take a booth setup photo, and confirm the ADP clock-in. Booth assets and kits are checked out at the asset station on the Asset Inventory page.','At check-out: teardown photo, foot traffic, opps, unset opps, ADP clock-out, gear returned and any issues.'],
-    rules:['A booth setup photo is required to check in.','On equipment-pickup days, paid time starts at the office ADP clock-in.','Check-ins work with no signal and send when the signal returns.','An issue, or damaged or missing gear, sends an alert to the supervisor.','<b>Breaks</b> (policy 3.4): shifts over 5 hours get one 30-minute <b>unpaid</b> meal break (clock out on ADP); over 10 hours, a second where state law requires it. Every 4 hours worked earns a 15-minute <b>paid</b> rest break. Breaks can’t be skipped, combined, or used to shift start or end times.','At check-out, marketers on shifts over 5 hours confirm whether they took their meal break. “No” needs a reason and alerts the supervisor.','<b>Opps goal:</b> the event’s ETACC Target Opps is split by scheduled marketer-hours. Check-in shows the event target, today’s team goal and the marketer’s own shift goal; check-out shows the shift goal again.','At check-out, 0 opps needs an explanation, and an opps number far above the shift goal asks the marketer to confirm it.'] },
+    how:['Marketers open their event’s link, tap their name, then <b>Check in</b>.','At check-in: take a booth setup photo, and confirm the ADP clock-in. Booth assets and kits are checked out at the asset station on the Asset Inventory page.','At check-out: foot traffic, opps, unset opps, ADP clock-out, gear returned and any issues.'],
+    rules:['A booth setup photo is required to check in.','On equipment-pickup days, paid time starts at the office ADP clock-in.','Check-ins work with no signal and send when the signal returns.','An issue, or damaged or missing gear, sends an alert to the supervisor.','<b>Breaks</b> (policy 3.4): shifts over 5 hours get one 30-minute <b>unpaid</b> meal break (clock out on ADP); over 10 hours, a second where state law requires it. Every 4 hours worked earns a 15-minute <b>paid</b> rest break. Breaks can’t be skipped, combined, or used to shift start or end times.','At check-out, marketers on shifts over 5 hours confirm whether they took their meal break. “No” needs a reason and alerts the supervisor.','<b>Opps goal:</b> the event’s ETACC Target Opps is split by scheduled marketer-hours. Check-in shows the event target, today’s team goal and the marketer’s own shift goal; check-out shows the shift goal again.','At check-out, 0 opps needs an explanation, and an opps number far above the shift goal is flagged as soon as it’s typed (the marketer fixes it or ticks that it’s right). Checking out more than 30 minutes before the shift ends needs a reason and alerts the supervisor.'] },
   adp:{ t:'ADP Timecards', what:'Compares each marketer’s check-ins with ADP before you approve timecards.',
     how:['In ADP, run the <b>Time Details</b> report for the pay period, export it (CSV or Excel) and upload it with <b>📥 Upload ADP Time Details</b>.','Pick the week, and review each marketer’s shifts: ADP times sit next to their check-in and check-out.','Fix anything flagged in ADP, then approve timecards in ADP.'],
     rules:['Pay periods are two weeks ending on Sunday. Approve by the end of that Sunday; payday is the following Friday.','Flags: no check-in, ADP clock-in not confirmed, ADP clock-out not confirmed, never checked out.','Booth time = check-in to check-out. On equipment-pickup days, paid time starts at the office clock-in.','With an ADP file uploaded, it also flags: ADP in more than '+ADP_TOL_MIN+' minutes before or after check-in, ADP out more than '+ADP_TOL_MIN+' minutes after check-out, total hours more than '+(ADP_HOURS_TOL*60)+' minutes apart, ADP time with no check-in, a check-in with no ADP time, and ADP time on a day with no scheduled shift.','People are matched by Employee ID (the ID in brackets in ADP), then by name. Anyone in the file who isn’t on the roster is listed so you can fix their ID.','The ADP file stays on your device only. Use <b>Clear</b> to remove it.','Breaks: for shifts over 5 hours, the hub expects a 30-minute unpaid meal break as an ADP clock-out (a gap between punches) and flags it if missing. Checked-in hours exclude the meal break when the marketer says they took it. A marketer reporting a missed meal break is flagged too.'] },
@@ -3241,7 +3290,7 @@ function pageHelpData(){
     rules:['Researching events are due for approval by the last day of the month before the event.','The hub matches ETACC events to the schedule by name and start date (within 3 days), so keep names the same in both.','An office’s Region in ETACC decides which manager sees it in Needs your attention.','<b>Date checks:</b> upcoming events (next 6 months) are flagged when they don’t run Fri–Sun, run more than 5 days, end before they start, are more than a year out, are still Researching after their start date, don’t match the schedule’s dates, or are listed twice with different dates. Use 🔎 Search to check the event’s website, fix ETACC if needed, or tap ✓ Dates are correct.'] },
   schedule:{ t:'Marketer Schedule', what:'The weekly marketer schedule, opened inside the hub.',
     how:['Assign marketers to each event day.','Keep the roster’s offices and employee IDs current.'],
-    rules:['Only Approved and Submitted for Contract events count as live in the hub.','Events in the next 28 days with an unstaffed day show in Needs your attention.','A marketer scheduled outside their own office counts as borrowed, which flags a possible hotel.'] },
+    rules:['Only Approved and Submitted for Contract events count as live in the hub.','Events in the next 28 days with an unstaffed day show in Needs your attention.','Days a manager marks <b>Not activated / canceled</b> on the schedule’s event card (with a reason) don’t count as unstaffed, don’t send late check-in alerts, and show as Not Activated with that reason in the activation summary.','<b>+ Staff another ETACC event</b> (in Build the schedule) adds an upcoming ETACC event that isn’t Submitted for Contract yet, so it can be staffed early.','A marketer scheduled outside their own office counts as borrowed, which flags a possible hotel.'] },
   travel:{ t:'Navan Travel', what:'Upcoming events that may need hotel rooms.',
     how:['Review each event, then book rooms in <b>Navan</b>.','Marketers add the stay to their weekly expense report to get per diem.'],
     rules:['Shown for events starting in the next 30 days that have hotel nights planned in ETACC, or a marketer borrowed from another office.','Distance and existing bookings aren’t considered: an event stays listed until it’s over.'] },
@@ -3254,6 +3303,7 @@ function pageHelpData(){
   assets:{ t:'Asset Inventory & Check-Out', what:'Every office’s booth assets, kits, print and giveaways: what you have, where it is, who has it, and what to reorder.',
     how:['<b>Set up an office:</b> tap <b>🛒 Add from supply list</b>, pick the office, and enter what it actually has. Booth assets (tents, tables, covers, pop-up banners, chairs and more) get one barcode per unit; print, giveaways and badges are counted as stock with a reorder point.',
       '<b>Build kits:</b> tap <b>🧰 Build a kit</b>, choose Indoor Layout A, B or C or Outdoor, the office, and the marketer or branch it’s for. The hub fills each slot from that office’s available items using its banner set (Main, Texas or Southwest); change any pick, then <b>Create kit</b>.',
+      '<b>Pictures:</b> supply-list items show their picture in the list. Open any item and tap <b>📷 Add picture</b> to add or replace one; a picture on a supply-list item is shared by every item with that SKU.',
       '<b>Label everything:</b> new items and kits are ticked after you add them. Tap <b>Print labels</b> and stick one on each item and kit.',
       '<b>Check out / return:</b> scan a kit (or any item) out to a marketer for an event and back in, with its condition.',
       '<b>Pack a kit:</b> open the kit and tap <b>🖨 Packing list</b> for its assets plus the paper collateral checklist.',
@@ -3669,13 +3719,15 @@ function mergeMgrTimes(){
     const dates=(Array.isArray(det.dates)&&det.dates.length)?det.dates.slice().sort():e._days.map(d=>d.date);
     e.days=dates.map(dt=>{ const b=e._days.find(x=>x.date===dt); return { date:dt, start:b?b.start:'', stop:b?b.stop:'', _s:b?b.start:'', _t:b?b.stop:'' }; });
     if(e.days.length){ e.start=e.days[0].date; e.end=e.days[e.days.length-1].date; }
+    // Days a manager marked "Not activated / canceled" on the schedule's event card.
+    const off=det.off&&det.off.reason?det.off:null; (e.days||[]).forEach(d=>{ d.off = off && (off.days||[]).includes(d.date) ? off : null; });
     (e.days||[]).forEach(d=>{ if(!('_s' in d)){ d._s=d.start||''; d._t=d.stop||''; } const o=t[d.date]; d.start=(o&&o.start)||d._s; d.stop=(o&&o.stop)||d._t; }); });
 }
 /* ---------------- data layer (Firebase, or this device only) ---------------- */
 const DB = { fb:null };
 const LOCAL_KEY='peHub.local';
 function localLoad(){ try{ return JSON.parse(lsGet(LOCAL_KEY)||'{}'); }catch(e){ return {}; } }
-function localSave(){ if(previewing()) return; lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, toolkit:S.toolkit||null, alertCfg:S.alertCfg, rates:S.rates, scManual:S.scManual, activity:S.activity, showReport:S.showReport, alerts:S.alerts, asg:S.asg, asgDone:S.asgDone, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
+function localSave(){ if(previewing()) return; lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, toolkit:S.toolkit||null, assetPhotos:S.assetPhotos||{}, alertCfg:S.alertCfg, rates:S.rates, scManual:S.scManual, activity:S.activity, showReport:S.showReport, alerts:S.alerts, asg:S.asg, asgDone:S.asgDone, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
 setInterval(()=>{ sweepAlerts(); }, 5*60000);
 async function initDB(){
   if(DEMO){ goLocal('demo'); return; }
@@ -3710,6 +3762,7 @@ async function initDB(){
     }, fail('check-ins'));
     F.onSnapshot(F.doc(db,'peHubAssets','inventory'), snap=>{ const d=snap.exists()?snap.data():{}; S.assets=d.list||[]; S.assetsMeta={updatedAt:d.updatedAt,updatedBy:d.updatedBy}; render(); }, fail('assets'));
     F.onSnapshot(F.collection(db,'peHubAssetLog'), snap=>{ const a=[]; snap.forEach(d=>a.push(Object.assign({id:d.id},d.data()))); S.alog=a; render(); }, fail('asset activity'));
+    F.onSnapshot(F.collection(db,'peHubAssetPhotos'), snap=>{ const m={}; snap.forEach(d=>{ const x=d.data(); if(x&&x.data) m[d.id]=x.data; }); S.assetPhotos=m; render(); }, ()=>{});
     F.onSnapshot(F.collection(db,'peHubAudits'), snap=>{ const m={}; snap.forEach(d=>m[d.id]=d.data()); S.audits=m; render(); }, fail('inventory counts'));
     let unsubs=[];
     authM.onAuthStateChanged(auth, u=>{
@@ -3739,7 +3792,7 @@ function goLocal(why){
   const L=localLoad();
   if(DEMO && !L.sched) seedDemo(); else {
     if(L.sched) S.sched=L.sched;
-    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; S.mgr=L.mgr||{}; S.training=L.training||null; S.toolkit=L.toolkit||null; S.alertCfg=L.alertCfg||null; S.rates=L.rates||null; S.scManual=L.scManual||{}; S.activity=L.activity||{}; S.showReport=L.showReport||null; S.alerts=L.alerts||{}; S.asg=L.asg||{}; S.asgDone=L.asgDone||{}; S.asgLoaded=S.asgDoneLoaded=true; ui.localPhotos=L.photos||{};
+    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; S.mgr=L.mgr||{}; S.training=L.training||null; S.toolkit=L.toolkit||null; S.assetPhotos=L.assetPhotos||{}; S.alertCfg=L.alertCfg||null; S.rates=L.rates||null; S.scManual=L.scManual||{}; S.activity=L.activity||{}; S.showReport=L.showReport||null; S.alerts=L.alerts||{}; S.asg=L.asg||{}; S.asgDone=L.asgDone||{}; S.asgLoaded=S.asgDoneLoaded=true; ui.localPhotos=L.photos||{};
   }
   if(DEMO){ S.user={email:'demo.manager@patio'}; }
   S.schedLoaded=true; render();
@@ -3808,11 +3861,11 @@ function getLocation(){
       { enableHighAccuracy:true, timeout:15000, maximumAge:60000 });
   });
 }
-function compressImage(file){
+function compressImage(file, maxSide){
   return new Promise((res,rej)=>{
     const img=new Image(), url=URL.createObjectURL(file);
     img.onload=()=>{
-      let w=img.naturalWidth, h=img.naturalHeight; const max=1100; if(Math.max(w,h)>max){ const r=max/Math.max(w,h); w=Math.round(w*r); h=Math.round(h*r); }
+      let w=img.naturalWidth, h=img.naturalHeight; const max=maxSide||1100; if(Math.max(w,h)>max){ const r=max/Math.max(w,h); w=Math.round(w*r); h=Math.round(h*r); }
       const cv=document.createElement('canvas'); cv.width=w; cv.height=h; cv.getContext('2d').drawImage(img,0,0,w,h);
       let q=.7, out=cv.toDataURL('image/jpeg',q); while(out.length>600000 && q>.3){ q-=.1; out=cv.toDataURL('image/jpeg',q); }
       URL.revokeObjectURL(url); res(out);
@@ -3826,6 +3879,7 @@ function compressImage(file){
    RENDER
    ===================================================================== */
 function render(){
+  ATTN = assignedScope()||false; // managers only ever see their own regions/offices, on every page
   const app=document.getElementById('app');
   computeStates();
   actOnRender();
@@ -3841,15 +3895,15 @@ function render(){
   syncFrames();
 }
 // keep typed text while live updates re-render
-function captureInputs(){ const m={}; document.querySelectorAll('[data-keep]').forEach(el=>{ m[el.dataset.keep]= el.type==='checkbox'?el.checked:el.value; }); const a=document.activeElement; return {m, focus:a&&a.dataset?a.dataset.keep:null}; }
-function restoreInputs(k){ document.querySelectorAll('[data-keep]').forEach(el=>{ if(k.m[el.dataset.keep]!==undefined && !el.dataset.fresh && !el.dataset.ex){ if(el.type==='checkbox') el.checked=k.m[el.dataset.keep]; else el.value=k.m[el.dataset.keep]; } }); if(k.focus){ const el=document.querySelector(`[data-keep="${k.focus}"]`); if(el) el.focus(); } }
+function captureInputs(){ const m={}; document.querySelectorAll('[data-keep]').forEach(el=>{ m[el.dataset.keep]= (el.type==='checkbox'||el.type==='radio')?el.checked:el.value; }); const a=document.activeElement; return {m, focus:a&&a.dataset?a.dataset.keep:null}; }
+function restoreInputs(k){ document.querySelectorAll('[data-keep]').forEach(el=>{ if(k.m[el.dataset.keep]!==undefined && !el.dataset.fresh && !el.dataset.ex){ if(el.type==='checkbox'||el.type==='radio') el.checked=k.m[el.dataset.keep]; else el.value=k.m[el.dataset.keep]; } }); if(k.focus){ const el=document.querySelector(`[data-keep="${k.focus}"]`); if(el) el.focus(); } }
 
 function header(){
   const stat = S.mode==='live'?'<span class="cstat live">● Live</span>':S.mode==='connecting'?'<span class="cstat">○ Connecting…</span>':`<span class="cstat local">○ ${DEMO?'Demo data':'This device only'}</span>`;
   const signin = MARKETER_MODE ? `<a class="small" href="${location.pathname}">Manager view</a>` :
     S.user ? `<div class="signin small">${(()=>{ const n=unreadAlerts().length; return `<button class="btn sm bell" data-tab="alerts" title="Alerts">🔔${n?`<span class="bdot">${n}</span>`:''}</button>`; })()}${viewAsPicker()}<span class="muted">${esc(S.user.email)}</span>${previewing()?'<button class="btn sm primary" data-act="viewAsEnd">Exit preview</button>':'<button class="btn sm" data-act="signOut">Sign out</button>'}</div>` :
     `<form class="signin" data-form="signin"><input type="email" name="email" placeholder="Manager email" data-keep="si-email" autocomplete="username" style="width:170px"><input type="password" name="pw" placeholder="Password" data-keep="si-pw" autocomplete="current-password" style="width:120px"><button class="btn sm primary">Sign in</button><button type="button" class="btn sm" data-act="pwReset" title="Email me a link to set a new password">Forgot password?</button>${S.authErr?`<span class="small" style="color:var(--red)">${esc(S.authErr)}</span>`:''}</form>`;
-  return `<header class="top">${MARKETER_MODE?'<img class="brandlogo" src="pe-logo.png" alt="Patio Enclosures by Great Day Improvements">':'<a href="#" class="brandlink" data-tab="home" title="Back to Hub home" aria-label="Back to Hub home"><img class="brandlogo" src="pe-logo.png" alt="Patio Enclosures by Great Day Improvements"></a>'}
+  return `<header class="top">${MARKETER_MODE?'<img class="brandlogo" src="pe-logo.png" alt="Patio Enclosures by Great Day Improvements">':'<a href="#" class="brandlink" data-tab="home" title="Back to Home" aria-label="Back to Home"><img class="brandlogo" src="pe-logo.png" alt="Patio Enclosures by Great Day Improvements"></a>'}
     <div><h1>${MARKETER_MODE?'Event Check-In':'Event Activity Hub'}</h1><div class="asof">${stat}${S.mode==='local'&&!DEMO?` · not saving to the shared database (${esc(S.err)})`:''}</div></div>
     <div class="spacer"></div>${signin}</header>`;
 }
@@ -3857,11 +3911,11 @@ const SECTIONS={ toolkit:['🧰','Manager Toolkit'], today:['📋','Today’s Ac
 function tabs(){
   if(ui.tab==='home' || !SECTIONS[ui.tab]) return '';
   const [ic,l]=SECTIONS[ui.tab];
-  return `<div class="crumb"><button class="btn" data-tab="home">◀ Back to Hub</button><b>${ic} ${esc(l)}</b><span class="spacer"></span>${helpBtn()}</div>`;
+  return `<div class="crumb"><button class="btn" data-tab="home">◀ Back to Home</button><b>${ic} ${esc(l)}</b><span class="spacer"></span>${helpBtn()}</div>`;
 }
 function needsStaffing(){
   const t=todayIso(), lim=addDays(t,28);
-  return liveEvents().filter(e=>inOffice(e.office) && (e.end||e.start)>=t && e.start<=lim).map(e=>{ const open=e.days.filter(d=>d.date>=t && !(S.sched.assignments[dayId(e,d)]||[]).length); return { e, open, total:e.days.filter(d=>d.date>=t).length }; })
+  return liveEvents().filter(e=>inOffice(e.office) && (e.end||e.start)>=t && e.start<=lim).map(e=>{ const open=e.days.filter(d=>d.date>=t && !d.off && !(S.sched.assignments[dayId(e,d)]||[]).length); return { e, open, total:e.days.filter(d=>d.date>=t && !d.off).length }; })
     .filter(x=>x.open.length).sort((a,b)=>a.open[0].date.localeCompare(b.open[0].date));
 }
 function staffBanner(){
@@ -3910,10 +3964,8 @@ function tilesView(){
   ${todoCard({compact:true})}
   ${scBanner()}
   ${leader}
-  <h3 class="homeh">Your tools</h3>
-  <div class="tiles">${mine.map(k=>T[k]()).join('')}</div>
-  <h3 class="homeh">All tools & links</h3>
-  <div class="minis">${rest.map(mini).join('')}${links}</div>
+  ${hsec('tools','<h3 class="homeh">Your tools</h3>',`<div class="tiles">${mine.map(k=>T[k]()).join('')}</div>`)}
+  ${hsec('links','<h3 class="homeh">All tools & links</h3>',`<div class="minis">${rest.map(mini).join('')}${links}</div>`)}
   ${banners}
   ${leaderCard()}</div>`;
 }
@@ -3975,8 +4027,8 @@ function eventDateIssues(x){
   return [...new Set(out)];
 }
 function dateChecks(){
-  const t=todayIso(), lim=addDays(t,180), from=addDays(t,-30);
-  return (S.etacc||[]).filter(x=>x.startDate && x.startDate>=from && (x.startDate<=lim || daysBetween(t,x.startDate)>400) && !['declined','not_pursuing'].includes(x.status) && inOffice(x.branch||'') && !dateOk(x))
+  const t=todayIso(), lim=addDays(t,180);
+  return (S.etacc||[]).filter(x=>x.startDate && (x.endDate||x.startDate)>=t && (x.startDate<=lim || daysBetween(t,x.startDate)>400) && !['declined','not_pursuing'].includes(x.status) && inOffice(x.branch||'') && !dateOk(x))
     .map(x=>({ x, issues:eventDateIssues(x) })).filter(r=>r.issues.length).sort((a,b)=>a.x.startDate.localeCompare(b.x.startDate));
 }
 function dateRange(x){ const en=x.endDate||x.startDate, y=new Date().getFullYear(), md=d=>fmtMD(d)+(+d.slice(0,4)!==y?'/'+d.slice(0,4):''); return `${DOW3[parseIso(x.startDate).getDay()]} ${md(x.startDate)}${en!==x.startDate?` – ${DOW3[parseIso(en).getDay()]} ${md(en)}`:''}`; }
@@ -4042,7 +4094,7 @@ function checkinView(){
   if(ui.exp) return expenseEditor();
   const LE=linkedEvent();
   if(EVENT_LINK && !LE) return `<div class="card"><h2>Check-in link not found</h2><p class="muted">This event may have been renamed or rescheduled. Ask your manager for a new link, or <a href="?m=1">check in from your schedule</a>.</p></div>`;
-  if(LE) return eventLinkView(LE);
+  if(LE) return eventLinkView(LE)+`<a class="teamsbanner trainbanner" href="#training" data-tab="training" style="margin-top:12px"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products, booth setup and standards. Open any time; no check-in needed.</p></div></a>`;
   const roster=rosterSorted();
   const me=person(ui.me);
   const pick=`<div class="card"><div class="field"><label>Who are you?</label><select data-act="me" style="font-size:16px;padding:10px"><option value="">Choose your name…</option>${offices().map(o=>{ const ppl=roster.filter(r=>r.office===o); return ppl.length?`<optgroup label="${esc(o)}">${ppl.map(r=>`<option value="${r.id}" ${r.id===ui.me?'selected':''}>${esc(r.name)}</option>`).join('')}</optgroup>`:''; }).join('')}${roster.filter(r=>!r.office).length?`<optgroup label="No office">${roster.filter(r=>!r.office).map(r=>`<option value="${r.id}" ${r.id===ui.me?'selected':''}>${esc(r.name)}</option>`).join('')}</optgroup>`:''}</select></div></div>`;
@@ -4114,9 +4166,11 @@ function checkOutPanel(p){
   const hrs=round1((Date.now()-c.inAt)/36e5);
   return `<div class="panel"><h2>Check out · ${esc(c.eventName)}</h2><div class="sub">${esc(c.personName)} · checked in ${fmtStamp(c.inAt)} · about ${hrs} h so far</div>
     <div class="fields">
-      <div class="field"><label>Opps (set appointments) <span style="color:var(--red)">*</span></label><input type="number" min="0" inputmode="numeric" data-keep="out-appts" value="${esc(p.appts??'')}" oninput="var z=document.getElementById('zeroWhy');if(z)z.style.display=this.value==='0'?'':'none'">${(()=>{ const g=checkinGoal(c); return g?`<div class="small muted"><b>Your goal for this shift: about ${goalRound(g.mine)}.</b></div>`:''; })()}</div>
+      <div class="field"><label>Opps (set appointments) <span style="color:var(--red)">*</span></label><input type="number" min="0" inputmode="numeric" data-keep="out-appts" value="${esc(p.appts??'')}" data-hi="${oppsHigh(c).hi}" oninput="var z=document.getElementById('zeroWhy');if(z)z.style.display=this.value==='0'?'':'none';var w=document.getElementById('oppsWarn');if(w)w.style.display=(+this.value>+this.dataset.hi)?'':'none';var n=document.getElementById('oppsWarnN');if(n)n.textContent=this.value;">
+        <div id="oppsWarn" class="notice err" style="margin-top:6px;${num(p.appts)>oppsHigh(c).hi?'':'display:none'}">⚠ <b><span id="oppsWarnN">${esc(p.appts??'')}</span> opps</b> is much higher than usual${oppsHigh(c).goal!==null?` (your goal is about ${oppsHigh(c).goal})`:''}. Check for a typo.<label class="chk" style="margin-top:4px"><input type="checkbox" data-keep="opps-ok" ${p.oppsOk?'checked':''}> Yes, that number is right</label></div>${(()=>{ const g=checkinGoal(c); return g?`<div class="small muted"><b>Your goal for this shift: about ${goalRound(g.mine)}.</b></div>`:''; })()}</div>
       <div class="field"><label>Unset opps <span style="color:var(--red)">*</span></label><input type="number" min="0" inputmode="numeric" data-keep="out-unset" value="${esc(p.unset??'')}"><div class="small muted">Customers you couldn’t set: they go to the call center to be scheduled.</div></div>
       <div class="field" id="zeroWhy" style="${String(p.appts??'')==='0'?'':'display:none'}"><label>No opps today: what happened? <span style="color:var(--red)">*</span></label><textarea data-keep="out-zero" placeholder="e.g. very low foot traffic, booth in a back corner, mostly renters, weather">${esc(p.zeroWhy||'')}</textarea></div>
+      ${(()=>{ const e=earlyBy(c); return e?`<div class="field" style="grid-column:1/-1"><label>You’re checking out ${e>=90?Math.round(e/60*10)/10+' hours':e+' minutes'} before your shift ends (${esc(fmt12(c.shiftStop))}). Why? <span style="color:var(--red)">*</span></label><input type="text" data-keep="out-early" value="${esc(p.earlyWhy||'')}" placeholder="e.g. event closed early, sent home by the show manager, not feeling well"><div class="small muted">Your supervisor is notified.</div></div>`:''; })()}
       <div class="field"><label>Foot traffic</label><select data-keep="out-traffic"><option value="">Select…</option>${['Low','Medium','High'].map(x=>`<option ${p.traffic===x?'selected':''}>${x}</option>`).join('')}</select></div>
     </div>
     ${cons.length?`<h3>Giveaways & print used</h3><div class="fields">${cons.map(a=>`<div class="field"><label class="small">${esc(a.name)}</label><input type="number" min="0" inputmode="numeric" data-keep="use-${a.id}" placeholder="0"></div>`).join('')}</div>`:''}
@@ -4132,7 +4186,6 @@ function checkOutPanel(p){
       <div class="field" style="margin-top:4px"><input type="text" data-keep="meal-note" value="${esc(p.mealNote||'')}" placeholder="If not, why? (your supervisor will follow up)"></div>`; })()}
     <div style="margin-top:12px">${adpBox('out', p.adpOut)}</div>
     <div class="field" style="margin-top:10px"><label>Shift notes</label><textarea data-keep="out-notes" placeholder="How did it go? Anything for next year?"></textarea></div>
-    <div style="margin-top:10px"><div class="lbl">Teardown photo (optional)</div><label class="btn big photobtn">📷 ${p.photo?'Retake teardown photo':'Take teardown photo'}<input type="file" accept="image/*" capture="environment" data-act="photo" data-slot="out" style="display:none"></label>${p.photo?`<img class="preview" src="${p.photo}" alt="Teardown photo">`:''}</div>
     ${p.err?`<div class="notice err" style="margin-top:10px">${esc(p.err)}</div>`:''}
     <div class="foot"><button class="btn" data-act="closePanel">Cancel</button><button class="btn primary" data-act="submitOut" ${ui.busy?'disabled':''}>${ui.busy?'Saving…':'Check out'}</button></div></div>`;
 }
@@ -4173,10 +4226,10 @@ async function submitOut(){
   if(unset==='' || appts===''){ p.err='Enter your opps and unset opps (use 0 if none).'; render(); return; }
   p.zeroWhy=v('out-zero')||'';
   if(num(appts)===0 && !p.zeroWhy.trim()){ p.err='You entered 0 opps. Tell us what happened today.'; render(); return; }
-  { const g=checkinGoal(c), n=num(appts), hi=g?Math.max(g.mine*3, g.mine+5):15, key=unset+'|'+appts;
-    if(p.rangeOk!==key && n>hi){
-      if(!confirm(`You entered ${n} opps${g?`, but your goal for this shift was about ${goalRound(g.mine)}`:''}. That’s much higher than usual. Is ${n} right?`)){ p.err=''; render(); return; }
-      p.rangeOk=key; } }
+  p.oppsOk=!!v('opps-ok');
+  if(num(appts)>oppsHigh(c).hi && !p.oppsOk){ p.err=`${num(appts)} opps is much higher than usual. Fix the number, or tick “Yes, that number is right.”`; render(); return; }
+  p.earlyWhy=v('out-early')||''; const early=earlyBy(c);
+  if(early && !p.earlyWhy.trim()){ p.err='Tell us why you’re checking out before your shift ends.'; render(); return; }
   { const bp=checkinBreakPlan(c); p.meal=v('meal-yes')?'yes':v('meal-no')?'no':''; p.mealNote=v('meal-note')||'';
     if(bp && bp.meals && !p.meal){ p.err='Tell us whether you took your meal break.'; render(); return; }
     if(p.meal==='no' && !p.mealNote.trim()){ p.err='Tell us why you didn’t get your meal break.'; render(); return; } }
@@ -4192,11 +4245,11 @@ async function submitOut(){
     (c.assetsOut||[]).forEach(id=>{ const cond=retCond[id]; if(cond==='keep') return; expandKits([id]).forEach(x=>aEntries.push({ type:'return', assetId:x, condition:cond, personId:c.personId, personName:c.personName, eventKey:c.eventKey, eventName:c.eventName, cid:c.id })); });
     Object.entries(cons).forEach(([id,n])=>aEntries.push({ type:'use', assetId:id, qty:n, personId:c.personId, personName:c.personName, eventKey:c.eventKey, eventName:c.eventName, cid:c.id }));
     const issues=ISSUE_TYPES.filter((t,i)=>v('iss-'+i));
-    let outPhoto=''; if(p.photo) outPhoto=await putPhoto(p.photo,{checkin:p.cid, kind:'out'});
     const loc=await Promise.race([getLocation(), new Promise(r=>setTimeout(()=>r({loc:null}),8000))]);
     await saveCheckin(p.cid,{ status:'out', outAt:Date.now(), adpOut:true, outLoc:loc.loc||null, leads:num(leads), unset:num(unset), appts:num(appts), traffic:p.traffic||'',
-      consumables:cons, assetsReturned:returned, assetConditions:retCond, issues, issueText:v('out-issue')||'', notes:v('out-notes')||'', outPhoto, equipWhere:p.equipWhere, equipNote:p.equipNote, ...(num(appts)===0?{ zeroWhy:p.zeroWhy }:{}), ...(p.meal?{ mealTaken:p.meal==='yes', mealNote:p.meal==='no'?p.mealNote:'' }:{}) }, false);
+      consumables:cons, assetsReturned:returned, assetConditions:retCond, issues, issueText:v('out-issue')||'', notes:v('out-notes')||'', equipWhere:p.equipWhere, equipNote:p.equipNote, ...(num(appts)===0?{ zeroWhy:p.zeroWhy }:{}), ...(early?{ earlyMin:early, earlyWhy:p.earlyWhy }:{}), ...(p.meal?{ mealTaken:p.meal==='yes', mealNote:p.meal==='no'?p.mealNote:'' }:{}) }, false);
     try{ await logAsset(aEntries); }catch(err){ console.error('asset log',err); }
+    if(early) alertEarlyCheckout(Object.assign({}, c, { outAt:Date.now(), earlyMin:early, earlyWhy:p.earlyWhy })).catch(e=>console.warn('early alert',e));
     alertCheckout(Object.assign({}, c, { leads:num(leads), unset:num(unset), appts:num(appts), issues:p.meal==='no'?[...issues,'Meal break not taken']:issues, issueText:[v('out-issue')||'', p.meal==='no'?'Meal break not taken: '+p.mealNote:''].filter(Boolean).join(' · '), assetConditions:retCond, equipWhere:p.equipWhere, equipNote:p.equipNote }));
     ui.lastSms=`${c.personName}: checked out of ${c.eventName}. Opps ${num(appts)}, unset opps ${num(unset)}. Equipment: ${EQUIP_WHERE[p.equipWhere]}${p.equipNote?' ('+p.equipNote+')':''}.`;
     ui.panel=null; ui.notice=ui.queued?'Saved on your phone. Your check-out will send when you have signal.':'Checked out. Thanks for your work today!'; ui.noticeKind='ok';
@@ -4277,6 +4330,7 @@ function detailPanel(){
       ${c.officePickup?`<tr><th>Equipment</th><td>Picked up at the office · clocked in on ADP at ${esc(fmtTime(c.officeClockIn)||c.officeClockIn)}</td></tr>`:''}
       <tr><th>ADP</th><td>${c.adpIn?'✓ Confirmed clock-in':'<span style="color:var(--warn)">Clock-in not confirmed</span>'}${c.status==='out'?(c.adpOut?' · ✓ Confirmed clock-out':' · <span style="color:var(--warn)">Clock-out not confirmed</span>'):''}</td></tr>
       <tr><th>Checked out</th><td>${c.outAt?fmtStamp(c.outAt)+(c.outLoc?` · <a href="${mapLink(c.outLoc)}" target="_blank" rel="noopener">location</a>`:'')+` · ${round1(hoursOf(c))} h`:'<span class="muted">Not yet</span>'}</td></tr>
+      ${c.earlyMin?`<tr><th>Left early</th><td><span class="pill p-warn">${num(c.earlyMin)} min early</span> ${esc(c.earlyWhy||'')}</td></tr>`:''}
       ${c.status==='out'?`<tr><th>Results</th><td>${num(c.appts)} opps · ${unsetOf(c)} unset opps${c.traffic?' · '+esc(c.traffic)+' traffic':''}${(()=>{ const g=checkinGoal(c); return g?` · goal about ${goalRound(g.mine)}`:''; })()}</td></tr>${c.zeroWhy?`<tr><th>Why 0 opps</th><td>${esc(c.zeroWhy)}</td></tr>`:''}${c.mealTaken===false?`<tr><th>Meal break</th><td>Not taken: ${esc(c.mealNote||'')}</td></tr>`:''}`:''}
       ${c.equipWhere?`<tr><th>Equipment tonight</th><td>${esc(EQUIP_WHERE[c.equipWhere]||'')}${c.equipNote?' – '+esc(c.equipNote):''}</td></tr>`:''}
       ${(c.assetsOut||[]).length?`<tr><th>Gear</th><td>${c.assetsOut.map(id=>{ const k=(c.assetConditions||{})[id]; return esc(assetName(id))+(c.status!=='out'?'':k==='keep'?' <span style="color:var(--warn)">still with marketer</span>':k==='Missing'?' <span style="color:var(--red)">missing</span>':(c.assetsReturned||[]).includes(id)?` ✓ returned${k&&k!=='Good'?' – '+esc(k.toLowerCase()):''}`:''); }).join('<br>')}</td></tr>`:''}
@@ -4499,6 +4553,7 @@ document.addEventListener('click', async ev=>{
     await guard(()=>saveAudit(id,{ name:nm, offices:offs, startedAt:Date.now(), startedBy:(S.user&&S.user.email)||'' })); ui.audit=id; render(); return; }
   if(a==='auditBranch'){ const o=((document.querySelector('[data-keep="auditBranch"]')||{}).value||''); if(!o){ ui.notice='Choose the branch to count.'; ui.noticeKind='warn'; render(); return; } const id='au_'+uid();
     await guard(()=>saveAudit(id,{ name:`${o} inventory – ${fmtLong(todayIso())}`, offices:[o], startedAt:Date.now(), startedBy:(S.user&&S.user.email)||'' })); ui.audit=id; ui.auditOffice=o; render(); return; }
+  if(a==='itemPhotoDel'){ const x=assetById(t.dataset.aid); if(!x||!S.user) return; if(!confirm('Remove this picture?')) return; const P=S.assetPhotos||{}; if(P[x.id]) await guard(()=>saveAssetPhoto(x.id,null)); if(x.shopSku && P[x.shopSku]) await guard(()=>saveAssetPhoto(x.shopSku,null)); render(); return; }
   if(a==='auditDelete'){ const au=S.audits[ui.audit]; if(!au||!canDeleteAudit(au)) return; if(!confirm(`Delete “${au.name}”? The count and its progress are removed. Items’ check-out history isn’t affected.`)) return; const id=ui.audit; ui.audit=null; ui.scanMsg=null; await guard(()=>deleteAudit(id)); ui.notice='Count deleted.'; ui.noticeKind='ok'; render(); return; }
   if(a==='auditBack'){ ui.audit=null; ui.scanMsg=null; render(); return; }
   if(a==='auditMark'){ auditFound([t.dataset.aid]); return; }
@@ -4521,6 +4576,9 @@ async function fetchLoc(){ const p=ui.panel; const r=await getLocation(); if(ui.
 function readEvalDraft(){ document.querySelectorAll('[data-ef]').forEach(el=>{ ui.evalDraft[el.dataset.ef]=el.value; }); }
 document.addEventListener('input', ev=>{ const el=ev.target; if(el.dataset.ex && ui.exp && el.type!=='checkbox' && el.type!=='radio'){ setPath(ui.exp, el.dataset.ex, el.value); if(el.type==='number') updateExpTotals(); } if(el.dataset.ef && ui.evalDraft) ui.evalDraft[el.dataset.ef]=el.value; if(el.dataset.asg && el.tagName!=='SELECT'){ asgDraft()[el.dataset.asg]=el.value; } if(el.dataset.asgstep!==undefined && el.type!=='date'){ const st=asgDraft().steps[+el.dataset.asgstep]; if(st) st[el.dataset.sf]=el.value; } if(el.dataset.act==='aq'){ ui.aq=el.value; render(); } });
 document.addEventListener('change', async ev=>{
+  if(ev.target.dataset && ev.target.dataset.flexmove){ const fm=Object.assign({}, mgrDoc().flexMove||{}); if(ev.target.value) fm[ev.target.dataset.flexmove]=ev.target.value; else delete fm[ev.target.dataset.flexmove]; await guard(()=>saveMgr({ flexMove:fm })); return; }
+  if(ev.target.dataset && ev.target.dataset.itemphoto){ const a=assetById(ev.target.dataset.itemphoto), f=ev.target.files&&ev.target.files[0]; if(!a||!f||!S.user) return;
+    try{ const d=await compressImage(f, 480); await guard(()=>saveAssetPhoto(photoKey(a), d)); if(photoKey(a)!==a.id && (S.assetPhotos||{})[a.id]) await saveAssetPhoto(a.id, null); ui.notice='Picture saved.'; ui.noticeKind='ok'; }catch(e){ ui.notice=e.message||'Couldn’t save that picture.'; ui.noticeKind='err'; } render(); return; }
   if(ev.target && ev.target.dataset && (ev.target.dataset.kitf||ev.target.dataset.kitpick) && ui.kitBuild){ const B=ui.kitBuild; document.querySelectorAll('[data-kitpick]').forEach(el=>{ B.pick[el.dataset.kitpick]=el.value; }); if(ev.target.dataset.kitf){ B[ev.target.dataset.kitf]=ev.target.value; if(ev.target.dataset.kitf!=='who'){ B.pick={}; if(ev.target.dataset.kitf==='office') B.who=''; } } B.err=''; render(); return; }
   if(ev.target && ev.target.matches && ev.target.matches('[data-shopoff]') && ui.shopAdd){ document.querySelectorAll('[data-shopq]').forEach(el=>{ ui.shopAdd.qty[el.dataset.shopq]=el.value; }); document.querySelectorAll('[data-shopr]').forEach(el=>{ ui.shopAdd.reorder[el.dataset.shopr]=el.value; }); ui.shopAdd.office=ev.target.value; ui.shopAdd.err=''; render(); return; }
   if(ev.target && ev.target.matches && ev.target.matches('[data-viewas]')){ const v=ev.target.value; if(v) startViewAs(v); return; }

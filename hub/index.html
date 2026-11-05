@@ -558,6 +558,11 @@ async function logAsset(entries){
   if(S.mode==='live'){ const {fsM,db}=DB.fb; for(let i=0;i<entries.length;i+=400){ const b=fsM.writeBatch(db); entries.slice(i,i+400).forEach(e=>b.set(fsM.doc(fsM.collection(db,'peHubAssetLog')), e)); await b.commit(); } }
   else { entries.forEach(e=>S.alog.push(Object.assign({ id:'l_'+uid() }, e))); localSave(); }
 }
+function canDeleteAudit(au){ const em=String((S.user&&S.user.email)||'').toLowerCase(); return !!S.user && (isLeadUser() || String(au.startedBy||'').toLowerCase()===em); }
+async function deleteAudit(id){
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.deleteDoc(fsM.doc(db,'peHubAudits',id)); }
+  const m=Object.assign({}, S.audits); delete m[id]; S.audits=m; if(S.mode!=='live') localSave();
+}
 async function saveAudit(id, obj){
   if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubAudits',id), JSON.parse(JSON.stringify(obj)), {merge:true}); }
   else { S.audits[id]=Object.assign({}, S.audits[id]||{}, obj); localSave(); }
@@ -804,12 +809,34 @@ function stationView(){
       <div class="field"><label>Due back (optional)</label><input type="date" data-act="sdue" value="${esc(t.due)}"></div></div>`:''}
     ${t.mode==='transfer'?`<div class="fields" style="margin-bottom:10px"><div class="field"><label>Move to office</label><select data-act="sto"><option value="">Choose…</option>${offices().map(o=>`<option ${o===t.toOffice?'selected':''}>${esc(o)}</option>`).join('')}</select></div></div>`:''}
     ${scanBox('station')}
+    ${t.mode==='checkout'?bannerWarn(t.items.filter(id=>isGear(assetById(id))), S.sched.events.find(e=>e.key===t.eventKey)):''}
     <div class="small muted" style="margin:6px 0">Or pick by hand: <select data-act="spick"><option value="">Choose an item…</option>${scopedAssets().filter(a=>!t.items.includes(a.id) && (t.mode!=='return' || stOf(a).status==='out')).sort((a,b)=>a.name.localeCompare(b.name)).map(a=>`<option value="${a.id}">${esc(a.name)} ${a.code?'('+esc(a.code)+')':''}${stOf(a).holder?' – '+esc(stOf(a).holder.personName):''}</option>`).join('')}</select></div>
     ${t.items.length?`<table style="margin-top:8px"><thead><tr><th>Code</th><th>Item</th><th>Status</th><th>${t.mode==='return'?'Condition':t.mode==='checkout'?'Qty (giveaways)':''}</th><th></th></tr></thead><tbody>${rows}</tbody></table>`:'<p class="muted">Scan items to add them here.</p>'}
     <div class="foot"><button class="btn" data-act="sclear" ${t.items.length?'':'disabled'}>Clear list</button><button class="btn primary" data-act="sconfirm" ${ready&&!ui.busy?'':'disabled'}>${ui.busy?'Saving…':t.mode==='checkout'?`Check out ${t.items.length} item${t.items.length===1?'':'s'}`:t.mode==='return'?`Return ${t.items.length} item${t.items.length===1?'':'s'}`:`Transfer ${t.items.length} item${t.items.length===1?'':'s'}`}</button></div></div>`;
 }
+/* ---------------- Banner standards: legacy + new mix, and retractable banners outdoors ---------------- */
+function isNewBanner(a){ return !!a && /^BNR-/.test(a.shopSku||''); }
+function isRetractable(a){ if(!a || a.kind==='kit') return false; if(isNewBanner(a) || a.legacyBanner) return true; if(a.shopSku==='OTH-BANNER-OUT') return false;
+  return a.category==='Banner / sign' && /retractable|pop-?up|roll-?up|banner/i.test(a.name||'') && !/mesh|backdrop|outdoor|cling|holder|window|canvas/i.test(a.name||''); }
+function isLegacyBanner(a){ return isRetractable(a) && !isNewBanner(a); }
+// An event is outdoor when it's tagged "outdoor" in ETACC (Tags field).
+function isOutdoorEvent(ev){ if(!ev) return false; const m=etaccMatch(ev)||{}; return /\boutdoor\b/i.test([].concat(m.tags||[]).join(' ')); }
+function bannerProblems(ids, ev){
+  const items=[...new Set(expandKits(ids||[]))].map(assetById).filter(Boolean), nb=items.filter(isNewBanner), lb=items.filter(isLegacyBanner), out=[];
+  if(nb.length && lb.length) out.push({ k:'mix', text:`Legacy and new banners together: ${lb.map(a=>(a.code?a.code+' ':'')+a.name).join(', ')} with ${nb.length} new banner${nb.length===1?'':'s'}. Never mix legacy and new banners.` });
+  if(isOutdoorEvent(ev) && (nb.length||lb.length)) out.push({ k:'outdoor', text:`${nb.length+lb.length} retractable banner${nb.length+lb.length===1?'':'s'} going to an outdoor event (${ev.name}). Retractable banners are indoor only; use the Mesh Outdoor Banner.` });
+  return out;
+}
+function bannerWarn(ids, ev){ const P=bannerProblems(ids, ev); return P.length?`<div class="notice err" style="margin:8px 0"><b>⚠ Banner standards:</b><br>${P.map(x=>esc(x.text)).join('<br>')}</div>`:''; }
+async function alertBanners(P, who, ev, office){
+  if(!P.length) return; const r=alertRecipients(office||(ev&&ev.office)||'');
+  await queueMail(`banner-${hash(P.map(x=>x.text).join('|')+'|'+who+'|'+todayIso())}`, { ...r, office:office||(ev&&ev.office)||'', kind:'banner', subject:`Banner standards: ${P.map(x=>x.k==='mix'?'legacy + new banners mixed':'retractable banners to an outdoor event').join(' and ')} (${who})`,
+    html:mailShell('Banner standards alert', `<p><b>${esc(who)}</b> checked out banners that don’t meet the booth standards${ev?` for <b>${esc(ev.name)}</b> (${esc(fmtLong(ev.start))})`:''}:</p><ul>${P.map(x=>`<li>${esc(x.text)}</li>`).join('')}</ul><p>Please follow up before the event.</p>`) });
+}
 async function stationConfirm(){
   const t=ui.station, p=person(t.personId), ev=S.sched.events.find(e=>e.key===t.eventKey);
+  const BP=t.mode==='checkout'?bannerProblems(t.items.filter(id=>isGear(assetById(id))), ev):[];
+  if(BP.length && !confirm(`Banner standards:\n\n${BP.map(x=>'• '+x.text).join('\n')}\n\nCheck out anyway? The office supervisor will be alerted.`)) return;
   const entries=[];
   if(t.mode==='checkout'){
     t.items.forEach(id=>{ const a=assetById(id);
@@ -823,6 +850,7 @@ async function stationConfirm(){
   ui.busy=true; render();
   await guard(()=>logAsset(entries));
   ui.busy=false; const n=t.items.length;
+  if(BP.length) try{ await alertBanners(BP, p?p.name:'Someone', ev, (ev&&ev.office)||(p&&p.office)||''); }catch(e){ console.warn('banner alert',e); }
   ui.scanMsg={ kind:'ok', text: t.mode==='checkout'?`Checked out ${n} item${n===1?'':'s'} to ${p.name}.`:t.mode==='return'?`Returned ${n} item${n===1?'':'s'}.`:`Moved ${n} item${n===1?'':'s'} to ${t.toOffice}.` };
   ui.station=Object.assign({}, t, { items:[], qty:{}, cond:{} }); render();
 }
@@ -830,7 +858,8 @@ function auditView(){
   if(ui.audit && S.audits[ui.audit]) return auditDetail(Object.assign({ id:ui.audit }, S.audits[ui.audit]));
   const list=Object.entries(S.audits).map(([id,a])=>Object.assign({id},a)).sort((a,b)=>(b.startedAt||0)-(a.startedAt||0));
   return `<div class="card"><h2>Annual inventory</h2><div class="sub">Walk each office, scan every item’s barcode, and count giveaways. Anything not scanned shows up as missing.</div>
-    ${S.user?`<div class="row" style="margin-bottom:10px"><input type="text" data-keep="auditName" placeholder="${new Date().getFullYear()} Annual Inventory" style="min-width:240px"><button class="btn primary" data-act="auditStart">Start a count for ${esc(scopeLabel())}</button></div>`:''}
+    ${S.user?`<div class="row" style="margin-bottom:10px;gap:8px;flex-wrap:wrap"><b>Branch inventory:</b><select data-keep="auditBranch" style="min-width:200px"><option value="">Choose a branch…</option>${offices().filter(o=>inOffice(o)).map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select><button class="btn primary" data-act="auditBranch">📋 Start branch inventory</button></div>
+    <div class="row" style="margin-bottom:10px;gap:8px;flex-wrap:wrap"><span class="small muted">Or count several offices at once:</span><input type="text" data-keep="auditName" placeholder="${new Date().getFullYear()} Annual Inventory" style="min-width:240px"><button class="btn" data-act="auditStart">Start a count for ${esc(scopeLabel())}</button></div>`:''}
     ${list.length?`<table><thead><tr><th>Count</th><th>Offices</th><th>Started</th><th>Progress</th><th>Status</th></tr></thead><tbody>${list.map(a=>{ const p=auditProgress(a); return `<tr class="click" data-audit="${a.id}"><td>${esc(a.name)}</td><td class="small">${esc((a.offices||[]).length?a.offices.join(', '):'All offices')}</td><td class="small">${fmtStamp(a.startedAt)}<div class="muted">${esc(a.startedBy||'')}</div></td><td>${p.found} of ${p.expected} found</td><td>${a.closedAt?`<span class="pill p-green">Closed ${fmtMD(isoOf(new Date(a.closedAt)))}</span>`:'<span class="pill p-blue">In progress</span>'}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No counts yet.</p>'}</div>`;
 }
 function auditItems(au){ const offs=au.offices||[]; return S.assets.filter(a=>!a.retired && (!offs.length || !(stOf(a).office||a.office) || offs.includes(stOf(a).office||a.office) )); }
@@ -840,7 +869,7 @@ function auditDetail(au){
   const found=gear.filter(a=>stOf(a).audits[au.id]), missing=gear.filter(a=>!stOf(a).audits[au.id]);
   const offs=(au.offices&&au.offices.length)?au.offices:offices();
   const byOff=offs.map(o=>{ const g=gear.filter(a=>(stOf(a).office||a.office)===o); return [o,g.length,g.filter(a=>stOf(a).audits[au.id]).length]; }).filter(x=>x[1]);
-  return `<div class="row" style="margin-bottom:10px"><button class="btn sm" data-act="auditBack">◀ All counts</button><span class="spacer"></span><button class="btn sm" data-act="auditCsv">⬇ Download report (CSV)</button></div>
+  return `<div class="row" style="margin-bottom:10px"><button class="btn sm" data-act="auditBack">◀ All counts</button><span class="spacer"></span><button class="btn sm" data-act="auditCsv">⬇ Download report (CSV)</button>${canDeleteAudit(au)?'<button class="btn sm" data-act="auditDelete" title="Delete this count">🗑 Delete count</button>':''}</div>
   <div class="card"><h2>${esc(au.name)}</h2><div class="sub">${esc((au.offices||[]).join(', ')||'All offices')} · started ${fmtStamp(au.startedAt)} by ${esc(au.startedBy||'')}${au.closedAt?` · closed ${fmtStamp(au.closedAt)}`:''}</div>
     <div class="kpis"><div class="kpi"><b>${found.length} / ${gear.length}</b><span>Gear & kits found</span></div><div class="kpi ${missing.length?'warn':''}"><b>${missing.length}</b><span>Not found yet</span></div><div class="kpi"><b>${cons.filter(a=>stOf(a).audits[au.id]).length} / ${cons.length}</b><span>Giveaways counted</span></div></div>
     ${byOff.length>1?`<div class="small" style="margin-bottom:10px">${byOff.map(([o,n,f])=>`<span class="pill ${f===n?'p-green':'p-gray'}" style="margin:2px">${esc(o)}: ${f}/${n}</span>`).join(' ')}</div>`:''}
@@ -2223,8 +2252,8 @@ function mailShell(title, bodyHtml){
     <p style="margin-top:16px"><a href="${SITE}hub/" style="background:#00A7B7;color:#000;text-decoration:none;padding:7px 12px;border-radius:6px;font-weight:600">Open the Event Hub</a></p>
     <p style="color:#5a6760;font-size:12px">Automatic alert from the Event Activity Hub.</p></div></div>`;
 }
-const ALERT_TAB = { late:'today', noshow:'today', noout:'today', issue:'today', expense:'expenses', summary:'summary', newmgr:'alerts', test:'alerts', rem:'remnums', task:'myday' };
-const ALERT_ICON = { late:'⏰', noshow:'🚫', noout:'⌛', issue:'⚠️', expense:'🧾', summary:'📊', newmgr:'👋', test:'🔔', rem:'✍️', task:'📌' };
+const ALERT_TAB = { banner:'assets', late:'today', noshow:'today', noout:'today', issue:'today', expense:'expenses', summary:'summary', newmgr:'alerts', test:'alerts', rem:'remnums', task:'myday' };
+const ALERT_ICON = { banner:'🚩', late:'⏰', noshow:'🚫', noout:'⌛', issue:'⚠️', expense:'🧾', summary:'📊', newmgr:'👋', test:'🔔', rem:'✍️', task:'📌' };
 function htmlText(h){ const m=String(h||'').match(/<p>([\s\S]*?)<\/p>/); const d=document.createElement('div'); d.innerHTML=m?m[1]:''; return (d.textContent||'').trim().slice(0,300); }
 async function queueMail(id, src){
   const mail={ to:cleanList(src.to||[]), cc:cleanList(src.cc||[]), message:{ subject:src.subject, html:src.html }, kind:src.kind||'', createdAt:Date.now() };
@@ -2375,7 +2404,7 @@ function alertsView(){
     <tr><td><b>Late check-in</b></td><td>Marketer checks in more than ${LATE_MIN} minutes after the shift starts.</td></tr>
     <tr><td><b>Not checked in</b></td><td>30 minutes after the shift starts with no check-in.</td></tr>
     <tr><td><b>No check-out</b></td><td>An hour after the shift ends with no check-out.</td></tr>
-    <tr><td><b>Issue reported</b></td><td>Marketer reports an issue, or damaged or missing gear, at check-out.</td></tr>
+    <tr><td><b>Banner standards</b></td><td>Legacy and new banners checked out together, or retractable banners checked out for an event tagged <b>outdoor</b> in ETACC.</td></tr><tr><td><b>Issue reported</b></td><td>Marketer reports an issue, or damaged or missing gear, at check-out.</td></tr>
     <tr><td><b>Expense report</b></td><td>Submitted (to the supervisor), and returned for changes (to the marketer).</td></tr>
     <tr><td><b>Activation summary</b></td><td>Mondays from 8 am, last week (Mon–Sun), all regions, to ${SUMMARY_TO.map(esc).join(', ')}.</td></tr>
     <tr><td><b>New manager</b></td><td>Someone signs in without hub access: they’re asked to contact Paula, and Paula gets an email.</td></tr>
@@ -3188,10 +3217,10 @@ function pageHelpData(){
       '<b>Check out / return:</b> scan a kit (or any item) out to a marketer for an event and back in, with its condition. Marketers can also take and return items at check-in and check-out.',
       '<b>Pack a kit:</b> open the kit and tap <b>🖨 Packing list</b> for its assets plus the paper collateral checklist.',
       '<b>Reorder:</b> open a stock item and tap <b>Reorder ↗</b> to go straight to it in the Great Day Shop.',
-      '<b>Annual inventory</b> (November–December): scan every barcode at an office and count stock. <b>Activity</b> shows every move, with who and when.'],
+      '<b>Branch inventory:</b> on the Annual inventory tab, choose the branch and tap <b>📋 Start branch inventory</b>, then scan every barcode there and count stock (do every branch in November–December). Started one by mistake? Open it and tap <b>🗑 Delete count</b> (the person who started it, or a leader). <b>Activity</b> shows every move, with who and when.'],
     rules:['Kits are marked <b>complete</b> or <b>missing</b> the required pieces for their type; incomplete kits show in Needs your attention. A lost or retired item no longer counts toward its kit.',
       'Indoor kits: the layout’s retractable banners, branded table cover and 6 ft table; outdoor kits: canopy tent, canopy weights, Mesh Outdoor Banner, table cover and 6 ft table. A director’s chair is optional in both.',
-      'Use only the new banners for your area’s set; never mix them with legacy banners, and never use retractable banners outdoors.',
+      'Use only the new banners for your area’s set; never mix them with legacy banners, and never use retractable banners outdoors. Checking out legacy and new banners together, or retractable banners for an event tagged <b>outdoor</b> in ETACC, shows a warning, asks to confirm, and alerts the office supervisor.',
       'Booth assets are overdue once the shift they went out for has ended, or their due date has passed.',
       'Stock shows as low at or below its reorder point. Scratch-offs expire at the end of each year; discard last year’s when the new supply arrives.',
       'In the annual inventory, anything not scanned shows as missing.'] },
@@ -4024,7 +4053,7 @@ function checkInPanel(p){
     <div class="grid">
       <div><div class="lbl">1. Location</div>${p.loc?`<div class="small">📍 Location captured (±${p.loc.acc} m). <a href="${mapLink(p.loc)}" target="_blank" rel="noopener">View</a></div>`:p.locNote?`<div class="small" style="color:var(--warn)">${esc(p.locNote)} You can still check in.</div> <button class="btn sm" data-act="getLoc">Try again</button>`:'<div class="small muted">Getting your location…</div>'}</div>
       <div><div class="lbl">2. Booth setup photo <span style="color:var(--red)">*</span></div><label class="btn big photobtn">📷 ${p.photo?'Retake booth photo':'Take booth photo'}<input type="file" accept="image/*" capture="environment" data-act="photo" data-slot="in" style="display:none"></label>${p.photo?`<img class="preview" src="${p.photo}" alt="Booth photo">`:''}</div>
-      <div><div class="lbl">3. Booth assets & kits you’re taking</div>${scanBox('checkin','Scan an item or kit barcode')}${ui.scanMsg?`<div class="small" style="color:${ui.scanMsg.kind==='ok'?'var(--accent)':'var(--red)'};margin:4px 0">${esc(ui.scanMsg.text)}</div>`:''}
+      <div><div class="lbl">3. Booth assets & kits you’re taking</div>${bannerWarn(p.gear||[], s.ev)}${scanBox('checkin','Scan an item or kit barcode')}${ui.scanMsg?`<div class="small" style="color:${ui.scanMsg.kind==='ok'?'var(--accent)':'var(--red)'};margin:4px 0">${esc(ui.scanMsg.text)}</div>`:''}
         ${gear.length?gear.map(a=>{ const g=stOf(a), mine=g.holder&&g.holder.personId===p.pid, blocked=(g.status==='out'&&!mine)||g.status==='lost'; return `<label class="chk"><input type="checkbox" data-gear="${a.id}" ${p.gear.includes(a.id)?'checked':''} ${blocked&&!p.gear.includes(a.id)?'disabled':''}> ${a.kind==='kit'?'🧰 ':''}${esc(a.name)} <code class="small muted">${esc(a.code||'')}</code>${a.kind==='kit'?` <span class="small muted">(${(a.contents||[]).length} items)</span>`:''}${g.status==='out'?` <span class="small muted">${mine?'(you have this)':'(with '+esc(g.holder.personName)+')'}</span>`:g.status==='repair'?' <span class="small" style="color:var(--warn)">(needs repair)</span>':g.status==='lost'?' <span class="small muted">(lost)</span>':''}</label>`; }).join(''):'<div class="small muted">No booth assets set up for this office yet.</div>'}</div>
       <div>${adpBox('in', p.adpIn)}</div>
       <div><label class="chk"><input type="checkbox" data-keep="office-pick" ${p.officePickup?'checked':''}> I picked up equipment at the office today</label>
@@ -4069,6 +4098,8 @@ async function submitIn(){
   if(p.officePickup && !p.officeTime){ p.err='Enter the time you clocked in on ADP at the office.'; render(); return; }
   if(!p.photo){ p.err='Please add a photo of your booth setup.'; render(); return; }
   if(!p.adpIn){ p.err='Please clock in on ADP, then tick “I’ve clocked in on ADP.”'; render(); return; }
+  const BPin=bannerProblems(p.gear||[], s.ev);
+  if(BPin.length && !confirm(`Banner standards:\n\n${BPin.map(x=>'• '+x.text).join('\n')}\n\nCheck in with these anyway? Your supervisor will be alerted.`)) return;
   ui.busy=true; p.err=''; render();
   try{
     const photoId=await putPhoto(p.photo,{checkin:p.cid, kind:'in'});
@@ -4078,6 +4109,7 @@ async function submitIn(){
       status:'in', inAt:Date.now(), tzOff:new Date().getTimezoneOffset(), adpIn:true, officePickup:!!p.officePickup, officeClockIn:p.officePickup?p.officeTime:'', inLoc:p.loc||null, inLocNote:p.loc?'':(p.locNote||''), inPhoto:photoId,
       assetsOut:p.gear, inNote:(document.querySelector('[data-keep="in-note"]')||{}).value||''
     }, true);
+    if(BPin.length) try{ await alertBanners(BPin, me.name||'A marketer', s.ev, s.ev.office); }catch(e){ console.warn('banner alert',e); }
     try{ await logAsset(p.gear.flatMap(id=>expandKits([id])).map(x=>({ type:'checkout', assetId:x, personId:p.pid, personName:me.name||'', eventKey:s.ev.key, eventName:s.ev.name, cid:p.cid }))); }catch(err){ console.error('asset log',err); }
     ui.lastSms=`${me.name||''}: checked in at ${s.ev.name} at ${new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}.`;
     alertLateCheckin(S.checkins[p.cid]||{ id:p.cid, personName:me.name||'', eventName:s.ev.name, office:s.ev.office||'', venueName:s.ev.venueName||'', date:s.day.date, shiftStart:s.day.start||'', shiftStop:s.day.stop||'', inAt:Date.now() });
@@ -4391,6 +4423,9 @@ document.addEventListener('click', async ev=>{
   if(a==='sconfirm'){ stationConfirm(); return; }
   if(a==='auditStart'){ const nm=((document.querySelector('[data-keep="auditName"]')||{}).value||'').trim()||`${new Date().getFullYear()} Annual Inventory`; const id='au_'+uid(); const offs=(ui.scope||[]).length?offices().filter(inOffice):[];
     await guard(()=>saveAudit(id,{ name:nm, offices:offs, startedAt:Date.now(), startedBy:(S.user&&S.user.email)||'' })); ui.audit=id; render(); return; }
+  if(a==='auditBranch'){ const o=((document.querySelector('[data-keep="auditBranch"]')||{}).value||''); if(!o){ ui.notice='Choose the branch to count.'; ui.noticeKind='warn'; render(); return; } const id='au_'+uid();
+    await guard(()=>saveAudit(id,{ name:`${o} inventory – ${fmtLong(todayIso())}`, offices:[o], startedAt:Date.now(), startedBy:(S.user&&S.user.email)||'' })); ui.audit=id; ui.auditOffice=o; render(); return; }
+  if(a==='auditDelete'){ const au=S.audits[ui.audit]; if(!au||!canDeleteAudit(au)) return; if(!confirm(`Delete “${au.name}”? The count and its progress are removed. Items’ check-out history isn’t affected.`)) return; const id=ui.audit; ui.audit=null; ui.scanMsg=null; await guard(()=>deleteAudit(id)); ui.notice='Count deleted.'; ui.noticeKind='ok'; render(); return; }
   if(a==='auditBack'){ ui.audit=null; ui.scanMsg=null; render(); return; }
   if(a==='auditMark'){ auditFound([t.dataset.aid]); return; }
   if(a==='auditCount'){ const el=document.querySelector(`[data-keep="ac-${t.dataset.aid}"]`); if(!el||el.value==='') return; await guard(()=>logAsset([{ type:'audit', auditId:ui.audit, assetId:t.dataset.aid, qty:num(el.value), office:ui.auditOffice||'' }])); el.dataset.fresh=1; ui.auditFocus=null; return; }

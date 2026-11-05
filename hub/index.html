@@ -316,9 +316,9 @@ function orgChartHtml(){
 function leaderCard(){
   const find=l=>S.sched.roster.find(r=>[l.name,...(l.alt||[])].some(n=>normName(n)===normName(r.name)));
   const tel=p=>String(p||'').replace(/[^\d+]/g,'');
-  return `<div class="card leaders"><h2>📞 Event marketing leadership</h2><div class="leadgrid">${LEADERSHIP.map(l=>{ const r=find(l)||{}; const ph=r.phone||l.phone||''; const title=r.title||l.title;
+  return `<details class="card leaders hsec" data-hsec="leaders" ${hsecOpen('leaders')?'open':''}><summary><h2 style="margin:0">📞 Event marketing leadership</h2></summary><div class="leadgrid">${LEADERSHIP.map(l=>{ const r=find(l)||{}; const ph=r.phone||l.phone||''; const title=r.title||l.title;
     return `<div class="lead"><div class="lav">${esc(l.name.split(' ').map(w=>w[0]).join(''))}</div><div><b>${esc(l.name)}</b><div class="small muted">${esc(title)}</div>
-      <div class="small"><a href="mailto:${esc(r.email||l.email)}">${esc(r.email||l.email)}</a></div>${ph?`<div class="small"><a href="tel:${esc(tel(ph))}">${esc(ph)}</a></div>`:''}</div></div>`; }).join('')}</div>${orgChartHtml()}</div>`;
+      <div class="small"><a href="mailto:${esc(r.email||l.email)}">${esc(r.email||l.email)}</a></div>${ph?`<div class="small"><a href="tel:${esc(tel(ph))}">${esc(ph)}</a></div>`:''}</div></div>`; }).join('')}</div>${orgChartHtml()}</details>`;
 }
 const TEAMS_HUB_URL = 'https://teams.microsoft.com/l/channel/19%3AhJ3v0SgRtUtuyqi5le9H55OLzeAo5DGdO0iSlKrS7x41%40thread.tacv2/Team%20Resource%20Hub?groupId=05ce58df-1a0a-486e-9825-6befb1c3c3dd&tenantId=213e780f-443e-4b07-98ea-c177eb740ffd';
 // ADP MyWork app (ADP Workforce Manager clock-in app; official store listings)
@@ -2463,8 +2463,8 @@ function alertRow(a, compact){
 }
 function alertsBanner(){
   const un=unreadAlerts(); if(!un.length) return '';
-  return `<div class="card albanner"><div class="row"><h2 style="margin:0;flex:1">🔔 ${un.length} new alert${un.length===1?'':'s'}</h2><button class="btn sm" data-act="alReadAll">Mark all read</button><button class="btn sm" data-tab="alerts">See all</button></div>
-    ${un.slice(0,5).map(a=>alertRow(a,true)).join('')}${un.length>5?`<div class="small muted">…and ${un.length-5} more.</div>`:''}</div>`;
+  return `<details class="card albanner hsec" data-hsec="alerts" ${hsecOpen('alerts')?'open':''}><summary class="row"><h2 style="margin:0;flex:1">🔔 ${un.length} new alert${un.length===1?'':'s'}</h2><button class="btn sm" data-act="alReadAll">Mark all read</button><button class="btn sm" data-tab="alerts">See all</button></summary>
+    ${un.slice(0,5).map(a=>alertRow(a,true)).join('')}${un.length>5?`<div class="small muted">…and ${un.length-5} more.</div>`:''}</details>`;
 }
 function myAlertsCard(){
   const list=myAlerts(), un=list.filter(a=>!alertSeen(a)).length;
@@ -3186,13 +3186,14 @@ let hsecClosed=(()=>{ try{ return new Set(JSON.parse(localStorage.getItem('peHub
 function hsecOpen(k){ return !hsecClosed.has(k); }
 function hsecSet(k,open){ if(open) hsecClosed.delete(k); else hsecClosed.add(k); try{ localStorage.setItem('peHub.closedSecs', JSON.stringify([...hsecClosed])); }catch(e){} }
 document.addEventListener('toggle', e=>{ const d=e.target; if(d && d.dataset && d.dataset.hsec) hsecSet(d.dataset.hsec, d.open); }, true);
+document.addEventListener('click', e=>{ const b=e.target.closest && e.target.closest('details.hsec>summary button, details.hsec>summary a'); if(b) e.preventDefault(); }, true);
 function hsec(key, head, inner, cls, tag){ return `<details class="hsec ${cls||''}" data-hsec="${key}" ${hsecOpen(key)?'open':''}><summary>${head}</summary>${inner}</details>`; }
 function todoCard(opts){
   if(!S.user) return '';
   const o=opts||{}, G=todoGroups(), n=todoCount(G), lim=o.compact?3:6;
   if(!n) return `<div class="card todo"><h2 style="margin:0">✅ Nothing needs your attention</h2><div class="small muted">${esc(attnLabel())}</div></div>`;
   const shown=o.compact?G.slice(0,4):G;
-  return `<details class="card todo hsec" data-hsec="attn" ${hsecOpen('attn')?'open':''}><summary class="row" style="margin-bottom:6px"><h2 style="margin:0">⚑ Needs your attention <span class="pill p-warn">${n}</span></h2><span class="small muted">${esc(attnLabel())}</span><span class="spacer"></span>${o.compact?`<button class="btn sm primary" data-tab="myday">See everything</button>`:''}</div>
+  return `<details class="card todo hsec" data-hsec="attn" ${hsecOpen('attn')?'open':''}><summary class="row" style="margin-bottom:6px"><h2 style="margin:0">⚑ Needs your attention <span class="pill p-warn">${n}</span></h2><span class="small muted">${esc(attnLabel())}</span><span class="spacer"></span>${o.compact?`<button class="btn sm primary" data-tab="myday">See everything</button>`:''}</summary>
     <div class="todogrid">${shown.map(g=>`<div class="todog"><div class="todoh"><span>${g.ic} <b>${esc(g.title)}</b> <span class="pill ${g.items.some(i=>i.red)?'p-red':'p-warn'}">${g.items.length}</span></span><button class="btn sm" ${g.key==='alerts'?'data-tab="alerts"':`data-tab="${g.tab}"`}>${esc(g.btn)}</button></div>
       ${g.items.slice(0,lim).map(i=>`<div class="todoi ${i.red?'red':''}" ${i.act?`data-act="${i.act}" data-id="${esc(i.id)}"`:`data-tab="${g.tab}"`} role="button" tabindex="0"><b>${esc(i.text)}</b><span>${esc(i.sub||'')}</span></div>`).join('')}
       ${g.items.length>lim?`<div class="small muted" style="padding:2px 8px">…and ${g.items.length-lim} more</div>`:''}</div>`).join('')}</div>
@@ -3953,12 +3954,12 @@ function tilesView(){
   <a class="teamsbanner trainbanner" href="#training" data-tab="training"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products, booth setup and standards.</p></div><span class="go">Open ↗</span></a></div>`;
   if(!S.user) return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span><button class="btn sm helpbtn" data-act="pageHelp" title="How the hub home works">? Help</button>${scopePicker()}</div>${banners}<div class="tiles">${TOOL_ORDER.map(k=>T[k]()).join('')}</div>${leaderCard()}</div>`;
   const order=TOOL_ORDER.slice(), mine=order.slice(0,6), rest=order.slice(6);
-  const leader=isRemUser()?`<h3 class="homeh">Leader tools</h3><div class="minis">
+  const leader=isRemUser()?`<details class="hsec" data-hsec="leadtools" ${hsecOpen('leadtools')?'open':''}><summary><h3 class="homeh">Leader tools</h3></summary><div class="minis">
     <div class="mini" data-tab="assign" role="button" tabindex="0" style="--tc:var(--red);--tcs:#fde2e1"><span class="ic">📌</span><span class="mt"><b>Assign tasks</b><small>One-offs & sprints</small></span></div>
     <div class="mini" data-tab="remnums" role="button" tabindex="0" style="--tc:var(--gold);--tcs:#fef0dc"><span class="ic">✍️</span><span class="mt"><b>REM weekly numbers</b><small>Cancels, meets, sales</small></span></div>
     <div class="mini" data-tab="activity" role="button" tabindex="0" style="--tc:#000;--tcs:#ededed"><span class="ic">👀</span><span class="mt"><b>Hub activity</b><small>Who’s using the hub</small></span></div>
     <div class="mini" data-tab="alerts" role="button" tabindex="0" style="--tc:var(--aqua);--tcs:#e0f4f6"><span class="ic">🔔</span><span class="mt"><b>Alert settings</b><small>Who gets alerts</small></span></div>
-    <div class="mini" data-tab="summary" role="button" tabindex="0" style="--tc:var(--gray);--tcs:#eeeeef"><span class="ic">📊</span><span class="mt"><b>Activation summary</b><small>Monday email</small></span></div></div>`:'';
+    <div class="mini" data-tab="summary" role="button" tabindex="0" style="--tc:var(--gray);--tcs:#eeeeef"><span class="ic">📊</span><span class="mt"><b>Activation summary</b><small>Monday email</small></span></div></div></details>`:'';
   return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span><button class="btn sm helpbtn" data-act="pageHelp" title="How the hub home works">? Help</button>${scopePicker()}</div>
   ${mgrBar()}
   ${todoCard({compact:true})}

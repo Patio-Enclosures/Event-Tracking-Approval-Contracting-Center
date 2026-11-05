@@ -104,6 +104,8 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .mini .mt{display:flex;flex-direction:column;min-width:0}.mini b{font-size:15px}.mini small{font-size:12px;color:var(--ink-soft)}.mini small.warn{color:var(--warn);font-weight:600}
 .mini .flag{position:absolute;top:-8px;right:-8px;background:var(--warn);color:#fff;border-radius:12px;padding:1px 8px;font-size:12px;font-weight:700}
 .tile{position:relative;aspect-ratio:1/1;background:var(--surface);border:2px solid var(--tc,var(--line));border-radius:14px;padding:20px;cursor:pointer;display:flex;flex-direction:column;text-align:left;transition:transform .12s,box-shadow .12s,border-color .12s}
+.tile.off{cursor:default;opacity:.55;filter:grayscale(1)}
+.tile.off:hover{transform:none;box-shadow:none;border-width:2px;padding:20px}
 .tile:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,80,90,.14);border-width:3px;padding:19px}
 .tile .ic{width:54px;height:54px;border-radius:12px;background:var(--tcs,var(--accent-soft));display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:14px}
 .tile h2{font-size:18px;margin:0 0 6px}
@@ -1497,7 +1499,7 @@ function adpView(){
   return `<div class="row" style="margin-bottom:12px"><a class="btn primary big" style="width:auto;text-decoration:none" href="${ADP_MANAGER_URL}" target="_blank" rel="noopener">⏱️ Open ADP to approve timecards ↗</a><span class="spacer"></span>${scopePicker()}</div>
   ${(()=>{ const t=todayIso(), pe=payPeriodEnd(t); return `<div class="notice">Pay period: <b>${fmtLong(addDays(pe,-13))} – ${fmtLong(pe)}</b> · approve timecards by the end of ${pe===t?'<b>today</b>':fmtLong(pe)} · payday ${fmtLong(addDays(pe,5))}</div>`; })()}
   ${adpUploadCard(wk)}
-  <div class="small" style="margin:-4px 0 12px">🧰 ADP how-tos: ${MGR_TOOLKIT.flatMap(g=>g[1]).filter(it=>it[3]==='adp').map(it=>`<a href="${esc(it[2])}" target="_blank" rel="noopener">${esc(it[0])}</a>`).join(' · ')}</div>
+  <div class="small" style="margin:-4px 0 12px">🧰 ADP how-tos: ${mgrToolkit().flatMap(g=>g[1]).filter(it=>it[3]==='adp').map(it=>`<a href="${esc(it[2])}" target="_blank" rel="noopener">${esc(it[0])}</a>`).join(' · ')}</div>
   <div class="card"><div class="row" style="margin-bottom:6px"><h2 style="margin:0">Timecard check · week of ${fmtLong(wk)}</h2><span class="spacer"></span>
     <button class="btn sm" data-act="adpWk" data-n="-7">◀ Prev week</button>${wk!==mondayOf(todayIso())?'<button class="btn sm" data-act="adpWk" data-n="0">This week</button>':''}<button class="btn sm" data-act="adpWk" data-n="7">Next week ▶</button></div>
     <div class="sub">Compare each marketer’s ADP timecard with their event check-ins before approving. On equipment-pickup days, paid time starts at the office clock-in. ${flagged?`<b style="color:var(--warn)">${flagged} shift${flagged===1?'':'s'} to double-check.</b>`:''}</div>
@@ -1820,15 +1822,50 @@ const TASK_TOOLKIT = { th1:['Event Discovery guide'], fr9:['Event Discovery guid
   su2:['ExhibitDay budget SOP'], mo7:['iCIMS: create an email template'], mo8:['iCIMS: create an email template'],
   mo9:['Interview guide and scoring rubric'], th2:['Interview guide and scoring rubric','Hiring and onboarding a new marketer'], fr8:['Interview guide and scoring rubric'], sa8:['Interview guide and scoring rubric'],
   mo6:['Hiring and onboarding a new marketer'], su3:['E-Time overview'] };
-function toolkitItem(title){ for(const [,items] of MGR_TOOLKIT) for(const it of items) if(it[0]===title) return it; return null; }
+// The toolkit can be edited by Paula and Trevor (same people as Training). Saved in peHubTraining/toolkit;
+// until someone saves, the built-in MGR_TOOLKIT list is used. Each item keeps a key (its original title)
+// so the 🧰 links on My Day tasks keep working after a rename.
+function tkDefault(){ return MGR_TOOLKIT.map(([g,items])=>({ name:g, items:items.map(([t,d,u,tag])=>({ key:t, title:t, desc:d, url:u, tag:tag||'' })) })); }
+function tkGroups(){ return (S.toolkit && Array.isArray(S.toolkit.groups)) ? S.toolkit.groups : tkDefault(); }
+function mgrToolkit(){ return tkGroups().map(g=>[g.name, (g.items||[]).map(it=>[it.title, it.desc||'', it.url, it.tag||'', it.key||''])]); }
+function toolkitItem(title){ for(const [,items] of mgrToolkit()) for(const it of items) if(it[4]===title || it[0]===title) return it; return null; }
+async function saveToolkit(groups){
+  const doc={ groups:JSON.parse(JSON.stringify(groups)), updatedAt:Date.now(), updatedBy:(S.user&&S.user.email)||'' };
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubTraining','toolkit'), doc); }
+  S.toolkit=doc; if(S.mode!=='live') localSave(); render();
+}
+function tkRead(){ // copy what's typed in the editor back into the draft
+  const d=ui.tkDraft; if(!d) return;
+  document.querySelectorAll('[data-tkg]').forEach(el=>{ const g=d[+el.dataset.tkg]; if(g) g.name=el.value; });
+  document.querySelectorAll('[data-tki]').forEach(el=>{ const [gi,ii,f]=el.dataset.tki.split('.'); const it=d[+gi]&&d[+gi].items[+ii]; if(it) it[f]=el.value; });
+}
+function toolkitEditor(){
+  if(!ui.tkSkip) tkRead(); ui.tkSkip=false; const d=ui.tkDraft;
+  return `<div class="card"><div class="row" style="margin-bottom:8px"><b>Editing the Manager Toolkit</b><span class="spacer"></span><button class="btn sm" data-act="tkCancel">Cancel</button><button class="btn sm primary" data-act="tkSave">Save changes</button></div>
+    <p class="small muted" style="margin-top:0">Use SharePoint’s <b>Copy link</b> (or the address of the file) — not a link from a sign-in or email that expires. Links must start with https://.</p>
+    ${d.map((g,gi)=>`<div class="tkedg" style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px">
+      <div class="row" style="gap:6px;margin-bottom:8px"><input type="text" data-tkg="${gi}" value="${esc(g.name)}" placeholder="Section name" style="flex:1;font-weight:700" aria-label="Section name">
+        <button class="btn sm" data-act="tkMoveG" data-gi="${gi}" data-dir="-1" ${gi===0?'disabled':''} title="Move section up">↑</button><button class="btn sm" data-act="tkMoveG" data-gi="${gi}" data-dir="1" ${gi===d.length-1?'disabled':''} title="Move section down">↓</button><button class="btn sm" data-act="tkDelG" data-gi="${gi}" title="Delete section">🗑</button></div>
+      ${g.items.map((it,ii)=>`<div class="tkedi" style="display:grid;grid-template-columns:1fr auto;gap:4px 8px;padding:8px 0;border-top:1px dashed var(--line)">
+        <div style="display:grid;gap:4px"><input type="text" data-tki="${gi}.${ii}.title" value="${esc(it.title)}" placeholder="Title" aria-label="Title">
+          <input type="text" data-tki="${gi}.${ii}.desc" value="${esc(it.desc||'')}" placeholder="Short description" aria-label="Description">
+          <input type="url" data-tki="${gi}.${ii}.url" value="${esc(it.url||'')}" placeholder="https://…" aria-label="Link"></div>
+        <div style="display:flex;flex-direction:column;gap:4px"><button class="btn sm" data-act="tkMoveI" data-gi="${gi}" data-ii="${ii}" data-dir="-1" ${ii===0?'disabled':''} title="Move up">↑</button><button class="btn sm" data-act="tkMoveI" data-gi="${gi}" data-ii="${ii}" data-dir="1" ${ii===g.items.length-1?'disabled':''} title="Move down">↓</button><button class="btn sm" data-act="tkDelI" data-gi="${gi}" data-ii="${ii}" title="Remove link">✕</button></div></div>`).join('')}
+      <button class="btn sm" data-act="tkAddI" data-gi="${gi}">+ Add a link</button></div>`).join('')}
+    <div class="row" style="gap:8px"><button class="btn sm" data-act="tkAddG">+ Add a section</button><span class="spacer"></span>${S.toolkit?'<button class="btn sm" data-act="tkReset" title="Go back to the original list">↺ Restore the original list</button>':''}</div></div>`;
+}
 function toolkitView(){
-  return `<div class="card"><p class="small muted" style="margin-top:0">Guides and forms from the Regional Event Managers site. They open in SharePoint; sign in with your work account.</p>
-    ${MGR_TOOLKIT.map(([g,items])=>`<h3>${esc(g)}</h3>${items.map(([t,d,u])=>`<div class="tcard"><div style="flex:1;min-width:0"><b>${esc(t)}</b><div class="small muted">${esc(d)}</div></div><a class="btn primary" href="${esc(u)}" target="_blank" rel="noopener">Open ↗</a></div>`).join('')}`).join('')}</div>`;
+  if(ui.tkDraft && canEditTraining()) return toolkitEditor();
+  const ed=canEditTraining();
+  return `<div class="card"><div class="row" style="margin-top:0"><p class="small muted" style="margin:0;flex:1">Guides and forms from the Regional Event Managers site. They open in SharePoint; sign in with your work account.</p>${ed?'<button class="btn sm" data-act="tkEdit">✎ Edit toolkit</button>':''}</div>
+    ${S.toolkit&&S.toolkit.updatedBy?`<p class="small muted" style="margin:4px 0 0">Last updated ${S.toolkit.updatedAt?fmtStamp(S.toolkit.updatedAt):''} by ${esc(String(S.toolkit.updatedBy).split('@')[0].replace(/[._]+/g,' ').replace(/\b\w/g,c=>c.toUpperCase()))}</p>`:''}
+    ${mgrToolkit().map(([g,items])=>`<h3>${esc(g)}</h3>${items.map(([t,d,u])=>`<div class="tcard"><div style="flex:1;min-width:0"><b>${esc(t)}</b><div class="small muted">${esc(d)}</div></div><a class="btn primary" href="${esc(u)}" target="_blank" rel="noopener">Open ↗</a></div>`).join('')}`).join('')}</div>`;
 }
 function checkRow(item, doneMap, key, AC){
   // Evaluations are entered in Exhibit Day while the hub's evaluations are paused: no hub count or hub button, always the Exhibit Day link.
   if(item.auto==='a-eval'){ const ln=(item.links||[]).some(l=>l&&l[1]===LINKS.exhibitDay)?item.links:[...(item.links||[]),['Exhibit Day',LINKS.exhibitDay]];
     item=Object.assign({}, item, { links:ln, text:item.text==='Complete event evaluations for the weekend'?'Complete event evaluations for the weekend in Exhibit Day':item.text }, EVALS_PAUSED?{ auto:null, tab:null }:{}); }
+  if(EVALS_PAUSED && item.tab==='evals') item=Object.assign({}, item, { tab:null });
   const a=item.auto && AC[item.auto];
   const done = (a && a.n===0) || !!doneMap[item.id];
   const links=(item.links||[]).map(([l,u])=>`<a class="btn sm" href="${esc(u)}" target="_blank" rel="noopener">${esc(l)} ↗</a>`).join('')+(isCcTask(item)?'<button class="btn sm" data-act="glRef" title="GL codes for credit card charges">💳 GL codes</button>':'')+(TASK_TOOLKIT[item.id]||[]).map(toolkitItem).filter(Boolean).map(it=>`<a class="btn sm" href="${esc(it[2])}" target="_blank" rel="noopener" title="${esc(it[1])}">🧰 ${esc(it[0])} ↗</a>`).join('');
@@ -3239,7 +3276,7 @@ function pageHelpData(){
   alerts:{ t:'Alerts', what:'Alerts for your area, and (for leaders) who receives them.',
     how:['Tap an alert to go to what needs attention.','Leaders: in Alert settings, enter each office’s supervisor emails and Teams channel emails, then Save.'],
     rules:['Late check-in: more than '+LATE_MIN+' minutes after the shift starts. Not checked in: 30 minutes after. No check-out: an hour after the shift ends.','Issues and damaged or missing gear reported at check-out alert right away.','Each alert goes to the office supervisor, copied to Paula, the regional manager and (if ticked) the division leader. No supervisor: it goes to the regional manager.','Separate more than one email with commas.'] },
-  toolkit:{ t:'Manager Toolkit', what:'Guides and forms for managers from the Regional Event Managers SharePoint site: finding events, hiring, ADP and HR.', how:['Tap <b>Open</b> to view a guide or form in SharePoint (sign in with your work account).','Many are also linked right on the matching My Day tasks, marked 🧰.'], rules:['Files live on SharePoint, so they’re always the latest version. Ask Paula if a link stops working.'] },
+  toolkit:{ t:'Manager Toolkit', what:'Guides and forms for managers from the Regional Event Managers SharePoint site: finding events, hiring, ADP and HR.', how:['Tap <b>Open</b> to view a guide or form in SharePoint (sign in with your work account).','Many are also linked right on the matching My Day tasks, marked 🧰.'], rules:['Files live on SharePoint, so they’re always the latest version. Ask Paula or Trevor if a link stops working.','<b>Paula and Trevor</b> can tap <b>✎ Edit toolkit</b> to add, rename, reorder or remove links and sections. Changes show for everyone right away; renamed links stay attached to their My Day tasks.'] },
   training:{ t:'Training', what:'Training materials and guides for managers and marketers.',
     how:['Open any item to view or download it.'],
     rules:['Only Paula and Trevor can add or edit training.'] },
@@ -3623,13 +3660,18 @@ function rollup(e){
 // Show hours a manager typed on the schedule's event card override ETACC's blank/old hours.
 function mergeMgrTimes(){
   S.sched.events.forEach(e=>{ const det=S.sched.details[e.key]||{}; const t={}; (det.times||[]).forEach(x=>{ if(x.date) t[x.date]=x; });
+    // Dates a manager changed on the schedule's event card replace ETACC's days (ETACC's are kept in e._days).
+    if(!e._days) e._days=(e.days||[]).map(d=>({ date:d.date, start:('_s' in d)?d._s:(d.start||''), stop:('_t' in d)?d._t:(d.stop||'') }));
+    const dates=(Array.isArray(det.dates)&&det.dates.length)?det.dates.slice().sort():e._days.map(d=>d.date);
+    e.days=dates.map(dt=>{ const b=e._days.find(x=>x.date===dt); return { date:dt, start:b?b.start:'', stop:b?b.stop:'', _s:b?b.start:'', _t:b?b.stop:'' }; });
+    if(e.days.length){ e.start=e.days[0].date; e.end=e.days[e.days.length-1].date; }
     (e.days||[]).forEach(d=>{ if(!('_s' in d)){ d._s=d.start||''; d._t=d.stop||''; } const o=t[d.date]; d.start=(o&&o.start)||d._s; d.stop=(o&&o.stop)||d._t; }); });
 }
 /* ---------------- data layer (Firebase, or this device only) ---------------- */
 const DB = { fb:null };
 const LOCAL_KEY='peHub.local';
 function localLoad(){ try{ return JSON.parse(lsGet(LOCAL_KEY)||'{}'); }catch(e){ return {}; } }
-function localSave(){ if(previewing()) return; lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, alertCfg:S.alertCfg, rates:S.rates, scManual:S.scManual, activity:S.activity, showReport:S.showReport, alerts:S.alerts, asg:S.asg, asgDone:S.asgDone, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
+function localSave(){ if(previewing()) return; lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, toolkit:S.toolkit||null, alertCfg:S.alertCfg, rates:S.rates, scManual:S.scManual, activity:S.activity, showReport:S.showReport, alerts:S.alerts, asg:S.asg, asgDone:S.asgDone, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
 setInterval(()=>{ sweepAlerts(); }, 5*60000);
 async function initDB(){
   if(DEMO){ goLocal('demo'); return; }
@@ -3646,6 +3688,7 @@ async function initDB(){
     const fail=(what)=>err=>{ console.error(what,err); if(what==='schedule' && S.mode==='connecting'){ clearTimeout(timeout); goLocal(err.code||err.message); } else { ui.notice=`Couldn’t read ${what}: ${err.code||err.message}`; ui.noticeKind='err'; render(); } };
     F.onSnapshot(F.doc(db,'peHubSettings','alerts'), snap=>{ S.alertCfg=snap.exists()?snap.data():null; render(); }, ()=>{});
     F.onSnapshot(F.doc(db,'peHubTraining','main'), snap=>{ S.training=snap.exists()?snap.data():null; render(); }, ()=>{});
+    F.onSnapshot(F.doc(db,'peHubTraining','toolkit'), snap=>{ S.toolkit=snap.exists()?snap.data():null; render(); }, ()=>{});
     ['events','roster','assignments','details','practices'].forEach(name=>{
       F.onSnapshot(F.doc(db,'patioEnclosuresSchedule',name), snap=>{
         live(); const d=snap.exists()?snap.data():null;
@@ -3692,7 +3735,7 @@ function goLocal(why){
   const L=localLoad();
   if(DEMO && !L.sched) seedDemo(); else {
     if(L.sched) S.sched=L.sched;
-    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; S.mgr=L.mgr||{}; S.training=L.training||null; S.alertCfg=L.alertCfg||null; S.rates=L.rates||null; S.scManual=L.scManual||{}; S.activity=L.activity||{}; S.showReport=L.showReport||null; S.alerts=L.alerts||{}; S.asg=L.asg||{}; S.asgDone=L.asgDone||{}; S.asgLoaded=S.asgDoneLoaded=true; ui.localPhotos=L.photos||{};
+    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; S.mgr=L.mgr||{}; S.training=L.training||null; S.toolkit=L.toolkit||null; S.alertCfg=L.alertCfg||null; S.rates=L.rates||null; S.scManual=L.scManual||{}; S.activity=L.activity||{}; S.showReport=L.showReport||null; S.alerts=L.alerts||{}; S.asg=L.asg||{}; S.asgDone=L.asgDone||{}; S.asgLoaded=S.asgDoneLoaded=true; ui.localPhotos=L.photos||{};
   }
   if(DEMO){ S.user={email:'demo.manager@patio'}; }
   S.schedLoaded=true; render();
@@ -3832,7 +3875,7 @@ function tilesView(){
   const out=gear.filter(g=>g.status==='out').length, overdue=gear.filter(g=>g.overdue).length, repair=gear.filter(g=>g.status==='repair').length;
   const low=scopedAssets().filter(isLow).length, staff=needsStaffing().length;
   const TC={ today:['var(--aqua)','#e0f4f6'], events:['#000','#ededed'], schedule:['var(--gray)','#eeeeef'], checkin:['var(--aqua)','#e0f4f6'], assets:['var(--gold)','#fef0dc'], evals:['#000','#ededed'], expenses:['var(--gray)','#eeeeef'], travel:['var(--aqua)','#e0f4f6'], adp:['var(--gold)','#fef0dc'], costs:['#000','#ededed'], scorecard:['var(--gold)','#fef0dc'] };
-  const tile=(k,desc,stat,cls,flag,flagCls)=>{ const [ic,l]=SECTIONS[k], [c,soft]=TC[k]||['var(--aqua)','#e0f4f6']; return `<div class="tile" data-tab="${k}" role="button" tabindex="0" style="--tc:${c};--tcs:${soft}">${flag?`<span class="flag ${flagCls||''}">${flag}</span>`:''}<div class="ic">${ic}</div><h2>${esc(l)}</h2><p>${desc}</p><div class="stat ${cls||''}">${stat}</div></div>`; };
+  const tile=(k,desc,stat,cls,flag,flagCls)=>{ const [ic,l]=SECTIONS[k], [c,soft]=TC[k]||['var(--aqua)','#e0f4f6']; const off=k==='evals'&&EVALS_PAUSED; return `<div class="tile${off?' off':''}" ${off?'aria-disabled="true" title="Evaluations are paused"':`data-tab="${k}" role="button" tabindex="0"`} style="--tc:${c};--tcs:${soft}">${flag?`<span class="flag ${flagCls||''}">${flag}</span>`:''}<div class="ic">${ic}</div><h2>${esc(l)}</h2><p>${desc}</p><div class="stat ${cls||''}">${stat}</div></div>`; };
   const T={
     today:()=>tile('today','Who’s scheduled, checked in, late or done, with photos and results.', today.length?`${today.length} shifts · ${inNow} working now${late?` · ${late} late`:''}`:'No shifts today', late?'alert':'', late||'', 'alert'),
     events:()=>tile('events','Track, approve and contract events in ETACC.', `${upcoming} event${upcoming===1?'':'s'} in the next 7 days`),
@@ -3851,7 +3894,7 @@ function tilesView(){
   const banners=`<div class="banners"><a class="teamsbanner" href="${TEAMS_HUB_URL}" target="_blank" rel="noopener"><div class="ic">👥</div><div style="flex:1"><h2>Team Resource Hub</h2><p>Guides, forms, standards and announcements in Microsoft Teams.</p></div><span class="go">Open in Teams ↗</span></a>
   <a class="teamsbanner trainbanner" href="#training" data-tab="training"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products, booth setup and standards.</p></div><span class="go">Open ↗</span></a></div>`;
   if(!S.user) return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span><button class="btn sm helpbtn" data-act="pageHelp" title="How the hub home works">? Help</button>${scopePicker()}</div>${banners}<div class="tiles">${TOOL_ORDER.map(k=>T[k]()).join('')}</div>${leaderCard()}</div>`;
-  const order=toolsByUse(), mine=order.slice(0,6), rest=order.slice(6);
+  const order=TOOL_ORDER.slice(), mine=order.slice(0,6), rest=order.slice(6);
   const leader=isRemUser()?`<h3 class="homeh">Leader tools</h3><div class="minis">
     <div class="mini" data-tab="assign" role="button" tabindex="0" style="--tc:var(--red);--tcs:#fde2e1"><span class="ic">📌</span><span class="mt"><b>Assign tasks</b><small>One-offs & sprints</small></span></div>
     <div class="mini" data-tab="remnums" role="button" tabindex="0" style="--tc:var(--gold);--tcs:#fef0dc"><span class="ic">✍️</span><span class="mt"><b>REM weekly numbers</b><small>Cancels, meets, sales</small></span></div>
@@ -3863,7 +3906,7 @@ function tilesView(){
   ${todoCard({compact:true})}
   ${scBanner()}
   ${leader}
-  <h3 class="homeh">Your tools <span class="small muted">most used first</span></h3>
+  <h3 class="homeh">Your tools</h3>
   <div class="tiles">${mine.map(k=>T[k]()).join('')}</div>
   <h3 class="homeh">All tools & links</h3>
   <div class="minis">${rest.map(mini).join('')}${links}</div>
@@ -3877,7 +3920,7 @@ function body(){
     case 'schedule': return toolFrame(SCHEDULE_URL,'Marketer Weekly Schedule');
     case 'checkin': return checkinView();
     case 'assets': return assetsView();
-    case 'evals': return evalsView();
+    case 'evals': if(EVALS_PAUSED){ ui.tab='home'; return homeView(); } return evalsView();
     case 'expenses': return expensesView();
     case 'travel': return travelView();
     case 'adp': return adpView();
@@ -4381,6 +4424,26 @@ document.addEventListener('click', async ev=>{
   if(a==='backCheckin'){ ui.tab='checkin'; history.replaceState(null,'',location.pathname+location.search); render(); return; }
   if(a==='tAdd'){ ui.tForm={}; render(); return; }
   if(a==='tEdit'){ ui.tForm={ id:t.dataset.id }; render(); return; }
+  if(a==='tkEdit'){ if(!canEditTraining()) return; ui.tkDraft=JSON.parse(JSON.stringify(tkGroups())); ui.tkSkip=true; render(); return; }
+  if(a==='tkCancel'){ ui.tkDraft=null; render(); return; }
+  if(/^tk(AddI|DelI|MoveI|AddG|DelG|MoveG|Reset)$/.test(a) && ui.tkDraft){ tkRead(); const d=ui.tkDraft, gi=+t.dataset.gi, ii=+t.dataset.ii, dir=+t.dataset.dir;
+    if(a==='tkAddI') d[gi].items.push({ key:'', title:'', desc:'', url:'', tag:'' });
+    if(a==='tkDelI'){ const it=d[gi].items[ii]; if((it.title||it.url) && !confirm(`Remove “${it.title||it.url}”?`)) return; d[gi].items.splice(ii,1); }
+    if(a==='tkMoveI'){ const j=ii+dir; if(j>=0 && j<d[gi].items.length){ const x=d[gi].items.splice(ii,1)[0]; d[gi].items.splice(j,0,x); } }
+    if(a==='tkAddG') d.push({ name:'New section', items:[{ key:'', title:'', desc:'', url:'', tag:'' }] });
+    if(a==='tkDelG'){ if(d[gi].items.length && !confirm(`Delete the section “${d[gi].name}” and its ${d[gi].items.length} link${d[gi].items.length===1?'':'s'}?`)) return; d.splice(gi,1); }
+    if(a==='tkMoveG'){ const j=gi+dir; if(j>=0 && j<d.length){ const x=d.splice(gi,1)[0]; d.splice(j,0,x); } }
+    if(a==='tkReset'){ if(!confirm('Go back to the original toolkit list? Your added and changed links will be replaced when you save.')) return; ui.tkDraft=tkDefault(); }
+    ui.tkSkip=true; render(); return; }
+  if(a==='tkSave'){ if(!canEditTraining() || !ui.tkDraft) return; tkRead();
+    const d=ui.tkDraft.map(g=>({ name:String(g.name||'').trim(), items:g.items.map(it=>Object.assign({}, it, { title:String(it.title||'').trim(), desc:String(it.desc||'').trim(), url:String(it.url||'').trim() })).filter(it=>it.title||it.url) })).filter(g=>g.name||g.items.length);
+    const bad=d.flatMap(g=>g.items).find(it=>!it.title || !/^https:\/\/\S+$/i.test(it.url));
+    if(d.some(g=>!g.name)){ alert('Every section needs a name.'); return; }
+    if(bad){ alert(bad.title ? `“${bad.title}” needs a link that starts with https://` : `The link ${bad.url} needs a title.`); return; }
+    const prev=S.toolkit?JSON.parse(JSON.stringify(S.toolkit)):null;
+    await guard(()=>saveToolkit(d)); ui.tkDraft=null; ui.notice='Manager Toolkit saved. Everyone sees the update right away.'; ui.noticeKind='ok';
+    showUndo('Manager Toolkit saved.', async()=>{ if(prev) await saveToolkit(prev.groups); else { if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.deleteDoc(fsM.doc(db,'peHubTraining','toolkit')); } S.toolkit=null; localSave(); render(); } });
+    render(); return; }
   if(a==='tDel'){ if(!confirm('Delete this training item?')) return; const id=ui.tForm.id; { const pi=JSON.parse(JSON.stringify(trainingItems())), pr=((S.training&&S.training.removed)||[]).slice(); showUndo('Training item deleted.', async()=>{ if(S.training) S.training.removed=pr; await saveTraining(pi); }); } ui.tForm=null; if(S.training){ S.training.removed=[...new Set([...(S.training.removed||[]), id])]; } else S.training={ items:DEFAULT_TRAINING, removed:[id] }; await guard(()=>saveTraining(trainingItems().filter(y=>y.id!==id))); return; }
   if(a==='tMove'){ const items=trainingItems().slice(), i=items.findIndex(y=>y.id===t.dataset.id), j=i+(+t.dataset.n); if(j<0||j>=items.length) return; [items[i],items[j]]=[items[j],items[i]]; await guard(()=>saveTraining(items)); return; }
   if(a==='tOpen'){ openTrainingFile(t.dataset.id); return; }

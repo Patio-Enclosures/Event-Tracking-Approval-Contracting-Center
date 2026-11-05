@@ -963,7 +963,7 @@ function detailCard(e,days){
       ${editRow('Booth location', boothLoc)}
       ${row('Booth size', esc(e.boothSize))}
       ${editRow('Set up', setupHtml)}
-      ${editing ? `<dt></dt><dd class="detbtns"><button class="btn sm primary" data-act="detdone" data-key="${esc(e.key)}">Done</button> <button class="btn sm" data-act="detcancel">Cancel</button></dd>` : ''}
+      ${editing ? `<dt></dt><dd class="detbtns"><button class="btn sm primary" data-act="detdone" data-key="${esc(e.key)}">Save</button> <button class="btn sm" data-act="detcancel">Cancel</button></dd>` : ''}
       ${row('Organizer', esc(e.organizer))}
       ${row('Contact', esc(e.contactName))}
       ${row('Phone', e.contactPhone ? `<a href="tel:${esc(e.contactPhone.replace(/[^\d+]/g,''))}">${esc(e.contactPhone)}</a>` : '')}
@@ -1033,7 +1033,7 @@ function emailModal(days, label){
       <div class="row" style="margin-top:4px;gap:6px;"><button class="btn sm primary" data-act="savepractices">Save</button><button class="btn sm" data-act="cancelpractices">Cancel</button><button class="btn sm" data-act="resetpractices">Reset to standard</button></div></div>`:''}
     ${missing.length?`<div class="need" style="margin:4px 0;">No email on file for: ${missing.map(r=>esc(r.name)).join(', ')}. Add emails in 👥 Roster.</div>`:''}
     <div class="emailprev" id="emailPrev" style="margin-top:8px;">${emailHtml(days,label)}</div>
-    <div class="row" style="margin-top:12px;justify-content:flex-end;"><button class="btn" data-act="closemodal-btn">Done</button></div>
+    <div class="row" style="margin-top:12px;justify-content:flex-end;"><button class="btn" data-act="closemodal-btn">Finished</button></div>
   </div></div>`;
 }
 function rosterModal(){
@@ -1065,7 +1065,7 @@ function rosterModal(){
       <input type="text" class="rg" data-regionperson="${r.id}" value="${esc(r.region||'')}" placeholder="${esc(regionOf(r.office)||'Region')}" list="regionList" title="Region (blank = from branch's ETACC events)" aria-label="Region for ${esc(r.name)}">
       <select class="of" data-moveperson="${r.id}" aria-label="Office for ${esc(r.name)}">${(r.office ? [] : ['']).concat(offs).map(o=>`<option ${o===(r.office||'')?'selected':''}>${esc(o)}</option>`).join('')}</select>
       <button class="btn sm" data-delperson="${r.id}">Remove</button></div>`).join('') || '<div class="r hint">No marketers yet.</div>'}</div>
-    <div class="row" style="margin-top:12px;justify-content:flex-end;"><button class="btn" data-act="closemodal-btn">Done</button></div>
+    <div class="row" style="margin-top:12px;justify-content:flex-end;"><button class="btn" data-act="closemodal-btn">Finished</button></div>
   </div></div>`;
 }
 
@@ -1116,13 +1116,13 @@ document.addEventListener('click', e=>{
       const key=t.dataset.key, dd=readDetDraft()||{}, booth=(dd.booth||'').trim(), setup=(dd.setup||'').trim();
       const ev=data.events.find(x=>x.key===key); if(!ev) break;
       const rows=(dd.rows||[]).filter(r=>r.date);
-      if(!rows.length){ alert('An event needs at least one day. Add a date, then click Done.'); break; }
-      if(rows.some(r=>!/^\d{4}-\d{2}-\d{2}$/.test(r.date))){ alert('One of the dates isn’t complete. Please fix it, then click Done.'); break; }
+      if(!rows.length){ alert('An event needs at least one day. Add a date, then click Save.'); break; }
+      if(rows.some(r=>!/^\d{4}-\d{2}-\d{2}$/.test(r.date))){ alert('One of the dates isn’t complete. Please fix it, then click Save.'); break; }
       const newDates=[...new Set(rows.map(r=>r.date))].sort();
-      if(newDates.length!==rows.length){ alert('The same date is listed twice. Remove one, then click Done.'); break; }
+      if(newDates.length!==rows.length){ alert('The same date is listed twice. Remove one, then click Save.'); break; }
       const times={}; rows.forEach(v=>{ if(v.start||v.stop) times[v.date]={start:v.start||'',stop:v.stop||''}; });
       const bad=Object.entries(times).find(([dt,v])=>v.start&&v.stop&&toMin(v.stop)<=toMin(v.start));
-      if(bad){ alert(`The end time on ${fmtLong(bad[0])} is before the start time. Please fix it, then click Done.`); break; }
+      if(bad){ alert(`The end time on ${fmtLong(bad[0])} is before the start time. Please fix it, then click Save.`); break; }
       // Move marketers on a day that was moved to the new date (removed days → added days, in date order).
       const oldDates=ev.days.map(d=>d.date), gone=oldDates.filter(d=>!newDates.includes(d)), added=newDates.filter(d=>!oldDates.includes(d));
       const hasPeople=dt=>(data.assignments[key+'#'+dt]||[]).length>0;
@@ -1138,7 +1138,14 @@ document.addEventListener('click', e=>{
       data.details = data.details||{};
       if(booth || setup || Object.keys(times).length || dates) data.details[key] = Object.assign({ booth, setup, times }, dates?{ dates }:{}); else delete data.details[key];
       if(dates || gone.length) ui.notice = dates ? `${ev.name}: dates changed to ${newDates.map(fmtLong).join(', ')}. ETACC still shows ${base.map(fmtLong).join(', ')}; update ETACC too if the event really moved.` : `${ev.name}: back to the ETACC dates.`;
-      ui.editDet = null; ui.detDraft = null; save(); render(); break;
+      ui.editDet = null; ui.detDraft = null; save();
+      // Event card edits (dates, hours, booth, set up) publish right away so the hub's check-in sees them;
+      // marketers moved with a changed day publish with them. Other draft changes still wait for 💾 Save schedule.
+      if(cloud.status==='live' && cloud.user){ const docs=['details'].concat(gone.length?['assignments']:[]);
+        cloud.saving=true; render();
+        pushCloud(docs).then(ok=>{ cloud.saving=false; cloud.dirty=unsavedDocs().length>0; if(ok){ cloud.savedAt=new Date(); ui.notice=(ui.notice?ui.notice+' ':'')+'Saved — check-in now shows the change.'; } render(); });
+      }
+      render(); break;
     }
     case 'discard': discardChanges(); break;
     case 'shcancel': ui.editShift=null; render(); break;

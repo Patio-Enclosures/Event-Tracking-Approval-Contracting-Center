@@ -1555,7 +1555,7 @@ async function openTrainingFile(id){
    allow create, never overwrite).
    ===================================================================== */
 const PAULA = 'paula.shoemaker@greatdayimprovements.com';
-const LEADS = ['paula.shoemaker@greatdayimprovements.com','trevor.morrissey@greatdayimprovements.com'];
+const LEADS = ['paula.shoemaker@greatdayimprovements.com','trevor.morrissey@greatdayimprovements.com','angelique.critz@greatdayimprovements.com','chris.winston@greatdayimprovements.com'];
 const SUMMARY_SEND = { dow:1, hour:8 };   // Mondays, 8:00 am (the first manager to open the hub after that sends it)
 const PHOTO_KEEP_DAYS = 365;               // booth photos are deleted after 12 months (receipts and training files are kept)
 function isLeadUser(){ return !!(S.user && LEADS.includes(String(S.user.email||'').toLowerCase())) || (DEMO && !!S.user && !previewing()); }

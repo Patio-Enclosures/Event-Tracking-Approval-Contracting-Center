@@ -104,6 +104,8 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .mini .mt{display:flex;flex-direction:column;min-width:0}.mini b{font-size:15px}.mini small{font-size:12px;color:var(--ink-soft)}.mini small.warn{color:var(--warn);font-weight:600}
 .mini .flag{position:absolute;top:-8px;right:-8px;background:var(--warn);color:#fff;border-radius:12px;padding:1px 8px;font-size:12px;font-weight:700}
 .tile{position:relative;aspect-ratio:1/1;background:var(--surface);border:2px solid var(--tc,var(--line));border-radius:14px;padding:20px;cursor:pointer;display:flex;flex-direction:column;text-align:left;transition:transform .12s,box-shadow .12s,border-color .12s}
+.skuph{width:74px;cursor:pointer;position:relative;text-align:center}.skuph img{width:60px;height:60px;object-fit:contain;border:1px solid var(--line);border-radius:6px;background:#fff;display:block;margin:auto}.skuph>span{display:flex;align-items:center;justify-content:center;width:60px;height:60px;margin:auto;border:1px dashed var(--line);border-radius:6px;font-size:11px;color:var(--muted);line-height:1.2}
+.skuph.on img,.skuph.on>span{outline:3px solid var(--aqua);outline-offset:1px}.skufile{position:absolute;right:0;bottom:0;font-size:12px;cursor:pointer;background:#fff;border-radius:4px;padding:0 2px}
 .athumb{border-radius:6px;object-fit:contain;background:#fff;border:1px solid var(--line);flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;font-size:18px}
 .athumb.none{background:var(--soft,#f4f6f7);color:var(--muted)}
 .arow{display:flex;gap:10px;align-items:center}
@@ -673,19 +675,21 @@ function shopOverlay(){
   const offs=offices(), inOff=(sku)=>S.assets.filter(a=>!a.retired && a.shopSku===sku && (a.office||'')===(A.office||''));
   const row=x=>{ const have=inOff(x.sku), g=x.kind==='gear';
     const haveTxt=g ? (have.length?`${have.length} in hub`:'') : (have.length?`${stOf(have[0]).qty} on hand`:'');
-    return `<tr><td>${x.url?`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.name)}</a>`:`<b>${esc(x.name)}</b>`}<div class="small muted">${x.price!=null?`${x.sku} · $${x.price.toFixed(2)}`:`Price TBD${x.available&&x.available>todayIso()?` · orderable ${fmtLong(x.available)}`:''}`}${x.unit?' · '+esc(x.unit):''}${haveTxt?' · <b>'+haveTxt+'</b>':''}</div></td>
+    const ph=(S.assetPhotos||{})[x.sku]||ITEM_IMG[x.sku]||'';
+    return `<tr><td class="skuph ${ui.pasteSku===x.sku?'on':''}" data-act="skuPick" data-sku="${x.sku}" title="Click, then paste a copied picture (Ctrl+V / ⌘V), or choose a file">${ph?`<img src="${esc(ph)}" alt="">`:'<span>📷<br>Add</span>'}<label class="skufile" title="Choose a picture file">📁<input type="file" accept="image/*" data-skuphoto="${x.sku}" style="display:none"></label></td><td>${x.url?`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.name)}</a>`:`<b>${esc(x.name)}</b>`}<div class="small muted">${x.price!=null?`${x.sku} · $${x.price.toFixed(2)}`:`Price TBD${x.available&&x.available>todayIso()?` · orderable ${fmtLong(x.available)}`:''}`}${x.unit?' · '+esc(x.unit):''}${haveTxt?' · <b>'+haveTxt+'</b>':''}</div></td>
       <td class="small">${g?'Booth asset':'Stock'}</td>
       <td><input type="number" min="0" step="1" data-shopq="${x.sku}" data-keep="shopq-${esc(A.office||"")}-${x.sku}" value="${esc(A.qty[x.sku]??'')}" placeholder="0" style="width:80px" aria-label="${g?'Units':'Quantity on hand'} for ${esc(x.name)}"></td>
       <td>${g?'<span class="small muted">—</span>':`<input type="number" min="0" step="1" data-shopr="${x.sku}" data-keep="shopr-${esc(A.office||"")}-${x.sku}" value="${esc(A.reorder[x.sku]??(have[0]&&have[0].reorderAt!==''&&have[0].reorderAt!=null?have[0].reorderAt:''))}" placeholder="—" style="width:80px" aria-label="Reorder point for ${esc(x.name)}">`}</td></tr>`; };
   const gear=SHOP_CATALOG.filter(x=>x.kind==='gear'), cons=SHOP_CATALOG.filter(x=>x.kind!=='gear');
   return `<div class="tourbg" data-act="shopClose"><div class="tourbox phelp" style="max-width:820px" role="dialog" aria-label="Add from Great Day Shop"><div class="tourstep">Asset inventory</div><h2>🛒 Add from the supply list</h2>
     <p class="small muted" style="margin-top:0">Pick the office, then enter what it actually has. Booth assets get their own barcode (one per unit) so you can print labels. Stock adds to what’s on hand. Prices and links come from the <a href="${SHOP_URL}" target="_blank" rel="noopener">Great Day Shop</a> and your other suppliers.</p>
+    <div class="notice" style="margin:6px 0 10px"><b>📷 Adding pictures:</b> open the item on the Great Day Shop (the item name is a link), right-click its picture and choose <b>Copy image</b>, then click the item’s picture box here and press <b>Ctrl+V</b> (<b>⌘V</b> on a Mac). Or tap 📁 to choose a saved picture. Pictures save right away (no office needed) and show on every item with that SKU.${ui.pasteSku?` <span class="pill p-blue">Ready to paste for ${esc((SHOP_CATALOG.find(x=>x.sku===ui.pasteSku)||{}).name||ui.pasteSku)}</span>`:''}</div>
     <div class="field" style="max-width:320px"><label>Office</label><select data-shopoff>${['',...offs].map(o=>`<option value="${esc(o)}" ${o===(A.office||'')?'selected':''}>${o?esc(o):'Choose an office…'}</option>`).join('')}</select></div>
-    <div style="max-height:52vh;overflow:auto"><table><thead><tr><th>Item</th><th>Type</th><th>Units / on hand</th><th>Reorder at</th></tr></thead><tbody>
-      <tr><td colspan="4" class="small" style="background:#f4f6f6"><b>Booth assets</b>: how many units this office has</td></tr>${gear.filter(x=>!x.bannerSet && !x.other).map(row).join('')}
-      <tr><td colspan="4" class="small" style="background:#f4f6f6"><b>Other booth items</b> (not from the Great Day Shop)</td></tr>${gear.filter(x=>x.other).map(row).join('')}
-      <tr><td colspan="4" class="small" style="background:#f4f6f6"><b>Pop-up banners</b>: count the new banners only (never legacy ones). Use the set for this office’s area. On order from the Great Day Shop starting ${fmtLong('2026-12-01')}.</td></tr>${gear.filter(x=>x.bannerSet).sort((a,b)=>(a.bannerSet===bannerSetFor(A.office)?0:1)-(b.bannerSet===bannerSetFor(A.office)?0:1)).map(row).join('')}
-      <tr><td colspan="4" class="small" style="background:#f4f6f6"><b>Print, giveaways and badges</b>: quantity on hand now (in the unit shown), and when to reorder</td></tr>${cons.map(row).join('')}
+    <div style="max-height:52vh;overflow:auto"><table><thead><tr><th style="width:74px">Picture</th><th>Item</th><th>Type</th><th>Units / on hand</th><th>Reorder at</th></tr></thead><tbody>
+      <tr><td colspan="5" class="small" style="background:#f4f6f6"><b>Booth assets</b>: how many units this office has</td></tr>${gear.filter(x=>!x.bannerSet && !x.other).map(row).join('')}
+      <tr><td colspan="5" class="small" style="background:#f4f6f6"><b>Other booth items</b> (not from the Great Day Shop)</td></tr>${gear.filter(x=>x.other).map(row).join('')}
+      <tr><td colspan="5" class="small" style="background:#f4f6f6"><b>Pop-up banners</b>: count the new banners only (never legacy ones). Use the set for this office’s area. On order from the Great Day Shop starting ${fmtLong('2026-12-01')}.</td></tr>${gear.filter(x=>x.bannerSet).sort((a,b)=>(a.bannerSet===bannerSetFor(A.office)?0:1)-(b.bannerSet===bannerSetFor(A.office)?0:1)).map(row).join('')}
+      <tr><td colspan="5" class="small" style="background:#f4f6f6"><b>Print, giveaways and badges</b>: quantity on hand now (in the unit shown), and when to reorder</td></tr>${cons.map(row).join('')}
     </tbody></table></div>
     ${A.err?`<div class="notice err">${esc(A.err)}</div>`:''}
     <div class="row" style="justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn" data-act="shopClose">Cancel</button><button class="btn primary" data-act="shopSave" ${ui.busy?'disabled':''}>${ui.busy?'Adding…':'Add to inventory'}</button></div></div></div>`;
@@ -3304,7 +3308,7 @@ function pageHelpData(){
   assets:{ t:'Asset Inventory & Check-Out', what:'Every office’s booth assets, kits, print and giveaways: what you have, where it is, who has it, and what to reorder.',
     how:['<b>Set up an office:</b> tap <b>🛒 Add from supply list</b>, pick the office, and enter what it actually has. Booth assets (tents, tables, covers, pop-up banners, chairs and more) get one barcode per unit; print, giveaways and badges are counted as stock with a reorder point.',
       '<b>Build kits:</b> tap <b>🧰 Build a kit</b>, choose Indoor Layout A, B or C or Outdoor, the office, and the marketer or branch it’s for. The hub fills each slot from that office’s available items using its banner set (Main, Texas or Southwest); change any pick, then <b>Create kit</b>.',
-      '<b>Pictures:</b> supply-list items show their picture in the list. Open any item and tap <b>📷 Add picture</b> to add or replace one; a picture on a supply-list item is shared by every item with that SKU.',
+      '<b>Pictures:</b> the quickest way is <b>🛒 Add from supply list</b>: copy a product picture on the Great Day Shop (right-click → Copy image), click the item’s picture box and press Ctrl+V (⌘V on a Mac), or tap 📁 to pick a file. A supply-list picture shows on every item with that SKU. For any other item, open it and tap <b>📷 Add picture</b>.',
       '<b>Label everything:</b> new items and kits are ticked after you add them. Tap <b>Print labels</b> and stick one on each item and kit.',
       '<b>Check out / return:</b> scan a kit (or any item) out to a marketer for an event and back in, with its condition.',
       '<b>Pack a kit:</b> open the kit and tap <b>🖨 Packing list</b> for its assets plus the paper collateral checklist.',
@@ -4440,7 +4444,7 @@ document.addEventListener('click', async ev=>{
   if(a==='kitSave'){ try{ await kitSave(); }catch(e){ console.error(e); if(ui.kitBuild) ui.kitBuild.err='Couldn’t save: '+(e.code||e.message); render(); } return; }
   if(a==='kitPrint'){ const k=assetById(t.dataset.id); if(k) printKitList(k); return; }
   if(a==='shopAdd'){ ui.shopAdd={ office:soleOffice()||'', qty:{}, reorder:{} }; render(); return; }
-  if(a==='shopClose'){ if(ev.target.closest('.tourbox') && t.classList.contains('tourbg')) return; ui.shopAdd=null; render(); return; }
+  if(a==='shopClose'){ if(ev.target.closest('.tourbox') && t.classList.contains('tourbg')) return; ui.shopAdd=null; ui.pasteSku=null; render(); return; }
   if(a==='shopSave'){ try{ await shopSave(); }catch(e){ console.error(e); if(ui.shopAdd){ ui.shopAdd.err='Couldn’t save: '+(e.code||e.message); } render(); } return; }
   if(a==='glRef'){ ui.help=null; ui.glRef=true; render(); return; }
   if(a==='glClose'){ if(ev.target.closest('.tourbox') && t.classList.contains('tourbg')) return; ui.glRef=false; render(); return; }
@@ -4554,6 +4558,7 @@ document.addEventListener('click', async ev=>{
     await guard(()=>saveAudit(id,{ name:nm, offices:offs, startedAt:Date.now(), startedBy:(S.user&&S.user.email)||'' })); ui.audit=id; render(); return; }
   if(a==='auditBranch'){ const o=((document.querySelector('[data-keep="auditBranch"]')||{}).value||''); if(!o){ ui.notice='Choose the branch to count.'; ui.noticeKind='warn'; render(); return; } const id='au_'+uid();
     await guard(()=>saveAudit(id,{ name:`${o} inventory – ${fmtLong(todayIso())}`, offices:[o], startedAt:Date.now(), startedBy:(S.user&&S.user.email)||'' })); ui.audit=id; ui.auditOffice=o; render(); return; }
+  if(a==='skuPick'){ if(ev.target.closest('.skufile')) return; ui.pasteSku=t.dataset.sku; render(); return; }
   if(a==='itemPhotoDel'){ const x=assetById(t.dataset.aid); if(!x||!S.user) return; if(!confirm('Remove this picture?')) return; const P=S.assetPhotos||{}; if(P[x.id]) await guard(()=>saveAssetPhoto(x.id,null)); if(x.shopSku && P[x.shopSku]) await guard(()=>saveAssetPhoto(x.shopSku,null)); render(); return; }
   if(a==='auditDelete'){ const au=S.audits[ui.audit]; if(!au||!canDeleteAudit(au)) return; if(!confirm(`Delete “${au.name}”? The count and its progress are removed. Items’ check-out history isn’t affected.`)) return; const id=ui.audit; ui.audit=null; ui.scanMsg=null; await guard(()=>deleteAudit(id)); ui.notice='Count deleted.'; ui.noticeKind='ok'; render(); return; }
   if(a==='auditBack'){ ui.audit=null; ui.scanMsg=null; render(); return; }
@@ -4576,7 +4581,18 @@ async function guard(fn){ try{ await fn(); }catch(e){ console.error(e); ui.notic
 async function fetchLoc(){ const p=ui.panel; const r=await getLocation(); if(ui.panel!==p) return; p.loc=r.loc; p.locNote=r.note||''; render(); }
 function readEvalDraft(){ document.querySelectorAll('[data-ef]').forEach(el=>{ ui.evalDraft[el.dataset.ef]=el.value; }); }
 document.addEventListener('input', ev=>{ const el=ev.target; if(el.dataset.ex && ui.exp && el.type!=='checkbox' && el.type!=='radio'){ setPath(ui.exp, el.dataset.ex, el.value); if(el.type==='number') updateExpTotals(); } if(el.dataset.ef && ui.evalDraft) ui.evalDraft[el.dataset.ef]=el.value; if(el.dataset.asg && el.tagName!=='SELECT'){ asgDraft()[el.dataset.asg]=el.value; } if(el.dataset.asgstep!==undefined && el.type!=='date'){ const st=asgDraft().steps[+el.dataset.asgstep]; if(st) st[el.dataset.sf]=el.value; } if(el.dataset.act==='aq'){ ui.aq=el.value; render(); } });
+async function saveSkuPhoto(sku, blob){ if(!S.user){ ui.notice='Sign in to add pictures.'; ui.noticeKind='err'; render(); return; }
+  try{ const d=await compressImage(blob, 480); await guard(()=>saveAssetPhoto(sku, d)); const it=SHOP_CATALOG.find(x=>x.sku===sku); if(ui.shopAdd) ui.shopAdd.err=''; ui.notice=`Picture saved for ${it?it.name:sku}.`; ui.noticeKind='ok'; }
+  catch(e){ ui.notice=e.message||'Couldn’t save that picture.'; ui.noticeKind='err'; } render(); }
+document.addEventListener('paste', async e=>{
+  if(!ui.shopAdd || !ui.pasteSku) return; const items=[...((e.clipboardData&&e.clipboardData.items)||[])]; const it=items.find(x=>x.type&&x.type.startsWith('image/'));
+  if(!it){ const tgt=e.target; if(tgt && /INPUT|TEXTAREA/.test(tgt.tagName)) return; ui.notice='That isn’t a picture. On the Great Day Shop, right-click the product picture and choose “Copy image”, then paste here.'; ui.noticeKind='err'; render(); return; }
+  e.preventDefault(); await saveSkuPhoto(ui.pasteSku, it.getAsFile());
+});
+document.addEventListener('dragover', e=>{ if(e.target.closest && e.target.closest('.skuph')) e.preventDefault(); });
+document.addEventListener('drop', async e=>{ const c=e.target.closest && e.target.closest('.skuph'); if(!c) return; e.preventDefault(); const f=[...(e.dataTransfer.files||[])].find(x=>x.type.startsWith('image/')); if(f) await saveSkuPhoto(c.dataset.sku, f); else { ui.notice='Drop a picture file here, or copy the picture and paste it.'; ui.noticeKind='err'; render(); } });
 document.addEventListener('change', async ev=>{
+  if(ev.target.dataset && ev.target.dataset.skuphoto){ const f=ev.target.files&&ev.target.files[0]; if(f) await saveSkuPhoto(ev.target.dataset.skuphoto, f); return; }
   if(ev.target.dataset && ev.target.dataset.flexmove){ const fm=Object.assign({}, mgrDoc().flexMove||{}); if(ev.target.value) fm[ev.target.dataset.flexmove]=ev.target.value; else delete fm[ev.target.dataset.flexmove]; await guard(()=>saveMgr({ flexMove:fm })); return; }
   if(ev.target.dataset && ev.target.dataset.itemphoto){ const a=assetById(ev.target.dataset.itemphoto), f=ev.target.files&&ev.target.files[0]; if(!a||!f||!S.user) return;
     try{ const d=await compressImage(f, 480); await guard(()=>saveAssetPhoto(photoKey(a), d)); if(photoKey(a)!==a.id && (S.assetPhotos||{})[a.id]) await saveAssetPhoto(a.id, null); ui.notice='Picture saved.'; ui.noticeKind='ok'; }catch(e){ ui.notice=e.message||'Couldn’t save that picture.'; ui.noticeKind='err'; } render(); return; }

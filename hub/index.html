@@ -115,6 +115,13 @@ details.hsec>summary::-webkit-details-marker{display:none}
 details.hsec>summary::before{content:'▸';color:var(--muted);font-size:14px;transition:transform .15s;flex:0 0 auto}
 details.hsec[open]>summary::before{transform:rotate(90deg)}
 details.hsec>summary .homeh{margin:14px 0 8px}
+.sprintline{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.sblock{border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;background:#fff}
+.sblock span{font-size:12.5px}.sblock small{color:var(--muted);font-size:12px}.sblock em{font-style:normal;font-size:12px;font-weight:600;color:var(--red)}
+.sblock.on{border:2px solid var(--aqua);background:#e8f7f8}.sblock.past{opacity:.55}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.invgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin:8px 0}
+.kv>div{margin:3px 0}.kv .lbl{display:inline-block;min-width:150px}
+@media (max-width:720px){ .sprintline{grid-template-columns:1fr 1fr} .grid2{grid-template-columns:1fr} }
 .tile .tilebtn{margin-top:10px;align-self:flex-start}
 .tile.off{cursor:default;opacity:.55;filter:grayscale(1)}
 .tile.off:hover{transform:none;box-shadow:none;border-width:2px;padding:20px}
@@ -444,14 +451,18 @@ function liveEvents(){ return S.sched.events.filter(e=>INCLUDE_STATUSES.includes
 function offices(){ const s=new Set(); S.sched.events.forEach(e=>e.office&&s.add(e.office)); S.sched.roster.forEach(r=>r.office&&s.add(r.office)); S.assets.forEach(a=>a.office&&s.add(a.office)); return [...s].sort(); }
 // Region of each office comes from the ETACC Region column on its events.
 function regionMap(){ const c={}; S.sched.events.forEach(e=>{ if(e.office&&e.region){ c[e.office]=c[e.office]||{}; c[e.office][e.region]=(c[e.office][e.region]||0)+1; } });
-  const m={}; Object.entries(c).forEach(([o,r])=>{ m[o]=Object.entries(r).sort((a,b)=>b[1]-a[1])[0][0]; }); return m; }
+  const m={}; Object.entries(c).forEach(([o,r])=>{ m[o]=recodeRegion(o, Object.entries(r).sort((a,b)=>b[1]-a[1])[0][0]); }); return m; }
+// GC, PL and UMW are no longer active (Nov–Dec 2026 sprint): their branches belong to the active region that owns them.
+const INACTIVE_REGIONS = ['GC','PL','UMW'];
+const RECODE_BY_CITY = [['Houston','SC-2'],['Mobile','SE'],['Omaha','UPL'],['St. Louis','UPL'],['Saint Louis','UPL'],['Chicago','UPL'],['Madison','UPL']];
+function recodeRegion(office, r){ const R=String(r||'').replace(/^(SC|SA|MW)2$/,'$1-2'); if(!INACTIVE_REGIONS.includes(R)) return R; const hit=RECODE_BY_CITY.find(([c])=>String(office||'').toLowerCase().includes(c.toLowerCase())); return hit?hit[1]:R; }
 function regionOf(o){ return regionMap()[o]||''; }
 // Org chart: divisions → regions → regional manager. Emails are work emails (first.last@greatdayimprovements.com).
 const REGION_NAMES = { SA:'South Atlantic', 'SA-2':'South Atlantic 2', NE:'Northeast', MAN:'Mid-Atlantic North', MAS:'Mid-Atlantic South', MW:'Midwest', UPL:'Upper Plains', 'MW-2':'Midwest 2', OV:'Ohio Valley', SC:'South Central', 'SC-2':'South Central 2', SW:'Southwest', PNW:'Pacific Northwest', SE:'Southeast' };
 const ORG = [
   { division:'East', leader:{ name:'Trevor Morrissey', email:'trevor.morrissey@greatdayimprovements.com' }, regions:{ SA:{ name:'Trevor Morrissey', email:'trevor.morrissey@greatdayimprovements.com' }, 'SA-2':{ name:'Jessica Bustamante-Ripper', email:'jessica.bustamante-ripper@greatdayimprovements.com' }, NE:{ name:'Mike Wing', email:'michael.wing@greatdayimprovements.com' }, MAN:{ name:'Jarrett Branch', email:'jarrett.branch@greatdayimprovements.com' }, MAS:{ name:'Jarrett Branch', email:'jarrett.branch@greatdayimprovements.com' }, SE:{ name:'Kristy Riggins', email:'kristy.riggins@greatdayimprovements.com' } } },
-  { division:'Central', leader:{ name:'Angelique Critz', email:'angelique.critz@greatdayimprovements.com' }, regions:{ MW:{ name:'Angelique Critz', email:'angelique.critz@greatdayimprovements.com' }, UPL:{ name:'Angelique Critz', email:'angelique.critz@greatdayimprovements.com' }, 'MW-2':{ name:'Eddie Wilson', email:'eddie.wilson@greatdayimprovements.com' }, OV:{ name:'Kortnee Brown', email:'kortnee.brown@greatdayimprovements.com' } } },
-  { division:'West', leader:{ name:'Chris Winston', email:'chris.winston@greatdayimprovements.com' }, regions:{ SC:{ name:'Chris Winston', email:'chris.winston@greatdayimprovements.com' }, 'SC-2':{ name:'Stephen Novak', email:'stephen.novak@greatdayimprovements.com' }, SW:{ name:'Chris Winston', email:'chris.winston@greatdayimprovements.com' }, PNW:{ name:'Chris Winston', email:'chris.winston@greatdayimprovements.com' } } },
+  { division:'Central', leader:{ name:'Angelique Critz', email:'angelique.critz@greatdayimprovements.com' }, regions:{ OV:{ name:'Angelique Critz', email:'angelique.critz@greatdayimprovements.com' }, SE:{ name:'Kristy Riggins', email:'kristy.riggins@greatdayimprovements.com' }, MW:{ name:'Angelique Critz', email:'angelique.critz@greatdayimprovements.com' }, UPL:{ name:'Angelique Critz', email:'angelique.critz@greatdayimprovements.com' }, 'MW-2':{ name:'Eddie Wilson', email:'eddie.wilson@greatdayimprovements.com' }, OV:{ name:'Kortnee Brown', email:'kortnee.brown@greatdayimprovements.com' } } },
+  { division:'West', leader:{ name:'Chris Winston', email:'chris.winston@greatdayimprovements.com' }, regions:{ PNW:{ name:'Chris Winston', email:'chris.winston@greatdayimprovements.com' }, SC:{ name:'Chris Winston', email:'chris.winston@greatdayimprovements.com' }, 'SC-2':{ name:'Stephen Novak', email:'stephen.novak@greatdayimprovements.com' }, SW:{ name:'Chris Winston', email:'chris.winston@greatdayimprovements.com' }, PNW:{ name:'Chris Winston', email:'chris.winston@greatdayimprovements.com' } } },
 ];
 function regionName(r){ return REGION_NAMES[r] ? `${REGION_NAMES[r]} (${r})` : r; }
 function divisionOf(r){ return ORG.find(d=>d.regions[r]) || null; }
@@ -695,7 +706,13 @@ function shopOverlay(){
     <div class="row" style="justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn" data-act="shopClose">Cancel</button><button class="btn primary" data-act="shopSave" ${ui.busy?'disabled':''}>${ui.busy?'Adding…':'Add to inventory'}</button></div></div></div>`;
 }
 // Which banner artwork set an office uses (Texas offices → Texas set; Southwest region → Southwest set; everyone else → main).
-function bannerSetFor(office){ const r=regionOf(office||''); if(r==='SW') return 'sw'; if(r==='SC'||r==='SC-2') return 'tx'; return 'main'; }
+const TX_CITIES=['Abilene','Sweetwater','Odessa','Midland','Amarillo','Lubbock','Dallas','Fort Worth','Austin','Houston','San Antonio','Waco'];
+const SW_CITIES=['Las Vegas','Phoenix','Tucson'];
+function bannerSetSuggested(office){ const o=String(office||'').toLowerCase(); if(TX_CITIES.some(c=>o.includes(c.toLowerCase()))) return 'tx'; if(SW_CITIES.some(c=>o.includes(c.toLowerCase()))) return 'sw';
+  const r=regionOf(office||''); if(r==='SW') return 'sw'; if((r==='SC'||r==='SC-2') && !/shreveport/.test(o)) return 'tx'; return 'main'; }
+function bannerSetAssigned(office){ const m=(S.bannerSets&&S.bannerSets.sets)||{}, o=String(office||'').toLowerCase(); const k=Object.keys(m).find(x=>x && o.includes(x.toLowerCase())); return k?m[k]:''; }
+// Which set an office uses: the set a senior regional assigned on the Sprint page, otherwise the suggestion.
+function bannerSetFor(office){ return bannerSetAssigned(office) || bannerSetSuggested(office); }
 async function shopSave(){
   const A=ui.shopAdd;
   document.querySelectorAll('[data-shopq]').forEach(el=>{ A.qty[el.dataset.shopq]=el.value; });
@@ -730,6 +747,8 @@ const KIT_TYPES = {
   B:{ label:'Indoor kit · Layout B (3 banners with benefits)', req:[['enclose','Banner: Enclose Your Patio or Porch',BNR('ENCLOSE')],['benefits','Banner: Enjoy These Benefits',BNR('BENEFITS')],['sunrooms','Banner: Sunrooms & Screen Rooms',BNR('SUNROOMS')],KIT_REQ.coverReq,KIT_REQ.tableReq,KIT_REQ.chairReq] },
   C:{ label:'Indoor kit · Layout C (3 banners with QR code)', req:[['enclose','Banner: Enclose Your Patio or Porch',BNR('ENCLOSE')],['qr','Banner: Scan to Learn More (QR)',BNR('QR')],['sunrooms','Banner: Sunrooms & Screen Rooms',BNR('SUNROOMS')],KIT_REQ.coverReq,KIT_REQ.tableReq,KIT_REQ.chairReq] },
   O:{ label:'Outdoor kit', req:[['tent','Canopy tent',a=>['GRD1785','GRD1794'].includes(a.shopSku)||(a.category==='Tent'&&/canopy|tent/i.test(a.name)&&!/weight/i.test(a.name)),false],['weights','Canopy weights',a=>['GRD1779','GRD1793'].includes(a.shopSku)||/weight/i.test(a.name),false],['backdrop','Backdrop banner (Mesh Outdoor Banner)',a=>a.shopSku==='OTH-BANNER-OUT'||/mesh|backdrop/i.test(a.name),false],KIT_REQ.coverReq,KIT_REQ.tableReq,KIT_REQ.chairReq] } };
+// Sprint kit standard (Nov 2026): a $100K Sweepstakes display in every kit.
+Object.values(KIT_TYPES).forEach(T=>{ if(!T.req.some(r=>r[0]==='sweeps')) T.req.push(['sweeps','$100K Sweepstakes display',a=>a.shopSku==='KIT-SWEEPS'||/sweepstakes/i.test(a.name||''),false]); });
 const KIT_COLLATERAL = ['Promo flyers (current promotion only)','Easel back poster (current promotion)','8.5×11 brochures, Patio Enclosures and Stanek Windows (3-month supply)','Trifolds, Patio Enclosures and Stanek Windows (3-month supply)','Scratch-off cards (current year)','Pre-consultation checklists','$100K Sweepstakes display in a frame or acrylic holder','Lead generation tear pads','Photo book / easel binder (optional)','Tradeshow ID badge and lanyard for each marketer'];
 function kitSet(kit){ return kit.bannerSet || bannerSetFor(kit.office); }
 function kitCheck(kit){ // missing required pieces (lost or retired items don't count)
@@ -816,9 +835,9 @@ function inventoryView(){
     ${scanBox('lookup','Scan an item to look it up')}
     <div class="row small" style="margin:8px 0">${sel.length?`<b>${sel.length} selected</b> <button class="btn sm" data-act="labels">🏷 Print ${sel.length} label${sel.length===1?'':'s'}</button> <button class="btn sm" data-act="selNone">Clear</button>`:`<button class="btn sm" data-act="labelsAll">🏷 Print labels for everything shown</button> <span class="muted">or tick items to choose</span>`}</div>
     ${hsec('a-gear',`<h3 style="display:inline">Booth assets & kits (${gear.length})</h3>`,`${gear.length?`<table><thead><tr><th style="width:26px"></th><th>Code</th><th>Item</th><th>Office</th><th>Status</th><th>Condition</th><th>Value</th></tr></thead><tbody>${gear.map(a=>{ const s=stOf(a), kit=kitOf(a.id);
-      return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td><div class="arow">${assetThumb(a)}<div>${a.kind==='kit'?'🧰 ':''}${esc(a.name)}<div class="small muted">${esc(a.category||'')}${a.kind==='kit'?` · ${(a.contents||[]).length} items`:''}${kit?` · in ${esc(kit.name)}`:''}${a.kind==='kit'&&a.assignedTo?` · assigned to ${esc(a.assignedTo.name||a.assignedTo.office||'')}`:''}</div>${a.kind==='kit'&&a.kitType?(()=>{ const m=kitCheck(a)||[]; return m.length?`<span class="pill p-warn" title="${esc(m.join(', '))}">missing ${m.length}</span>`:'<span class="pill p-green">complete</span>'; })():''}</div></div></td><td class="small">${esc(s.office||'Any')}</td><td>${statusPill(a)}</td><td class="small">${esc(s.condition||'')}</td><td class="small">${a.cost?money(a.cost):''}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No booth assets match.</p>'}`)}
+      return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td><div class="arow">${assetThumb(a)}<div>${a.kind==='kit'?'🧰 ':''}${esc(a.name)}<div class="small muted">${esc(a.category||'')}${a.kind==='kit'?` · ${(a.contents||[]).length} items`:''}${kit?` · in ${esc(kit.name)}`:''}${a.kind==='kit'&&a.assignedTo?` · assigned to ${esc(a.assignedTo.name||a.assignedTo.office||'')}`:''}</div>${a.kind==='kit'&&a.kitType?(()=>{ const m=kitCheck(a)||[]; return m.length?`<span class="pill p-warn" title="${esc(m.join(', '))}">missing ${m.length}</span>`:'<span class="pill p-green">complete</span>'; })():''}</div></div></td><td class="small">${esc(s.office||'Any')}${isPausedOffice(s.office)?' <span class="pill p-gray" title="Branch paused in the 2027 plan (v22): redeploy its assets to Keep & Grow markets before buying new">Paused</span>':''}</td><td>${statusPill(a)}</td><td class="small">${esc(s.condition||'')}</td><td class="small">${a.cost?money(a.cost):''}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No booth assets match.</p>'}`)}
     ${hsec('a-cons',`<h3 style="display:inline">Giveaways & print (${cons.length})</h3>`,`${cons.length?`<table><thead><tr><th style="width:26px"></th><th>Code</th><th>Item</th><th>Office</th><th>On hand</th><th>Reorder at</th><th>Used (30 days)</th><th>Last count</th></tr></thead><tbody>${cons.map(a=>{ const s=stOf(a);
-      return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td><div class="arow">${assetThumb(a)}<div>${esc(a.name)}<div class="small muted">${esc(a.category||'')}</div></div></div></td><td class="small">${esc(s.office||'Any')}</td><td>${statusPill(a)}</td><td class="small">${a.reorderAt!==''&&a.reorderAt!=null?esc(a.reorderAt):'—'}</td><td class="small">${usedLast(a,30)}</td><td class="small">${s.lastCount?fmtStamp(s.lastCount):'—'}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No giveaway or print items match.</p>'}`)}
+      return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td><div class="arow">${assetThumb(a)}<div>${esc(a.name)}<div class="small muted">${esc(a.category||'')}</div></div></div></td><td class="small">${esc(s.office||'Any')}${isPausedOffice(s.office)?' <span class="pill p-gray" title="Branch paused in the 2027 plan (v22): redeploy its assets to Keep & Grow markets before buying new">Paused</span>':''}</td><td>${statusPill(a)}</td><td class="small">${a.reorderAt!==''&&a.reorderAt!=null?esc(a.reorderAt):'—'}</td><td class="small">${usedLast(a,30)}</td><td class="small">${s.lastCount?fmtStamp(s.lastCount):'—'}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No giveaway or print items match.</p>'}`)}
   </div>`;
 }
 function stationView(){
@@ -2725,7 +2744,7 @@ function asgTodo(){
   const me=myEmail(), t=todayIso(), out=[];
   asgMine().forEach(task=>(task.steps||[]).forEach(st=>{
     if(asgDoneRec(task.id, st.id, me)) return;
-    const late=stepLate(st,t), dueNow=st.scope==='day'?st.due===t:(mondayOf(st.due)===mondayOf(t));
+    const late=stepLate(st,t), dueNow=st.scope==='day'?(st.due===t || (!!task.sprint && st.due>t && st.due<=addDays(t,7))):(mondayOf(st.due)===mondayOf(t));
     if(late||dueNow) out.push({ text:((task.steps||[]).length>1?`${task.title}: ${st.text}`:task.title), sub:`From ${asgByName(task)} · ${late?'overdue, ':''}${st.scope==='week'?'week of '+fmtMD(mondayOf(st.due)):'due '+fmtMD(st.due)}`, red:late||!!task.required });
   }));
   return out;
@@ -2739,6 +2758,149 @@ async function asgSetDone(tid, sid, on, note){
   if(S.mode!=='live') localSave(); render();
 }
 
+/* ===================== NOV–DEC 2026 SPRINT =====================
+   From "Event Marketing Sprint: November–December 2026" (Nov 9, 2026). Targets come from the 2027 Event Planning Budget (v22). */
+const SPRINT = {
+  id:'s2026nd', title:'Event Marketing Sprint: Nov–Dec 2026', start:'2026-11-09', end:'2026-12-31',
+  goal:'By Dec 31 the team goes into 2027 with the Q1 show calendar contracted, every Q1 event staffed, and a counted, condition-checked inventory of booth assets in every region.',
+  targets:[['Cost per gross opp','under $350'],['Cancel rate','28%'],['$/MAR','15–17%']],
+  coverage:[['Angel Critz','MW, MW2, UPL, OV, SE'],['Trevor Morrissey','SA, SA2, NE, MAN, MAS'],['Chris Winston','PNW, SC, SC2, SW']],
+  blocks:[ { n:1, from:'2026-11-09', to:'2026-11-20', focus:'Decisions' }, { n:2, from:'2026-11-23', to:'2026-12-04', focus:'Contracts and hiring (Thanksgiving week)' },
+           { n:3, from:'2026-12-07', to:'2026-12-18', focus:'Contracts and hiring' }, { n:4, from:'2026-12-21', to:'2026-12-31', focus:'Training new staff, retro' } ],
+  ws:[
+    { k:'cal', n:1, title:'Fill the 2027 calendar', finish:'Every Q1 2027 show in the plan contracted and paid or deposited; Q2 shows booked or on hold; no “Cut” event renewed', lead:'Manager for their regions/branches; supervisor approves', measure:'Q1 shows contracted ÷ Q1 shows planned, by region',
+      tasks:[ ['c1','Send each senior regional their Q1 show list from the v22 plan, with each show’s grade and contract status','paula','2026-11-13'],
+        ['c2','Mark every uncontracted Q1 show renew, fix or drop; re-check the 26 that did not run in 2026','seniors','2026-11-18'],
+        ['c3','Confirm the Pause, Probation and Restructure branch decisions for 2027','paulaSeniors','2026-11-20'],
+        ['c4','Confirm whether Mountain West (Denver, Salt Lake City) and the Florida branches belong in the 2027 event budget','paula','2026-11-20'],
+        ['c5','Clear the 49 contracted shows flagged for review and the $16,075 balance still due','paula','2026-11-25'],
+        ['c6','Find replacement or new shows where drops leave a branch with no Q1 events','seniors','2026-12-11'],
+        ['c7','Sign contracts and pay deposits for the 108 Q1 shows still to contract; enter each in the Tradeshow Master','seniors','2026-12-18'],
+        ['c8','Negotiate booth size and placement at Keep & Grow shows','seniors','2026-12-18'],
+        ['c9','Place holds on Q2 home shows (April to June)','seniors','2026-12-18'] ] },
+    { k:'rec', n:2, title:'Recruit for Q1 events', finish:'Every Q1 show has its booth staff named, hired and trained before its first day', lead:'Senior regionals with managers', measure:'Q1 show days staffed ÷ Q1 show days, by region',
+      tasks:[ ['r1','Build the Q1 staffing grid: each show’s days and the booth staff it needs','managers','2026-11-20'],
+        ['r2','Compare the grid with the current event staff roster; list open seats by branch, sized to each market’s busiest Q1 weekend (shows running at once × staff per booth), not to its total show count','seniors','2026-11-20'],
+        ['r3','Open requisitions for the markets with Q1 gaps and post the event marketer roles (Shannan Foster, HR, with Paula)','paula','2026-11-24'],
+        ['r4','Update booth training: greeting to appointment set, booking the appointment at the show, same-day confirmation calls (the levers for the 28% cancel target)','paula','2026-12-11'],
+        ['r5','Interview and hire for every open seat','managers','2026-12-18'],
+        ['r6','Train new hires, including a shadow shift at a December show where one is on the calendar','seniors','2026-12-23'],
+        ['r7','Publish the January show schedule with a name on every shift','managers','2026-12-31'] ] },
+    { k:'inv', n:3, title:'Asset inventory', finish:'Every branch has counted its booth assets and stock in the Event Hub, barcoded and assigned every non-paper asset, and listed what its kits are short before Q1', lead:'Managers count, barcode and assign; supervisors review; Paula consolidates', measure:'Branches with a completed inventory ÷ all branches',
+      tasks:[ ['i1','Load the full supply list (booth assets and stock) into the Event Hub and send managers the link and the kit standard','paula','2026-11-13'],
+        ['i2','Count every booth asset and stock item on hand in the Event Hub; rate each asset good, needs repair or replace','managers','2026-12-04'],
+        ['i3','Order label stock, add every non-paper asset to the annual branch inventory, then print its barcode label from the Event Hub and apply it','managers','2026-12-04'],
+        ['i4','Assign each asset to a team member, so every marketer’s kit has an owner','managers','2026-12-04'],
+        ['i5','Check each kit against the standard (indoor and outdoor) and the region’s Q1 show calendar; flag shortages and items to retire','seniors','2026-12-09'],
+        ['i6','Order the new pop-up banner set for each office’s area (Main, Texas or Southwest) once the Great Day Shop opens orders Dec 1; never count or reorder legacy banners','managers','2026-12-11'],
+        ['i7','Clear stale paper: retire Sept/Oct flyers and posters, discard expiring scratch-offs when the new supply arrives, top up brochures and trifolds to a 3-month supply','managers','2026-12-18'],
+        ['i8','Move surplus assets between branches, starting with kits from paused branches, before buying new (branch managers approve moves)','managers','2026-12-18'],
+        ['i9','Approve only must-have replacements left after redeploying and repairing; order through the Great Day Shop once funding is agreed','paula','2026-12-18'],
+        ['i10','Keep the consolidated inventory current in the Event Hub so every region can see what exists, where, and who has it','paula','2026-12-31'] ] } ],
+  // Q1 2027 shows by region, as in the v22 workbook on Nov 9
+  q1Plan:[['SC',32,10],['MW',26,11],['SE',14,4],['SA',23,14],['SW',14,5],['MAN',18,10],['MAS',17,9],['PNW',10,4],['GC',8,2],['OV',18,13],['NE',16,13],['UPL',5,2],['PL',5,2],['UMW',5,4]],
+  branchDecisions:[['Pause','Johnstown/Altoona, New Jersey North, Providence, Chicago, Wilkes-Barre/Scranton, Chattanooga'],['Fix (manager decision)','Atlanta, Birmingham'],['Probation','Las Vegas, Louisville, Portland, Greenville, Rochester'],['Restructure','Seattle, Cleveland']],
+  paused:['Johnstown','Altoona','New Jersey North','Providence','Chicago','Wilkes-Barre','Scranton','Chattanooga'],
+  recode:[['GC','Houston','Houston Auto Show','Jan','Keep','No','$4,984','8.6','SC2 (Chris)'],['GC','Houston','Houston Home Show','Jan','Keep & Grow','Yes','$2,939','13.5','SC2 (Chris)'],['GC','Houston','Katy Home & Garden Show','Jan','Keep & Grow','No','$3,990','10','SC2 (Chris)'],['GC','Houston','Houston Spring Home & Garden Show','Feb','Keep','Yes','$4,148','6','SC2 (Chris)'],['GC','Houston','Spring Montgomery Lifestyle Home Show','Feb','Keep – bookings justify','No','$2,858','2','SC2 (Chris)'],['GC','Houston','Tamale Festival','Feb','Fix','No','$834','0.8','SC2 (Chris)'],['GC','Houston','The Woodlands Marathon','Feb','Keep & Grow','No','$1,781','4.8','SC2 (Chris)'],['GC','Mobile','Biloxi Boat Show','Feb','Keep & Grow','No','$3,294','7.7','SE (Angel)'],['PL','Omaha','Council Bluffs Home Show','Jan','Drop','Yes','$3,112','2','UPL (Angel)'],['PL','Omaha','Omaha Lawn Flower & Patio Show','Jan','Keep & Grow','No','$3,467','39.4','UPL (Angel)'],['PL','Omaha','Nebraska Home & Garden Show','Feb','Keep & Grow','No','$3,400','20.2','UPL (Angel)'],['PL','Omaha','Omaha Home & Garden Expo','Feb','Keep & Grow','No','$3,199','8.2','UPL (Angel)'],['PL','St. Louis','Gateway Home Show','Feb','Keep & Grow','Yes','$3,089','15.1','UPL (Angel)'],['UMW','Chicago','Illinois Home Show','Jan','Keep & Grow','Yes','$2,989','12.1','UPL (Angel)'],['UMW','Chicago','Kane County Show','Jan','Fix','Yes','$2,844','3.5','UPL (Angel)'],['UMW','Chicago','Oak Brook Show','Feb','Drop','Yes','$2,844','1.7','UPL (Angel)'],['UMW','Chicago','Tinley Park Show','Feb','Keep','Yes','$2,844','6.2','UPL (Angel)'],['UMW','Madison','Madison Home Expo','Jan','Keep & Grow','No','$4,477','10','UPL (Angel)']],
+  offices:'Angel|MW|Chattanooga|P;Angel|MW|Knoxville;Angel|MW|Nashville;Angel|MW-2|Cincinnati;Angel|MW-2|Indianapolis;Angel|MW-2|Louisville;Angel|OV|Charleston-Huntington;Angel|OV|Cleveland;Angel|OV|Columbus;Angel|OV|Johnstown/Altoona|P;Angel|OV|Pittsburgh;Angel|SE|Atlanta;Angel|SE|Augusta/Macon;Angel|SE|Birmingham;Angel|SE|Huntsville;Angel|SE|Mobile;Angel|SE|Montgomery;Angel|SE|Savannah;Angel|UPL|Chicago|P;Angel|UPL|Madison;Angel|UPL|Omaha;Angel|UPL|St. Louis;Chris|PNW|Portland - OR;Chris|PNW|Seattle;Chris|SC|Abilene/Sweetwater/Odessa/Midland;Chris|SC|Amarillo/Lubbock;Chris|SC|Dallas;Chris|SC|Shreveport;Chris|SC-2|Austin;Chris|SC-2|Houston;Chris|SC-2|San Antonio;Chris|SC-2|Waco;Chris|SW|Las Vegas;Chris|SW|Phoenix;Chris|SW|Tucson;Trevor|MAN|Harrisburg;Trevor|MAN|New Jersey North|P;Trevor|MAN|Philadelphia;Trevor|MAN|Wilkes-Barre/Scranton|P;Trevor|MAS|Baltimore;Trevor|MAS|Norfolk-Virginia;Trevor|MAS|Richmond;Trevor|MAS|Washington;Trevor|NE|Albany;Trevor|NE|Buffalo;Trevor|NE|Hartford;Trevor|NE|Providence|P;Trevor|NE|Rochester;Trevor|SA|Charleston;Trevor|SA|Columbia;Trevor|SA|Myrtle Beach;Trevor|SA-2|Charlotte;Trevor|SA-2|Greenville;Trevor|SA-2|Raleigh;Trevor|SA-2|Winston/Salem'
+    .split(';').map(x=>{ const [sr,r,o,p]=x.split('|'); return { sr, r, o, paused:!!p }; }),
+  kit:[['Retractable pop-up banners, Layout A, B or C (new sets only; the set for the office’s area)','Yes','—','Great Day Shop from Dec 1 · price TBD'],['Branded canopy tent (solid white acceptable)','—','Yes','GRD1785 · $538.46 (or GRD1794 · $384.60)'],['Canopy weight on every leg','—','Yes','GRD1779, pack of 4 · $63.00'],['Mesh outdoor backdrop banner','—','Yes','OTH-BANNER-OUT · $99.99'],['Branded table cover','Yes','Yes','GRD1860 · $111.00'],['6 ft table','Yes','Yes','GRD1373 · $75.00'],['Director’s chair (optional; no camp chairs)','Optional','Optional','GRD1792 · $244.62'],['$100K Sweepstakes display','One per kit','One per kit','Price TBD'],['Tradeshow ID badge and lanyard','One per marketer','One per marketer','GRD1909 · $6.96 + lanyard']],
+  paper:['Current promotion only for flyers and easel posters (the Sept/Oct pieces are retired).','A 3-month supply of 8.5×11 brochures and trifolds (Patio Enclosures and Stanek Windows).','Scratch-off cards expire Dec 31: discard the remainder when the new supply arrives.','An ample supply of pre-consultation checklists and lead generation tear pads.'],
+  funding:['<b>Redeploy first.</b> The six paused branches will have idle booths, displays and tablets. Move them to Keep & Grow markets before anything is bought.','<b>Repair before replacing.</b> Anything rated “needs repair” gets fixed if the repair costs well under the price of new.','<b>Buy only for contracted Q1 shows.</b> Rank shortages by the shows they put at risk; items no Q1 show needs wait for the 2027 budget.','<b>Ask advertising what they cover.</b> Signage, banners and collateral printed through greatdayshop.com may come from the advertising budget, not the event budget.'],
+  cadence:['<b>Weekly meeting:</b> for these eight weeks the rotating spotlight becomes a 10-minute sprint check. Each senior regional reports their open tasks and anything blocked; Escalated risks covers what needs Paula.','<b>Gate weeks (Nov 20, Dec 4, Dec 18):</b> the Trends and decisions block reviews that gate’s finish line by region.','<b>Monday scorecard task</b> keeps October–December results flowing, so renewal calls use current numbers.','<b>This page:</b> owners tick their tasks done on My day; leaders see who’s done here and on Assign tasks.','<b>Dec 31:</b> a short retro; the 2027 calendar, staffing grid and inventory become the starting point for the January meeting.'] };
+const SPRINT_OWNERS = { paula:'Paula', seniors:'Angel, Trevor, Chris', paulaSeniors:'Paula with senior regionals', managers:'Branch managers / supervisors' };
+function sprintOn(d){ d=d||todayIso(); return d>=SPRINT.start && d<=SPRINT.end; }
+function sprintBlock(d){ d=d||todayIso(); return SPRINT.blocks.find(b=>d>=b.from && d<=b.to) || SPRINT.blocks.find(b=>d<b.from) || null; }
+function sprintTasks(){ return SPRINT.ws.flatMap(w=>w.tasks.map(([id,text,owner,due])=>({ id, text, owner, due, ws:w }))); }
+function sprintTaskId(t){ return 'sp-'+SPRINT.id+'-'+t.id; }
+function sprintAssignees(owner){ const sr=['trevor.morrissey@greatdayimprovements.com','angelique.critz@greatdayimprovements.com','chris.winston@greatdayimprovements.com'];
+  if(owner==='paula') return [PAULA]; if(owner==='seniors') return sr; if(owner==='paulaSeniors') return [PAULA,...sr]; return asgResolve({ mode:'all' }); }
+function isPausedOffice(o){ const x=String(o||'').toLowerCase(); return SPRINT.paused.some(c=>x.includes(c.toLowerCase())); }
+function sprintLoaded(){ return sprintTasks().filter(t=>(S.asg||{})[sprintTaskId(t)]).length; }
+async function sprintLoad(){
+  if(!isRemUser()) return; const me=myEmail(), name=(LEADERSHIP.find(p=>p.email===me)||{}).name||me; let n=0;
+  for(const t of sprintTasks()){ const id=sprintTaskId(t); if((S.asg||{})[id]) continue;
+    const task={ id, title:t.text, note:`${SPRINT.title} · Workstream ${t.ws.n}: ${t.ws.title} · Owner: ${SPRINT_OWNERS[t.owner]}`, link:'', required:false, kind:'day', sprint:SPRINT.id, sprintTask:t.id,
+      steps:[{ id:'s1', text:t.text, due:t.due, scope:'day' }], audience:t.owner==='managers'?{ mode:'all', value:'', people:[] }:{ mode:'people', value:'', people:sprintAssignees(t.owner) }, assignees:sprintAssignees(t.owner),
+      createdBy:me, createdByName:name, createdAt:Date.now() };
+    if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubTasks',id), task); }
+    S.asg=Object.assign({}, S.asg||{}, { [id]:task }); n++; }
+  if(S.mode!=='live') localSave(); return n;
+}
+async function saveSprintDoc(patch){ const d=Object.assign({}, S.sprintDoc||{}, patch, { updatedAt:Date.now(), updatedBy:myEmail() });
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubTraining','sprint'), JSON.parse(JSON.stringify(d))); } S.sprintDoc=d; if(S.mode!=='live') localSave(); render(); }
+async function saveBannerSets(sets){ const d={ sets, updatedAt:Date.now(), updatedBy:myEmail() };
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubTraining','bannerSets'), d); } S.bannerSets=d; if(S.mode!=='live') localSave(); render(); }
+// Live measures by region
+function sprintQ1Contracts(){ const by={}; (S.etacc||[]).forEach(x=>{ if(!x.startDate || x.startDate<'2027-01-01' || x.startDate>'2027-03-31') return; if(['declined','not_pursuing'].includes(x.status)) return;
+    const r=regionOf(x.branch||'')||'(no region)'; if(!attnRegion(r)) return; const o=by[r]=by[r]||{ all:0, done:0 }; o.all++; if(x.status==='submitted') o.done++; }); return by; }
+function sprintQ1Staffing(){ const by={}; liveEvents().forEach(e=>e.days.forEach(d=>{ if(d.date<'2027-01-01'||d.date>'2027-03-31'||d.off) return; const r=regionOf(e.office)||recodeRegion(e.office,e.region)||'(no region)';
+    if(!inOffice(e.office)) return; const o=by[r]=by[r]||{ all:0, done:0 }; o.all++; if((S.sched.assignments[dayId(e,d)]||[]).length) o.done++; })); return by; }
+function sprintInventory(){ const offs=offices().filter(o=>inOffice(o)), A=Object.values(S.audits||{});
+  return offs.map(o=>{ const mine=A.filter(a=>(a.offices||[]).includes(o) && (a.startedAt||0)>=parseIso(SPRINT.start).getTime());
+    const done=mine.find(a=>a.closedAt), open=mine.find(a=>!a.closedAt); return { o, r:regionOf(o), st:done?'done':open?'open':'none', paused:isPausedOffice(o) }; }); }
+function sprintPct(a,b){ return b?Math.round(a/b*100)+'%':'—'; }
+function sprintBar(a,b){ const p=b?Math.round(a/b*100):0; return `<div class="prog" style="margin:2px 0;min-width:80px"><span style="width:${p}%"></span></div>`; }
+function sprintTaskRow(t){
+  const task=(S.asg||{})[sprintTaskId(t)], me=myEmail(), late=t.due<todayIso();
+  let prog='<span class="small muted">Not loaded</span>', mine='';
+  if(task){ const g=asgProgress(task), n=(task.assignees||[]).length; prog=`<span class="pill ${g.done===n?'p-green':g.late?'p-red':'p-warn'}">${g.done===n?'Done':`${g.done} of ${n} done`}</span>${g.late&&g.done<n?` <span class="pill p-red">overdue</span>`:''}`;
+    if((task.assignees||[]).includes(me)){ const d=!!asgDoneRec(task.id,'s1',me); mine=`<label class="chk"><input type="checkbox" data-atask="${esc(task.id)}|s1" ${d?'checked':''}> ${d?'Done':'Mark done'}</label>`; } }
+  return `<tr><td>${esc(t.text)}</td><td class="small">${esc(SPRINT_OWNERS[t.owner])}</td><td class="small" style="white-space:nowrap;${late&&!(task&&asgProgress(task).done===(task.assignees||[]).length)?'color:var(--red);font-weight:600':''}">${fmtMD(t.due)}</td><td>${prog}</td><td>${mine}</td></tr>`;
+}
+function sprintBanner(){
+  if(!S.user || !sprintOn()) return '';
+  const b=sprintBlock(), mine=asgMine().filter(t=>t.sprint===SPRINT.id && !asgDoneRec(t.id,'s1',myEmail())), soon=mine.filter(t=>t.steps[0].due<=addDays(todayIso(),7)).length;
+  const days=Math.round((parseIso(b.to)-parseIso(todayIso()))/864e5);
+  return `<a class="teamsbanner sprintbanner" href="#sprint" data-tab="sprint"><div class="ic">🏁</div><div style="flex:1"><h2>Nov–Dec Sprint · Block ${b.n} of 4</h2><p>${esc(b.focus)} · gate ${fmtMD(b.to)}${days>=0?` (${days===0?'today':days===1?'tomorrow':days+' days'})`:''}${mine.length?` · <b>${mine.length} open task${mine.length===1?'':'s'} for you${soon?`, ${soon} due within a week`:''}</b>`:''}</p></div><span class="btn sm">Open ↗</span></a>`;
+}
+function sprintView(){
+  if(!S.user) return '<div class="card"><p class="muted">Sign in (top right) to see the sprint.</p></div>';
+  const t=todayIso(), b=sprintBlock(t), lead=isRemUser(), loaded=sprintLoaded(), total=sprintTasks().length, D=S.sprintDoc||{};
+  const head=`<div class="card"><h2 style="margin-top:0">🏁 ${esc(SPRINT.title)}</h2><p style="margin:4px 0 8px">${esc(SPRINT.goal)}</p>
+    <div class="row" style="flex-wrap:wrap;gap:6px">${SPRINT.targets.map(([l,v])=>`<span class="pill p-blue">${esc(l)}: <b>${esc(v)}</b></span>`).join('')}</div>
+    <div class="small muted" style="margin-top:6px">Senior regional coverage: ${SPRINT.coverage.map(([n,r])=>`<b>${esc(n)}</b> (${esc(r)})`).join(' · ')}</div>
+    <div class="sprintline">${SPRINT.blocks.map(x=>`<div class="sblock ${b&&b.n===x.n?'on':''} ${x.to<t?'past':''}"><b>Block ${x.n}</b><span>${fmtMD(x.from)}–${fmtMD(x.to)}</span><small>${esc(x.focus)}</small><em>🚩 Gate ${fmtMD(x.to)}</em></div>`).join('')}</div>
+    ${lead?`<div class="row" style="margin-top:8px;gap:8px">${loaded<total?`<button class="btn primary sm" data-act="sprintLoad" ${ui.busy?'disabled':''}>📌 Put the ${total-loaded} sprint task${total-loaded===1?'':'s'} on owners’ My day</button><span class="small muted">Each owner gets theirs on My day on its due date (and in Needs your attention from a week before). No emails are sent.</span>`:`<span class="small muted">✓ All ${total} sprint tasks are on owners’ My day. Track them below or on <a href="#assign" data-tab="assign">Assign tasks</a>.</span>`}</div>`:''}</div>`;
+  const ws=w=>{ let measure='';
+    if(w.k==='cal'){ const L=sprintQ1Contracts(), rows=Object.entries(L).sort(); const plan=SPRINT.q1Plan.filter(([r])=>attnRegion(recodeRegion('',r))||!ATTN);
+      measure=`<div class="grid2"><div><div class="lbl">Live from ETACC: Q1 2027 shows Submitted for Contract</div>${rows.length?`<table><thead><tr><th>Region</th><th>Contracted</th><th>In ETACC</th><th></th></tr></thead><tbody>${rows.map(([r,o])=>`<tr><td>${esc(regionName(r))}</td><td>${o.done}</td><td>${o.all}</td><td>${sprintBar(o.done,o.all)}</td></tr>`).join('')}</tbody></table>`:'<p class="small muted">No Q1 2027 events in ETACC yet.</p>'}</div>
+        <div><div class="lbl">v22 plan on Nov 9 (workbook regions)</div><table><thead><tr><th>Region</th><th>Planned</th><th>Contracted</th><th>To contract</th></tr></thead><tbody>${plan.map(([r,p,c])=>`<tr><td>${esc(r)}${INACTIVE_REGIONS.includes(r)?' <span class="pill p-gray">inactive</span>':''}</td><td>${p}</td><td>${c}</td><td>${p-c}</td></tr>`).join('')}<tr><td><b>Total</b></td><td><b>${plan.reduce((s,x)=>s+x[1],0)}</b></td><td><b>${plan.reduce((s,x)=>s+x[2],0)}</b></td><td><b>${plan.reduce((s,x)=>s+x[1]-x[2],0)}</b></td></tr></tbody></table></div></div>`; }
+    if(w.k==='rec'){ const L=sprintQ1Staffing(), rows=Object.entries(L).sort(), A=rows.reduce((s,[,o])=>s+o.all,0), Dn=rows.reduce((s,[,o])=>s+o.done,0);
+      measure=rows.length?`<div class="lbl">Q1 show days on the marketer schedule with a name on them: ${Dn} of ${A} (${sprintPct(Dn,A)})</div><table><thead><tr><th>Region</th><th>Days staffed</th><th>Show days</th><th></th></tr></thead><tbody>${rows.map(([r,o])=>`<tr><td>${esc(regionName(r))}</td><td>${o.done}</td><td>${o.all}</td><td>${sprintBar(o.done,o.all)}</td></tr>`).join('')}</tbody></table>`:'<p class="small muted">No Q1 2027 show days on the marketer schedule yet. They appear as Q1 events are imported from ETACC (or added with “+ Staff another ETACC event”).</p>'; }
+    if(w.k==='inv'){ const L=sprintInventory(), done=L.filter(x=>x.st==='done').length, by={}; L.forEach(x=>{ (by[x.r||'(no region)']=by[x.r||'(no region)']||[]).push(x); });
+      measure=`<div class="lbl">Branches with a completed inventory (count started and closed since ${fmtMD(SPRINT.start)}): ${done} of ${L.length} (${sprintPct(done,L.length)})</div>
+        <div class="invgrid">${Object.entries(by).sort().map(([r,list])=>`<div><b class="small">${esc(regionName(r))}</b>${list.map(x=>`<div class="small">${x.st==='done'?'✅':x.st==='open'?'🟡':'⬜'} ${esc(x.o)}${x.paused?' <span class="pill p-gray">Paused</span>':''}</div>`).join('')}</div>`).join('')}</div>
+        <div class="small muted">✅ done · 🟡 count in progress · ⬜ not started. Start one on <a href="#assets" data-tab="assets">Asset Inventory</a> → Annual inventory → 📋 Start branch inventory.</div>`; }
+    return `<details class="card hsec" data-hsec="sp-${w.k}" ${hsecOpen('sp-'+w.k)?'open':''}><summary><h2 style="margin:0">Workstream ${w.n}: ${esc(w.title)}</h2></summary>
+      <div class="kv" style="margin:8px 0"><div><span class="lbl">Finish line by Dec 31</span> ${esc(w.finish)}</div><div><span class="lbl">Lead</span> ${esc(w.lead)}</div><div><span class="lbl">Measured by</span> ${esc(w.measure)}</div></div>
+      ${measure}
+      <h3 style="margin-top:14px">Tasks</h3><table><thead><tr><th>Task</th><th>Owner</th><th>Due</th><th>Progress</th><th>Me</th></tr></thead><tbody>${w.tasks.map(([id,text,owner,due])=>sprintTaskRow({ id, text, owner, due, ws:w })).join('')}</tbody></table>
+      ${w.k==='cal'?sprintDecisions(D,lead):''}${w.k==='inv'?sprintInvExtras(lead):''}</details>`; };
+  return head + SPRINT.ws.map(ws).join('') + `<details class="card hsec" data-hsec="sp-cadence" ${hsecOpen('sp-cadence')?'open':''}><summary><h2 style="margin:0">Cadence</h2></summary><p class="small muted">The sprint runs inside the meetings and tools already in place; it adds no new meetings.</p><ul>${SPRINT.cadence.map(x=>`<li>${x}</li>`).join('')}</ul></details>`;
+}
+function sprintDecisions(D, lead){
+  const done=D.recoded||{}, chicago=D.chicago||'';
+  return `<h3 style="margin-top:16px">Branch decisions in v22</h3><table><tbody>${SPRINT.branchDecisions.map(([k,v])=>`<tr><td style="width:180px"><b>${esc(k)}</b></td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>
+    <div class="notice err" style="margin-top:10px">🚩 <b>Chicago: decide before Nov 20.</b> It’s marked Pause in v22, yet four of its Q1 shows are contracted (two graded Drop or Fix), and $13,545 is already paid across eight Chicago shows. Either run those shows or recover what can be recovered.
+      ${lead?`<div class="row" style="margin-top:6px;gap:6px"><b class="small">Decision:</b>${['','Run the contracted shows','Recover what we can'].map(v=>`<label class="chk"><input type="radio" name="spchi" data-spchi="${esc(v)}" ${chicago===v?'checked':''}> ${v||'Not decided'}</label>`).join('')}</div>`:(chicago?`<div class="small"><b>Decision:</b> ${esc(chicago)}</div>`:'')}</div>
+    <h3 style="margin-top:16px">Shows coded to inactive regions (GC, PL, UMW)</h3><p class="small muted" style="margin-top:0">18 shows in the v22 plan still carry these codes; 8 are contracted. Each needs a decision and should be re-coded to the active region that owns the branch. The hub already counts these branches in their new region.</p>
+    <div style="overflow:auto"><table><thead><tr><th>Coded</th><th>Branch</th><th>Show</th><th>Month</th><th>2026 grade</th><th>Contracted?</th><th>2027 spend</th><th>Planned net opps</th><th>Move to</th><th>Decided & re-coded</th></tr></thead><tbody>
+    ${SPRINT.recode.map((x,i)=>{ const k=x[2].replace(/\W+/g,'_'); return `<tr><td>${esc(x[0])}</td><td>${esc(x[1])}</td><td>${esc(x[2])}</td><td>${esc(x[3])}</td><td class="small">${esc(x[4])}${/drop/i.test(x[4])?' <span class="pill p-red">Drop</span>':''}</td><td>${esc(x[5])}</td><td>${esc(x[6])}</td><td>${esc(x[7])}</td><td class="small">${esc(x[8])}</td><td>${lead?`<input type="checkbox" data-sprecode="${k}" ${done[k]?'checked':''} aria-label="Decided and re-coded: ${esc(x[2])}">`:(done[k]?'✓':'')}</td></tr>`; }).join('')}</tbody></table></div>
+    <p class="small"><b>Rule for every renewal:</b> it must fit the 2027 targets (cost per gross opp under $350, $/MAR 15–17%); a show graded Drop is not renewed without a written reason.</p>`;
+}
+function sprintInvExtras(lead){
+  const sets=(S.bannerSets&&S.bannerSets.sets)||{}, NAMES={ main:'Main', tx:'Texas', sw:'Southwest' };
+  const offs=SPRINT.offices.filter(x=>!ATTN || attnRegion(x.r));
+  return `<h3 style="margin-top:16px">What a complete kit holds</h3><p class="small muted" style="margin-top:0">Each marketer or branch keeps one kit stocked all year. At list price the core outdoor setup (tent, weights, backdrop, table, cover) is about $887 per kit; the core indoor setup is $186 plus banners.</p>
+    <table><thead><tr><th>Item</th><th>Indoor booth</th><th>Outdoor booth</th><th>Item # · price</th></tr></thead><tbody>${SPRINT.kit.map(r=>`<tr>${r.map(c=>`<td class="small">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    <h3 style="margin-top:16px">Paper on hand after the count</h3><ul class="small">${SPRINT.paper.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+    <h3 style="margin-top:16px">Funding replacements with no budget in place</h3><ol class="small">${SPRINT.funding.map(x=>`<li>${x}</li>`).join('')}</ol>
+    <h3 style="margin-top:16px">Banner set assignments</h3><p class="small muted" style="margin-top:0">Pick the set for each office before Great Day Shop orders open Dec 1. The suggestion is a starting point: Texas for the Texas offices, Southwest for Arizona and Nevada, Main everywhere else. The assigned set is what the hub uses for kits and banner checks.${lead?'':' Senior regionals assign the sets.'}</p>
+    <div style="overflow:auto;max-height:420px"><table><thead><tr><th>Senior regional</th><th>Region</th><th>Office</th><th>Suggested</th><th>Assigned set</th><th>Note</th></tr></thead><tbody>
+    ${offs.map(x=>{ const sug=TX_CITIES.some(c=>x.o.includes(c))?'tx':SW_CITIES.some(c=>x.o.includes(c))?'sw':'main', cur=sets[x.o]||'';
+      return `<tr><td class="small">${esc(x.sr)}</td><td class="small">${esc(x.r)}</td><td>${esc(x.o)}</td><td class="small">${NAMES[sug]}</td><td>${lead?`<select data-bset="${esc(x.o)}"><option value="">Not assigned (use ${NAMES[sug]})</option>${Object.entries(NAMES).map(([k,l])=>`<option value="${k}" ${cur===k?'selected':''}>${l}</option>`).join('')}</select>`:(cur?NAMES[cur]:'<span class="small muted">Not assigned</span>')}</td><td class="small">${x.paused?'<span class="pill p-gray">Paused in v22</span>':''}</td></tr>`; }).join('')}</tbody></table></div>`;
+}
 /* ----- assign page (Paula, Trevor, Angelique, Chris) ----- */
 function asgDraft(){ if(!ui.asg) ui.asg={ id:uid(), title:'', note:'', link:'', required:false, kind:'day', due:todayIso(), steps:[{ id:'s'+uid(), text:'', due:todayIso() }], mode:'all', value:'', people:[], notify:true }; return ui.asg; }
 function asgView(){
@@ -3010,7 +3172,7 @@ async function scEvSave(clear){
 function scShows(P){
   const left=[], shows=[], R=showReport();
   if(R){
-    R.rows.forEach(x=>{ if(!x.first || x.first<P.from || x.first>P.to) return; if(!scInScope(x.region, x.office)) return;
+    R.rows.forEach(x0=>{ const x=Object.assign({}, x0, { region:recodeRegion(x0.office, x0.region) }); if(!x.first || x.first<P.from || x.first>P.to) return; if(!scInScope(x.region, x.office)) return;
       if(num(x.days)>7){ left.push({ name:x.name }); return; }
       shows.push({ name:x.name, office:x.office, start:x.first, end:x.last||x.first, region:x.region, fee:num(x.cost), opps:num(x.opps), unset:num(x.unset), goal:num(x.goal), src:'report', code:x.code }); });
   } else {
@@ -3182,6 +3344,11 @@ function todoGroups_(){
   add('hotels','🏨','Upcoming events that may need hotels','travel', travelNeeds().map(x=>({ text:x.e.name, sub:`${x.e.office||''} · ${fmtLong(x.e.start)}${x.hotelNights?` · ${x.hotelNights} hotel night${x.hotelNights===1?'':'s'}`:''}${x.borrowed.length?` · ${x.borrowed.length} borrowed marketer${x.borrowed.length===1?'':'s'}`:''}` })), 'Open Navan travel');
   // REM numbers (leaders only)
   if(isRemUser()){ const P={ view:'week', ws:addDays(mondayOf(t),-7) }, M=scManual(), miss=[]; ORG.forEach(d=>Object.entries(d.regions).forEach(([r,x])=>{ if(ATTN && !ATTN.includes('r:'+r) && !ATTN.includes('d:'+d.division)) return; const e=M[`w_${P.ws}_${r}`]; if(!(e&&(scHas(e.cancels)||scHas(e.meets)))) miss.push({ text:REGION_NAMES[r]||r, sub:`${x.name} · week of ${fmtMD(P.ws)}` }); })); add('rem','✍️','REM numbers missing for last week','remnums', miss, 'Enter REM numbers'); }
+  if(isRemUser() && sprintOn(t)){ const it=[], b=sprintBlock(t);
+    if(b && b.to>=t && b.to<=addDays(t,3)) it.push({ text:`Sprint gate ${fmtMD(b.to)}: Block ${b.n} (${b.focus})`, sub:'Review each workstream’s finish line by region in the weekly meeting', red:b.to===t });
+    if(t<='2026-11-20' && !((S.sprintDoc||{}).chicago)) it.push({ text:'Decide Chicago: run the contracted shows or recover what we can', sub:'Due Nov 20 · paused in v22, $13,545 already paid', red:t>='2026-11-18' });
+    if(sprintLoaded()<sprintTasks().length && isLeadUser() && myEmail()===PAULA) it.push({ text:'Put the sprint tasks on owners’ My day', sub:`${sprintTasks().length-sprintLoaded()} not loaded yet` });
+    add('sprint','🏁','Nov–Dec sprint','sprint', it, 'Open the sprint'); }
   return G;
 }
 function todoCount(G){ return (G||todoGroups()).reduce((n,g)=>n+g.items.length,0); }
@@ -3335,6 +3502,9 @@ function pageHelpData(){
   alerts:{ t:'Alerts', what:'Alerts for your area, and (for leaders) who receives them.',
     how:['Tap an alert to go to what needs attention.','Leaders: in Alert settings, enter each office’s supervisor emails and Teams channel emails, then Save.'],
     rules:['Late check-in: more than '+LATE_MIN+' minutes after the shift starts. Not checked in: 30 minutes after. No check-out: an hour after the shift ends.','Issues and damaged or missing gear reported at check-out alert right away.','Each alert goes to the office supervisor, copied to Paula, the regional manager and (if ticked) the division leader. No supervisor: it goes to the regional manager.','Separate more than one email with commas.'] },
+  sprint:{ t:'Nov–Dec Sprint', what:'The Nov 9 – Dec 31 sprint: fill the Q1 2027 calendar, staff every Q1 show, and finish the asset inventory in every branch.',
+    how:['The four two-week blocks are across the top; the current one is highlighted and each ends at a gate (Nov 20, Dec 4, Dec 18, Dec 31).','Each workstream shows its finish line, live progress by region, and its tasks with who’s done.','Tick <b>Mark done</b> on a task that’s yours (it’s also on My day on its due date, and in Needs your attention from a week before).'],
+    rules:['Live numbers: Q1 2027 contracts come from ETACC (Submitted for Contract), staffing from the marketer schedule (Q1 show days with a name on them), and inventory from branch counts started and closed since Nov 9.','The v22 plan table shows the workbook’s Nov 9 numbers for reference.','<b>Paula, Trevor, Angelique and Chris</b> can put the sprint tasks on owners’ My day (one click, no emails), record the Chicago decision, tick inactive-region shows as decided and re-coded, and assign each office’s banner set. The assigned set is what kits and banner checks use.','Branches coded GC, PL or UMW count in their new region: Houston → SC2, Mobile → SE, Omaha, St. Louis, Chicago and Madison → UPL.','Paused branches (v22) are marked on the inventory so their assets are redeployed first.'] },
   toolkit:{ t:'Manager Toolkit', what:'Guides and forms for managers from the Regional Event Managers SharePoint site: finding events, hiring, ADP and HR.', how:['Tap <b>Open</b> to view a guide or form in SharePoint (sign in with your work account).','Many are also linked right on the matching My Day tasks, marked 🧰.'], rules:['Files live on SharePoint, so they’re always the latest version. Ask Paula or Trevor if a link stops working.','<b>Paula and Trevor</b> can tap <b>✎ Edit toolkit</b> to add, rename, reorder or remove links and sections. Changes show for everyone right away; renamed links stay attached to their My Day tasks.'] },
   training:{ t:'Training', what:'Training materials and guides for managers and marketers.',
     how:['Open any item to view or download it.'],
@@ -3732,7 +3902,7 @@ function mergeMgrTimes(){
 const DB = { fb:null };
 const LOCAL_KEY='peHub.local';
 function localLoad(){ try{ return JSON.parse(lsGet(LOCAL_KEY)||'{}'); }catch(e){ return {}; } }
-function localSave(){ if(previewing()) return; lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, toolkit:S.toolkit||null, assetPhotos:S.assetPhotos||{}, alertCfg:S.alertCfg, rates:S.rates, scManual:S.scManual, activity:S.activity, showReport:S.showReport, alerts:S.alerts, asg:S.asg, asgDone:S.asgDone, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
+function localSave(){ if(previewing()) return; lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, toolkit:S.toolkit||null, bannerSets:S.bannerSets||null, sprintDoc:S.sprintDoc||null, assetPhotos:S.assetPhotos||{}, alertCfg:S.alertCfg, rates:S.rates, scManual:S.scManual, activity:S.activity, showReport:S.showReport, alerts:S.alerts, asg:S.asg, asgDone:S.asgDone, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
 setInterval(()=>{ sweepAlerts(); }, 5*60000);
 async function initDB(){
   if(DEMO){ goLocal('demo'); return; }
@@ -3749,6 +3919,8 @@ async function initDB(){
     const fail=(what)=>err=>{ console.error(what,err); if(what==='schedule' && S.mode==='connecting'){ clearTimeout(timeout); goLocal(err.code||err.message); } else { ui.notice=`Couldn’t read ${what}: ${err.code||err.message}`; ui.noticeKind='err'; render(); } };
     F.onSnapshot(F.doc(db,'peHubSettings','alerts'), snap=>{ S.alertCfg=snap.exists()?snap.data():null; render(); }, ()=>{});
     F.onSnapshot(F.doc(db,'peHubTraining','main'), snap=>{ S.training=snap.exists()?snap.data():null; render(); }, ()=>{});
+    F.onSnapshot(F.doc(db,'peHubTraining','bannerSets'), snap=>{ S.bannerSets=snap.exists()?snap.data():null; render(); }, ()=>{});
+    F.onSnapshot(F.doc(db,'peHubTraining','sprint'), snap=>{ S.sprintDoc=snap.exists()?snap.data():null; render(); }, ()=>{});
     F.onSnapshot(F.doc(db,'peHubTraining','toolkit'), snap=>{ S.toolkit=snap.exists()?snap.data():null; render(); }, ()=>{});
     ['events','roster','assignments','details','practices'].forEach(name=>{
       F.onSnapshot(F.doc(db,'patioEnclosuresSchedule',name), snap=>{
@@ -3797,7 +3969,7 @@ function goLocal(why){
   const L=localLoad();
   if(DEMO && !L.sched) seedDemo(); else {
     if(L.sched) S.sched=L.sched;
-    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; S.mgr=L.mgr||{}; S.training=L.training||null; S.toolkit=L.toolkit||null; S.assetPhotos=L.assetPhotos||{}; S.alertCfg=L.alertCfg||null; S.rates=L.rates||null; S.scManual=L.scManual||{}; S.activity=L.activity||{}; S.showReport=L.showReport||null; S.alerts=L.alerts||{}; S.asg=L.asg||{}; S.asgDone=L.asgDone||{}; S.asgLoaded=S.asgDoneLoaded=true; ui.localPhotos=L.photos||{};
+    S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; S.mgr=L.mgr||{}; S.training=L.training||null; S.toolkit=L.toolkit||null; S.bannerSets=L.bannerSets||null; S.sprintDoc=L.sprintDoc||null; S.assetPhotos=L.assetPhotos||{}; S.alertCfg=L.alertCfg||null; S.rates=L.rates||null; S.scManual=L.scManual||{}; S.activity=L.activity||{}; S.showReport=L.showReport||null; S.alerts=L.alerts||{}; S.asg=L.asg||{}; S.asgDone=L.asgDone||{}; S.asgLoaded=S.asgDoneLoaded=true; ui.localPhotos=L.photos||{};
   }
   if(DEMO){ S.user={email:'demo.manager@patio'}; }
   S.schedLoaded=true; render();
@@ -3912,7 +4084,7 @@ function header(){
     <div><h1>${MARKETER_MODE?'Event Check-In':'Event Activity Hub'}</h1><div class="asof">${stat}${S.mode==='local'&&!DEMO?` · not saving to the shared database (${esc(S.err)})`:''}</div></div>
     <div class="spacer"></div>${signin}</header>`;
 }
-const SECTIONS={ toolkit:['🧰','Manager Toolkit'], today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Marketer Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Asset Inventory & Check-Out'], evals:['📝','Post-Event Evaluations'], expenses:['🧾','Expense Reports'], travel:['🏨','Navan Travel'], adp:['⏱️','ADP Timecards'], myday:['☀️','My Day'], myweek:['▶️','My Week'], summary:['📊','Event Activation Summary'], training:['📚','Training'], alerts:['🔔','Alerts'], guide:['📖','How-to Guides'], costs:['💲','Cost per Opp'], scorecard:['🏆','Event Marketing Scorecard'], remnums:['✍️','REM Weekly Numbers'], activity:['👀','Hub Activity'], assign:['📌','Assign Tasks'] };
+const SECTIONS={ toolkit:['🧰','Manager Toolkit'], today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Marketer Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Asset Inventory & Check-Out'], evals:['📝','Post-Event Evaluations'], expenses:['🧾','Expense Reports'], travel:['🏨','Navan Travel'], adp:['⏱️','ADP Timecards'], myday:['☀️','My Day'], myweek:['▶️','My Week'], summary:['📊','Event Activation Summary'], training:['📚','Training'], alerts:['🔔','Alerts'], guide:['📖','How-to Guides'], costs:['💲','Cost per Opp'], scorecard:['🏆','Event Marketing Scorecard'], remnums:['✍️','REM Weekly Numbers'], activity:['👀','Hub Activity'], assign:['📌','Assign Tasks'], sprint:['🏁','Nov–Dec Sprint'] };
 function tabs(){
   if(ui.tab==='home' || !SECTIONS[ui.tab]) return '';
   const [ic,l]=SECTIONS[ui.tab];
@@ -3960,6 +4132,7 @@ function tilesView(){
   const order=TOOL_ORDER.slice(), mine=order.slice(0,6), rest=order.slice(6);
   const leader=isRemUser()?`<details class="hsec" data-hsec="leadtools" ${hsecOpen('leadtools')?'open':''}><summary><h3 class="homeh">Leader tools</h3></summary><div class="minis">
     <div class="mini" data-tab="assign" role="button" tabindex="0" style="--tc:var(--red);--tcs:#fde2e1"><span class="ic">📌</span><span class="mt"><b>Assign tasks</b><small>One-offs & sprints</small></span></div>
+    <div class="mini" data-tab="sprint" role="button" tabindex="0" style="--tc:var(--navy,#14365a);--tcs:#e3ebf5"><span class="ic">🏁</span><span class="mt"><b>Nov–Dec Sprint</b><small>Calendar, staffing, inventory</small></span></div>
     <div class="mini" data-tab="remnums" role="button" tabindex="0" style="--tc:var(--gold);--tcs:#fef0dc"><span class="ic">✍️</span><span class="mt"><b>REM weekly numbers</b><small>Cancels, meets, sales</small></span></div>
     <div class="mini" data-tab="activity" role="button" tabindex="0" style="--tc:#000;--tcs:#ededed"><span class="ic">👀</span><span class="mt"><b>Hub activity</b><small>Who’s using the hub</small></span></div>
     <div class="mini" data-tab="alerts" role="button" tabindex="0" style="--tc:var(--aqua);--tcs:#e0f4f6"><span class="ic">🔔</span><span class="mt"><b>Alert settings</b><small>Who gets alerts</small></span></div>
@@ -3967,7 +4140,7 @@ function tilesView(){
   return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span><button class="btn sm helpbtn" data-act="pageHelp" title="How the hub home works">? Help</button>${scopePicker()}</div>
   ${mgrBar()}
   ${todoCard({compact:true})}
-  ${scBanner()}
+  ${sprintBanner()}${scBanner()}
   ${leader}
   ${hsec('tools','<h3 class="homeh">Your tools</h3>',`<div class="tiles">${mine.map(k=>T[k]()).join('')}</div>`)}
   ${hsec('links','<h3 class="homeh">All tools & links</h3>',`<div class="minis">${rest.map(mini).join('')}${links}</div>`)}
@@ -3993,6 +4166,7 @@ function body(){
     case 'scorecard': return scorecardView();
     case 'remnums': return remNumsView();
     case 'toolkit': return toolkitView();
+    case 'sprint': return sprintView();
     case 'assign': return S.user?asgView():'<div class="card">Sign in to assign tasks.</div>';
     case 'activity': return activityView();
     case 'myday': return S.user?myDayView():'<div class="card">Sign in to see your day.</div>';
@@ -4559,6 +4733,7 @@ document.addEventListener('click', async ev=>{
   if(a==='auditBranch'){ const o=((document.querySelector('[data-keep="auditBranch"]')||{}).value||''); if(!o){ ui.notice='Choose the branch to count.'; ui.noticeKind='warn'; render(); return; } const id='au_'+uid();
     await guard(()=>saveAudit(id,{ name:`${o} inventory – ${fmtLong(todayIso())}`, offices:[o], startedAt:Date.now(), startedBy:(S.user&&S.user.email)||'' })); ui.audit=id; ui.auditOffice=o; render(); return; }
   if(a==='skuPick'){ if(ev.target.closest('.skufile')) return; ui.pasteSku=t.dataset.sku; render(); return; }
+  if(a==='sprintLoad'){ if(!isRemUser()) return; ui.busy=true; render(); try{ const n=await sprintLoad(); ui.notice=n?`${n} sprint task${n===1?'':'s'} put on owners’ My day.`:'Sprint tasks were already loaded.'; ui.noticeKind='ok'; }catch(e){ ui.notice='Couldn’t load the sprint tasks: '+(e.code||e.message); ui.noticeKind='err'; } ui.busy=false; render(); return; }
   if(a==='itemPhotoDel'){ const x=assetById(t.dataset.aid); if(!x||!S.user) return; if(!confirm('Remove this picture?')) return; const P=S.assetPhotos||{}; if(P[x.id]) await guard(()=>saveAssetPhoto(x.id,null)); if(x.shopSku && P[x.shopSku]) await guard(()=>saveAssetPhoto(x.shopSku,null)); render(); return; }
   if(a==='auditDelete'){ const au=S.audits[ui.audit]; if(!au||!canDeleteAudit(au)) return; if(!confirm(`Delete “${au.name}”? The count and its progress are removed. Items’ check-out history isn’t affected.`)) return; const id=ui.audit; ui.audit=null; ui.scanMsg=null; await guard(()=>deleteAudit(id)); ui.notice='Count deleted.'; ui.noticeKind='ok'; render(); return; }
   if(a==='auditBack'){ ui.audit=null; ui.scanMsg=null; render(); return; }
@@ -4592,6 +4767,9 @@ document.addEventListener('paste', async e=>{
 document.addEventListener('dragover', e=>{ if(e.target.closest && e.target.closest('.skuph')) e.preventDefault(); });
 document.addEventListener('drop', async e=>{ const c=e.target.closest && e.target.closest('.skuph'); if(!c) return; e.preventDefault(); const f=[...(e.dataTransfer.files||[])].find(x=>x.type.startsWith('image/')); if(f) await saveSkuPhoto(c.dataset.sku, f); else { ui.notice='Drop a picture file here, or copy the picture and paste it.'; ui.noticeKind='err'; render(); } });
 document.addEventListener('change', async ev=>{
+  if(ev.target.dataset && ev.target.dataset.bset!==undefined){ if(!isRemUser()) return; const m=Object.assign({}, (S.bannerSets&&S.bannerSets.sets)||{}); if(ev.target.value) m[ev.target.dataset.bset]=ev.target.value; else delete m[ev.target.dataset.bset]; await guard(()=>saveBannerSets(m)); return; }
+  if(ev.target.dataset && ev.target.dataset.sprecode){ if(!isRemUser()) return; const r=Object.assign({}, (S.sprintDoc||{}).recoded||{}); if(ev.target.checked) r[ev.target.dataset.sprecode]={ by:myEmail(), at:Date.now() }; else delete r[ev.target.dataset.sprecode]; await guard(()=>saveSprintDoc({ recoded:r })); return; }
+  if(ev.target.dataset && ev.target.dataset.spchi!==undefined){ if(!isRemUser()) return; await guard(()=>saveSprintDoc({ chicago:ev.target.dataset.spchi })); return; }
   if(ev.target.dataset && ev.target.dataset.skuphoto){ const f=ev.target.files&&ev.target.files[0]; if(f) await saveSkuPhoto(ev.target.dataset.skuphoto, f); return; }
   if(ev.target.dataset && ev.target.dataset.flexmove){ const fm=Object.assign({}, mgrDoc().flexMove||{}); if(ev.target.value) fm[ev.target.dataset.flexmove]=ev.target.value; else delete fm[ev.target.dataset.flexmove]; await guard(()=>saveMgr({ flexMove:fm })); return; }
   if(ev.target.dataset && ev.target.dataset.itemphoto){ const a=assetById(ev.target.dataset.itemphoto), f=ev.target.files&&ev.target.files[0]; if(!a||!f||!S.user) return;

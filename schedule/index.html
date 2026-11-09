@@ -639,14 +639,17 @@ function offices(){
 }
 // Region of an office comes from the ETACC Region column on that office's events.
 function regionMap(){ const c={}; data.events.forEach(e=>{ if(e.office&&e.region){ c[e.office]=c[e.office]||{}; c[e.office][e.region]=(c[e.office][e.region]||0)+1; } });
-  const m={}; Object.entries(c).forEach(([o,r])=>{ m[o]=Object.entries(r).sort((a,b)=>b[1]-a[1])[0][0]; }); return m; }
+  const m={}; Object.entries(c).forEach(([o,r])=>{ m[o]=recodeRegion(o, Object.entries(r).sort((a,b)=>b[1]-a[1])[0][0]); }); return m; }
+// GC, PL and UMW are no longer active (Nov–Dec 2026 sprint): their branches belong to the active region that owns them.
+const RECODE_BY_CITY = [['Houston','SC-2'],['Mobile','SE'],['Omaha','UPL'],['St. Louis','UPL'],['Saint Louis','UPL'],['Chicago','UPL'],['Madison','UPL']];
+function recodeRegion(office, r){ const R=String(r||'').replace(/^(SC|SA|MW)2$/,'$1-2'); if(!['GC','PL','UMW'].includes(R)) return R; const hit=RECODE_BY_CITY.find(([c])=>String(office||'').toLowerCase().includes(c.toLowerCase())); return hit?hit[1]:R; }
 function regionOf(o){ return regionMap()[o]||''; }
 function regions(){ const a=myArea(); return [...new Set([...Object.values(regionMap()), ...data.roster.map(r=>r.region).filter(Boolean)])].filter(r=>!a||a.regs.has(r)||[...a.offs].some(o=>regionOf(o)===r)).sort(); }
 // Managers only see their own area (same org chart as the Event Hub). Paula, and anyone not in the chart, see everything.
 const SCHED_PAULA='paula.shoemaker@greatdayimprovements.com';
 const SCHED_ORG={ East:{ lead:'trevor.morrissey@greatdayimprovements.com', regions:{ SA:'trevor.morrissey', 'SA-2':'jessica.bustamante-ripper', NE:'michael.wing', MAN:'jarrett.branch', MAS:'jarrett.branch' } },
-  Central:{ lead:'angelique.critz@greatdayimprovements.com', regions:{ MW:'angelique.critz', UPL:'angelique.critz', 'MW-2':'eddie.wilson' } },
-  West:{ lead:'chris.winston@greatdayimprovements.com', regions:{ SC:'chris.winston', 'SC-2':'stephen.novak', SW:'chris.winston' } } };
+  Central:{ lead:'angelique.critz@greatdayimprovements.com', regions:{ OV:'angelique.critz', SE:'kristy.riggins', MW:'angelique.critz', UPL:'angelique.critz', 'MW-2':'eddie.wilson' } },
+  West:{ lead:'chris.winston@greatdayimprovements.com', regions:{ PNW:'chris.winston', SC:'chris.winston', 'SC-2':'stephen.novak', SW:'chris.winston' } } };
 function myArea(){
   const em=String((cloud.user&&cloud.user.email)||'').toLowerCase(); if(!em || em===SCHED_PAULA) return null;
   const regs=new Set(), offs=new Set();

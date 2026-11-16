@@ -1257,11 +1257,21 @@ function venueText(e){ return [e.venueName, e.venueAddress].filter(Boolean).join
 // Policy: deduct the round-trip home↔office commute on every event day, whether they went to the office first or drove from home.
 function syncCommuteDays(x){ x.commuteDays=String(new Set((x.trips||[]).filter(t=>t.date).map(t=>t.date)).size); }
 function weekShiftsFor(x){ const out=[]; datesBetween(x.weekStart,x.weekEnd).forEach(d=>shiftsOn(d).filter(s=>s.personId===x.personId).forEach(s=>out.push(s))); return out; }
+// Mileage "From" must be a street address (where the trip started), not just "Home". It's filled in from the
+// last address this marketer used on a report, or the mailing address on this one.
+function isStreetAddr(v){ v=String(v||'').trim(); return v.length>=8 && /\d/.test(v) && /[a-z]{3,}/i.test(v); }
+function startAddr(x){
+  const prev=Object.values(S.expenses||{}).filter(e=>e.id!==x.id && (e.personId===x.personId || (x.email && e.email===x.email))).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  for(const e of prev){ const t=(e.trips||[]).find(t=>isStreetAddr(t.from)); if(t) return t.from; }
+  const a=x.address||{}; const m=[a.street,a.city,[a.state,a.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  if(isStreetAddr(m)) return m;
+  const done=(x.trips||[]).find(t=>isStreetAddr(t.from)); return done?done.from:'';
+}
 function prefillTrips(x){
   if((x.trips||[]).length) return;
   const seen=new Set();
   x.trips=weekShiftsFor(x).filter(s=>{ const k=s.day.date+'|'+s.ev.key; if(seen.has(k)) return false; seen.add(k); return true; })
-    .map(s=>({ id:uid(), date:s.day.date, eventKey:s.ev.key, eventName:s.ev.name, showCode:'', from:'Home', to:venueText(s.ev), officeFirst:!!(S.checkins[s.cid]||{}).officePickup, miles:'' }));
+    .map(s=>({ id:uid(), date:s.day.date, eventKey:s.ev.key, eventName:s.ev.name, showCode:'', from:startAddr(x), to:venueText(s.ev), officeFirst:!!(S.checkins[s.cid]||{}).officePickup, miles:'' }));
   syncCommuteDays(x);
 }
 function expEventOptions(x, sel){
@@ -1306,7 +1316,7 @@ function expenseEditor(){
       <div class="field"><label>Date</label>${inp(`trips.${i}.date`,t.date,`type="date" min="${x.weekStart}" max="${x.weekEnd}"`)}</div>
       <div class="field"><label>Event</label><select data-ex="trips.${i}.eventKey" data-keep="x-trips.${i}.eventKey">${expEventOptions(x,t.eventKey)}</select></div>
       <div class="field"><label>Show / source code</label>${inp(`trips.${i}.showCode`,t.showCode)}</div>
-      <div class="field"><label>From</label>${inp(`trips.${i}.from`,t.from,'placeholder="Home / office"')}</div>
+      <div class="field"><label>From (street address) <span style="color:var(--red)">*</span></label>${inp(`trips.${i}.from`,t.from,'placeholder="123 Main St, Dallas, TX 75201" autocomplete="street-address"')}</div>
       <div class="field"><label>To</label>${inp(`trips.${i}.to`,t.to,'placeholder="Venue"')}</div>
       <div class="field"><label>Total miles (round trip)</label>${inp(`trips.${i}.miles`,t.miles,'type="number" min="0" step="0.1" inputmode="decimal"')}</div>
       </div><label class="chk"><input type="checkbox" data-ex="trips.${i}.officeFirst" ${t.officeFirst?'checked':''}> Went to the office first to pick up equipment</label><button class="btn sm danger" data-act="expDel" data-list="trips" data-i="${i}">Remove trip</button></div>`).join('')}
@@ -1364,7 +1374,7 @@ function expValidate(x){
   if(!x.email) errs.push('your email'); if(!x.supervisor) errs.push('your supervisor'); if(!x.eventMgrEmail) errs.push('the event manager’s email');
   if(x.method==='check'){ const a=x.address||{}; if(!a.street||!a.city||!a.state||!a.zip) errs.push('your full mailing address'); }
   if(!(x.trips||[]).length && !(x.stays||[]).length && !(x.misc||[]).length) errs.push('at least one trip, hotel stay or expense');
-  (x.trips||[]).forEach((t,i)=>{ if(!t.date||!num(t.miles)) errs.push(`date and miles for trip ${i+1}`); if(!t.showCode) errs.push(`show code for trip ${i+1}`); });
+  (x.trips||[]).forEach((t,i)=>{ if(!t.date||!num(t.miles)) errs.push(`date and miles for trip ${i+1}`); if(!t.showCode) errs.push(`show code for trip ${i+1}`); if(!isStreetAddr(t.from)) errs.push(`the street address you started from for trip ${i+1}`); });
   if((x.trips||[]).length && x.commuteDays==='') errs.push('number of commute days');
   (x.stays||[]).forEach((s,i)=>{ if(!s.checkIn||!s.checkOut||s.checkOut<s.checkIn) errs.push(`hotel dates for stay ${i+1}`); if(!s.showCode) errs.push(`show code for stay ${i+1}`); if(!s.receipt) errs.push(`hotel receipt for stay ${i+1}`); });
   (x.misc||[]).forEach((r,i)=>{ if(!r.date||!r.category||!num(r.amount)) errs.push(`date, type and amount for expense ${i+1}`); if(!NO_RECEIPT_CATS.includes(r.category) && !r.receipt) errs.push(`receipt for expense ${i+1}`); });
@@ -2695,7 +2705,6 @@ const GUIDES = {
     ['Checking out (end of your shift)', [
       'Tap <b>Check out</b> on your shift.',
       'Enter <b>opps</b> (set appointments) and <b>unset opps</b> (customers you couldn’t set; they go to the call center to be scheduled), using 0 if none, and foot traffic.',
-      'Enter giveaways and print you used.',
       'Tell us what happened to each booth asset (returned good, needs repair, damaged, missing, or keeping it).',
       '<b>Where is the event equipment tonight?</b> (required): kept at your home, returned to the office, left at the venue for a multi-day event, or handed to another marketer (say who).',
       'Report any issues: your manager is alerted right away.',
@@ -4043,9 +4052,9 @@ function mergeMgrTimes(){
 }
 /* ---------------- data layer (Firebase, or this device only) ---------------- */
 const DB = { fb:null };
-const LOCAL_KEY = DEMO ? 'peHub.demo' : 'peHub.local';
+const LOCAL_KEY = DEMO ? 'peHub.demo2' : 'peHub.local';
 function localLoad(){ try{ return JSON.parse(lsGet(LOCAL_KEY)||'{}'); }catch(e){ return {}; } }
-function localSave(){ if(previewing()) return; lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, toolkit:S.toolkit||null, bannerSets:S.bannerSets||null, sprintDoc:S.sprintDoc||null, assetPhotos:S.assetPhotos||{}, alertCfg:S.alertCfg, rates:S.rates, scManual:S.scManual, activity:S.activity, showReport:S.showReport, alerts:S.alerts, asg:S.asg, asgDone:S.asgDone, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined })); }
+function localSave(){ if(previewing()) return; lsSet(LOCAL_KEY, JSON.stringify({ checkins:S.checkins, assets:S.assets, evals:S.evals, alog:S.alog, audits:S.audits, expenses:S.expenses, mgr:S.mgr, training:S.training, toolkit:S.toolkit||null, bannerSets:S.bannerSets||null, sprintDoc:S.sprintDoc||null, assetPhotos:S.assetPhotos||{}, alertCfg:S.alertCfg, rates:S.rates, scManual:S.scManual, activity:S.activity, showReport:S.showReport, alerts:S.alerts, asg:S.asg, asgDone:S.asgDone, photos:ui.localPhotos||{}, sched: DEMO ? S.sched : undefined, etacc: DEMO ? S.etacc : undefined, dateOk: DEMO ? S.dateOk : undefined })); }
 setInterval(()=>{ sweepAlerts(); }, 5*60000);
 async function initDB(){
   if(DEMO){ goLocal('demo'); return; }
@@ -4112,6 +4121,8 @@ function goLocal(why){
   const L=localLoad();
   if(DEMO && !L.sched) seedDemo(); else {
     if(L.sched) S.sched=L.sched;
+    if(DEMO && L.etacc) S.etacc=L.etacc;
+    if(DEMO && L.dateOk) S.dateOk=L.dateOk;
     S.checkins=L.checkins||{}; S.assets=L.assets||[]; S.evals=L.evals||{}; S.alog=L.alog||[]; S.audits=L.audits||{}; S.expenses=L.expenses||{}; S.mgr=L.mgr||{}; S.training=L.training||null; S.toolkit=L.toolkit||null; S.bannerSets=L.bannerSets||null; S.sprintDoc=L.sprintDoc||null; S.assetPhotos=L.assetPhotos||{}; S.alertCfg=L.alertCfg||null; S.rates=L.rates||null; S.scManual=L.scManual||{}; S.activity=L.activity||{}; S.showReport=L.showReport||null; S.alerts=L.alerts||{}; S.asg=L.asg||{}; S.asgDone=L.asgDone||{}; S.asgLoaded=S.asgDoneLoaded=true; ui.localPhotos=L.photos||{};
   }
   if(DEMO && !MARKETER_MODE){ S.user=Object.assign({}, DEMO_USER); }
@@ -4344,10 +4355,11 @@ function body(){
 }
 function syncFrames(){
   const box=document.getElementById('frames'); if(!box) return;
-  const want = DEMO ? '' : ui.tab==='events' ? 'events' : ui.tab==='schedule' ? 'schedule' : '';
-  [['events',ETACC_URL,'Event Tracking, Approval & Contracting Center'],['schedule',SCHEDULE_URL,'Marketer Weekly Schedule']].forEach(([k,url,title])=>{
+  const want = ui.tab==='events' ? 'events' : ui.tab==='schedule' ? 'schedule' : '';
+  [['events',DEMO?DEMO_ETACC_URL:ETACC_URL,'Event Tracking, Approval & Contracting Center'],['schedule',DEMO?DEMO_SCHEDULE_URL:SCHEDULE_URL,'Marketer Weekly Schedule']].forEach(([k,url,title])=>{
     let f=box.querySelector(`iframe[data-k="${k}"]`);
     if(!f && want===k){ f=document.createElement('iframe'); f.className='tool'; f.dataset.k=k; f.src=url; f.title=title; box.appendChild(f); }
+    else if(f && want===k && DEMO && f.style.display==='none'){ try{ f.contentWindow.peDemoRefresh && f.contentWindow.peDemoRefresh(); }catch(e){} }
     if(f) f.style.display = want===k ? 'block' : 'none';
   });
   box.style.display = want ? 'block' : 'none';
@@ -4385,6 +4397,8 @@ function dateCheckCard(){
       <td style="white-space:nowrap"><a class="btn sm" href="https://www.google.com/search?q=${encodeURIComponent((r.x.eventName||'')+' '+(r.x.branch||'').replace(/^[A-Z]{2,4}\s*-\s*/,'')+' '+r.x.startDate.slice(0,4)+' dates')}" target="_blank" rel="noopener">🔎 Search</a> <button class="btn sm" data-act="dcOk" data-id="${esc(r.x.id)}">✓ Dates are correct</button></td></tr>`).join('')}</tbody></table>
     <div class="small muted" style="margin-top:6px">Wrong dates? Fix them in ETACC below. “Dates are correct” clears an event for everyone until its dates change.</div></details></div>`;
 }
+// The office ADP time only shows when the marketer ticks "I picked up equipment at the office today".
+document.addEventListener('change', ev=>{ const el=ev.target; if(el && el.matches && el.matches('[data-keep="office-pick"]')){ const box=document.getElementById('officeTimeBox'); if(box) box.style.display=el.checked?'':'none'; if(ui.panel) ui.panel.officePickup=el.checked; } });
 document.addEventListener('toggle', ev=>{ const el=ev.target; if(el && el.matches && el.matches('details[data-dcopen]')) ui.dcOpen=el.open; }, true);
 async function markDateOk(id){
   const x=(S.etacc||[]).find(y=>y.id===id); if(!x) return;
@@ -4395,8 +4409,7 @@ async function markDateOk(id){
 function toolFrame(url,title){
   // The tool itself lives in #frames, outside the part of the page that redraws, so live
   // updates never reload it (which used to make it blink and lose unsaved edits).
-  if(DEMO) return `<div class="card"><h2 style="margin-top:0">${esc(title)}</h2><p>In the live hub, ${title.startsWith('Event')?'ETACC':'the marketer schedule'} opens right here, inside the hub, signed in with your work account. The demo uses sample data, so it isn’t shown.</p>
-    <p class="small muted">${title.startsWith('Event')?'What the hub adds on top of ETACC: the date checks above, deadlines and payments in Needs your attention, and the Q1 contract count on the Sprint page.':'What the schedule does: assign marketers by event day, edit dates and hours on the event card, mark days not activated or canceled, and staff ETACC events before they’re submitted.'}</p></div>`;
+  if(DEMO) return `<div class="row" style="margin-bottom:8px"><b>${esc(title)}</b><span class="pill p-blue" style="margin-left:8px">Demo copy · sample data</span><span class="spacer"></span><span class="small muted">Changes stay in the demo and show on the hub tiles.</span></div>`;
   return `<div class="row" style="margin-bottom:8px"><b>${esc(title)}</b><span class="spacer"></span><a class="btn sm" href="${url}" target="_blank" rel="noopener">Open in new tab ↗</a></div>`;
 }
 
@@ -4498,7 +4511,7 @@ function checkInPanel(p){
   return `<div class="panel"><h2>Check in · ${esc(s.ev.name)}</h2><div class="sub">${fmtLong(s.day.date)} · ${timeRange(s.day)} · ${esc(me.name||'')}</div>
     <div class="adpfirst">${adpBox('in', p.adpIn, '1. ')}
       <label class="chk" style="margin-top:8px"><input type="checkbox" data-keep="office-pick" ${p.officePickup?'checked':''}> I picked up equipment at the office today</label>
-      <div class="field" style="max-width:220px"><label class="small">Clocked in on ADP at the office at</label><input type="time" data-keep="office-time" value="${esc(p.officeTime||'')}"></div></div>
+      <div class="field" id="officeTimeBox" style="max-width:220px;${p.officePickup?'':'display:none'}"><label class="small">Clocked in on ADP at the office at</label><input type="time" data-keep="office-time" value="${esc(p.officeTime||'')}"></div></div>
     ${goalNote(shiftGoal(s.ev, s.day, s.personId, s.dayId))}${breakNote(breakPlan(shiftHours(s.day.start, s.day.stop)))}
     <div class="grid">
       <div><div class="lbl">2. Location</div>${p.loc?`<div class="small">📍 Location captured (±${p.loc.acc} m). <a href="${mapLink(p.loc)}" target="_blank" rel="noopener">View</a></div>`:p.locNote?`<div class="small" style="color:var(--warn)">${esc(p.locNote)} You can still check in.</div> <button class="btn sm" data-act="getLoc">Try again</button>`:'<div class="small muted">Getting your location…</div>'}</div>
@@ -4521,9 +4534,8 @@ function checkOutPanel(p){
       ${(()=>{ const e=earlyBy(c); return e?`<div class="field" style="grid-column:1/-1"><label>You’re checking out ${e>=90?Math.round(e/60*10)/10+' hours':e+' minutes'} before your shift ends (${esc(fmt12(c.shiftStop))}). Why? <span style="color:var(--red)">*</span></label><input type="text" data-keep="out-early" value="${esc(p.earlyWhy||'')}" placeholder="e.g. event closed early, sent home by the show manager, not feeling well"><div class="small muted">Your supervisor is notified.</div></div>`:''; })()}
       <div class="field"><label>Foot traffic</label><select data-keep="out-traffic"><option value="">Select…</option>${['Low','Medium','High'].map(x=>`<option ${p.traffic===x?'selected':''}>${x}</option>`).join('')}</select></div>
     </div>
-    ${cons.length?`<h3>Giveaways & print used</h3><div class="fields">${cons.map(a=>`<div class="field"><label class="small">${esc(a.name)}</label><input type="number" min="0" inputmode="numeric" data-keep="use-${a.id}" placeholder="0"></div>`).join('')}</div>`:''}
     ${(c.assetsOut||[]).length?`<h3>Booth assets</h3><div class="small muted">Tell us what came back and what shape it’s in.</div>${c.assetsOut.map(id=>`<div class="row" style="margin:4px 0"><span style="flex:1">${esc(assetName(id))}</span><select data-keep="ret-${id}"><option value="Good">Returned – good</option><option value="Needs repair">Returned – needs repair</option><option value="Damaged">Returned – damaged</option><option value="keep">I still have it</option><option value="Missing">Missing / left at venue</option></select></div>`).join('')}`:''}
-    <h3>Where is the event equipment tonight? <span style="color:var(--red)">*</span></h3><div class="small muted">Banners, table, tent, kit, giveaways: let us know where everything is.</div>
+    <h3>Where is the event equipment tonight? <span style="color:var(--red)">*</span></h3><div class="small muted">Banners, table, tent, kit: let us know where everything is.</div>
     <select data-keep="out-equip" style="font-size:16px;padding:9px;width:100%;margin-top:4px"><option value="">Choose…</option>${Object.entries(EQUIP_WHERE).map(([k,l])=>`<option value="${k}" ${p.equipWhere===k?'selected':''}>${esc(l)}</option>`).join('')}</select>
     <div class="field" style="margin-top:6px"><input type="text" data-keep="out-equip-note" value="${esc(p.equipNote||'')}" placeholder="Details (who has it, where it’s stored, when it goes back to the office)"></div>
     <h3>Any issues?</h3>${ISSUE_TYPES.map((t,i)=>`<label class="chk"><input type="checkbox" data-keep="iss-${i}"> ${esc(t)}</label>`).join('')}
@@ -4743,7 +4755,7 @@ document.addEventListener('click', async ev=>{
     render(); window.scrollTo(0,0); return; }
   if(a==='expNew'){ const me=person(ui.me); if(!me) return; ui.exp=newExpense(me.id); ui.expErr=''; render(); window.scrollTo(0,0); return; }
   if(a==='expClose'){ ui.exp=null; ui.expErr=''; render(); return; }
-  if(a==='expAdd'){ const x=ui.exp, L=t.dataset.list; x[L]=x[L]||[]; x[L].push(L==='trips'?{ id:uid(), date:'', eventKey:'', showCode:'', from:'Home', to:'', officeFirst:false, miles:'' }:L==='stays'?{ id:uid(), eventKey:'', showCode:'', checkIn:'', checkOut:'', meals:{} }:{ id:uid(), date:'', category:'', eventKey:'', desc:'', amount:'' }); render(); return; }
+  if(a==='expAdd'){ const x=ui.exp, L=t.dataset.list; x[L]=x[L]||[]; x[L].push(L==='trips'?{ id:uid(), date:'', eventKey:'', showCode:'', from:startAddr(x), to:'', officeFirst:false, miles:'' }:L==='stays'?{ id:uid(), eventKey:'', showCode:'', checkIn:'', checkOut:'', meals:{} }:{ id:uid(), date:'', category:'', eventKey:'', desc:'', amount:'' }); render(); return; }
   if(a==='expDel'){ if(!confirm('Remove this line from the report?')) return; const L=t.dataset.list, I=+t.dataset.i, row=ui.exp[L][I]; showUndo('Line removed.', ()=>{ if(ui.exp){ ui.exp[L].splice(I,0,row); if(L==='trips') syncCommuteDays(ui.exp); } }); ui.exp[t.dataset.list].splice(+t.dataset.i,1); if(t.dataset.list==='trips') syncCommuteDays(ui.exp); render(); return; }
   if(a==='expSave'||a==='expSubmit'){ const x=ui.exp;
     if(a==='expSubmit'){ const err=expValidate(x); if(err){ ui.expErr=err; render(); return; } x.status='submitted'; x.submittedAt=Date.now(); x.history=[...(x.history||[]), { at:Date.now(), by:x.personName, action:'Submitted' }]; }
@@ -4911,7 +4923,7 @@ document.addEventListener('click', async ev=>{
   if(a==='fiLater'){ fiRead(); ui.notice=`Draft saved for ${ui.fi.office} on this device. Tap “Continue first inventory” on the Inventory page to pick up where you left off.`; ui.noticeKind='ok'; ui.fi=null; ui.av='inventory'; render(); window.scrollTo(0,0); return; }
   if(a==='fiCancel'){ if(ui.fi && ui.fi.office){ fiRead(); const T=fiTotals(ui.fi); if((T.gear||T.stock) && !confirm('Leave the first inventory? Your entries stay saved as a draft on this device.')) return; } ui.fi=null; ui.av='inventory'; render(); return; }
   if(a==='fiFinish'){ await fiFinish(); return; }
-  if(a==='demoReset'){ if(!confirm('Reset the demo to its starting sample data?')) return; try{ localStorage.removeItem(LOCAL_KEY); Object.keys(localStorage).filter(k=>k.startsWith('peHub.firstInv.')||k.startsWith('peHub.welcome.')||k.startsWith('peHub.lastSeen.')).forEach(k=>localStorage.removeItem(k)); }catch(e){} location.hash=''; location.reload(); return; }
+  if(a==='demoReset'){ if(!confirm('Reset the demo to its starting sample data?')) return; try{ localStorage.removeItem(LOCAL_KEY); Object.keys(localStorage).filter(k=>k.startsWith('peHub.firstInv.')||k.startsWith('pe-marketer-schedule-demo')||k==='peHub.demo.etaccStore'||k.startsWith('peHub.welcome.')||k.startsWith('peHub.lastSeen.')).forEach(k=>localStorage.removeItem(k)); }catch(e){} location.hash=''; location.reload(); return; }
   if(a==='demoPhone'){ location.hash='checkin'; location.reload(); return; }
   if(a==='demoMgr'){ location.hash=''; location.reload(); return; }
   if(a==='skuPick'){ if(ev.target.closest('.skufile')) return; ui.pasteSku=t.dataset.sku; render(); return; }
@@ -5049,20 +5061,20 @@ setInterval(()=>{ if(!ui.panel && !ui.assetForm && !ui.item && !ui.exp && !docum
 function seedDemo(){
   const t=todayIso(), y=addDays(t,-1), d3=addDays(t,-3), d4=addDays(t,-2);
   const ev=(name,office,start,end,days,venue)=>({ key:[office,name,start].join('|').toLowerCase(), name, office, region:'SC', status:'Approved', start, end, days, venueName:venue, venueAddress:'123 Main St', boothNumber:'B12' });
-  const E=[ ev('Fall Home & Garden Show','DAL - Dallas',y,t,[{date:y,start:'10:00',stop:'18:00'},{date:t,start:'09:00',stop:'17:00'}],'Dallas Market Hall'),
+  const E=[ ev('Fall Home & Garden Show','DAL - Dallas/Ft. Worth',y,t,[{date:y,start:'10:00',stop:'18:00'},{date:t,start:'09:00',stop:'17:00'}],'Dallas Market Hall'),
             ev('Katy Holiday Market','HOU - Houston',t,t,[{date:t,start:'08:00',stop:'14:00'}],'Merrell Center'),
-            ev('Red Oak Founder’s Day','DAL - Dallas',d3,d4,[{date:d3,start:'10:00',stop:'16:00'},{date:d4,start:'10:00',stop:'16:00'}],'Red Oak Park') ];
-  const R=[{id:'m1',name:'Paula Shoemaker',office:'DAL - Dallas',mgr:true,email:'paula.shoemaker@greatdayimprovements.com'},{id:'p1',name:'Paul Gaiptman',office:'DAL - Dallas',email:'paul@example.com',empId:'W2N000001',commuteMiles:18},{id:'p2',name:'Kimberly Freeman',office:'DAL - Dallas'},{id:'p3',name:'Ryan Powers',office:'HOU - Houston'},{id:'p4',name:'Dana Ortiz',office:'HOU - Houston'}];
+            ev('Red Oak Founder’s Day','DAL - Dallas/Ft. Worth',d3,d4,[{date:d3,start:'10:00',stop:'16:00'},{date:d4,start:'10:00',stop:'16:00'}],'Red Oak Park') ];
+  const R=[{id:'m1',name:'Paula Shoemaker',office:'DAL - Dallas/Ft. Worth',mgr:true,email:'paula.shoemaker@greatdayimprovements.com'},{id:'p1',name:'Paul Gaiptman',office:'DAL - Dallas/Ft. Worth',email:'paul@example.com',empId:'W2N000001',commuteMiles:18},{id:'p2',name:'Kimberly Freeman',office:'DAL - Dallas/Ft. Worth'},{id:'p3',name:'Ryan Powers',office:'HOU - Houston'},{id:'p4',name:'Dana Ortiz',office:'HOU - Houston'}];
   const A={}; const as=(e,i,p)=>{ A[dayId(e,e.days[i])]=p; };
   as(E[0],0,['p1','p2']); as(E[0],1,['p1','p2']); as(E[1],0,['p3','p4']); as(E[2],0,['p1']); as(E[2],1,['p2']);
   S.sched={ events:E, roster:R, assignments:A, details:{} };
-  S.assets=[ {id:'a1',kind:'gear',code:'PE-00001',name:'10x10 Tent',category:'Tent',office:'DAL - Dallas',cost:420,purchaseDate:'2025-03-02',vendor:'ShowStar',serial:'TS-88812'},
-             {id:'a2',kind:'gear',code:'PE-00002',name:'Retractable banner',category:'Banner / sign',office:'DAL - Dallas',cost:180},
-             {id:'a6',kind:'gear',code:'PE-00006',name:'Folding table 6ft',category:'Table',office:'DAL - Dallas',cost:90},
-             {id:'a7',kind:'kit',code:'PE-00007',name:'Event Kit A',category:'Kit',office:'DAL - Dallas',contents:['a6','a8']},
-             {id:'a8',kind:'gear',code:'PE-00008',name:'Table cover (logo)',category:'Banner / sign',office:'DAL - Dallas',cost:65},
+  S.assets=[ {id:'a1',kind:'gear',code:'PE-00001',name:'10x10 Tent',category:'Tent',office:'DAL - Dallas/Ft. Worth',cost:420,purchaseDate:'2025-03-02',vendor:'ShowStar',serial:'TS-88812'},
+             {id:'a2',kind:'gear',code:'PE-00002',name:'Retractable banner',category:'Banner / sign',office:'DAL - Dallas/Ft. Worth',cost:180},
+             {id:'a6',kind:'gear',code:'PE-00006',name:'Folding table 6ft',category:'Table',office:'DAL - Dallas/Ft. Worth',cost:90},
+             {id:'a7',kind:'kit',code:'PE-00007',name:'Event Kit A',category:'Kit',office:'DAL - Dallas/Ft. Worth',contents:['a6','a8']},
+             {id:'a8',kind:'gear',code:'PE-00008',name:'Table cover (logo)',category:'Banner / sign',office:'DAL - Dallas/Ft. Worth',cost:65},
              {id:'a3',kind:'gear',code:'PE-00003',name:'Sample screen panel',category:'Display / sample',office:'HOU - Houston',cost:950},
-             {id:'a4',kind:'consumable',code:'PE-00004',name:'Brochures',category:'Print',office:'DAL - Dallas',reorderAt:150,unit:'each',cost:0.4},
+             {id:'a4',kind:'consumable',code:'PE-00004',name:'Brochures',category:'Print',office:'DAL - Dallas/Ft. Worth',reorderAt:150,unit:'each',cost:0.4},
              {id:'a5',kind:'consumable',code:'PE-00005',name:'Koozies',category:'Giveaway',office:'',reorderAt:50,cost:1.1} ];
   const T=Date.now(); S.alog=[ {id:'l1',type:'count',assetId:'a4',qty:500,at:T-20*864e5},{id:'l2',type:'count',assetId:'a5',qty:200,at:T-20*864e5},
     {id:'l3',type:'checkout',assetId:'a1',personId:'p1',personName:'Paul Gaiptman',eventName:'Red Oak Founder’s Day',at:T-3*864e5},{id:'l4',type:'return',assetId:'a1',condition:'Good',at:T-2.7*864e5},
@@ -5086,22 +5098,22 @@ function seedDemoMore(E,R){
   E.forEach(e=>{ if(e.office==='HOU - Houston') e.region='SC-2'; });
   const ev=(name,office,region,start,ndays,hrs,venue)=>{ const days=[]; for(let i=0;i<ndays;i++) days.push({ date:addDays(start,i), start:hrs[0], stop:hrs[1] });
     return { key:[office,name,start].join('|').toLowerCase(), name, office, region, status:'Approved', start, end:addDays(start,ndays-1), days, venueName:venue, venueAddress:'100 Expo Blvd', boothNumber:'A'+(10+E.length) }; };
-  const more=[ ev('Charlotte Fall Home Show','CLT - Charlotte','SA-2',add(4),3,['10:00','18:00'],'Park Expo Center'),
-    ev('Nashville Holiday Market','NSH - Nashville','MW',add(6),2,['09:00','17:00'],'Music City Center'),
+  const more=[ ev('Charlotte Fall Home Show','CHA - Charlotte','SA-2',add(4),3,['10:00','18:00'],'Park Expo Center'),
+    ev('Nashville Holiday Market','NAS - Nashville','MW',add(6),2,['09:00','17:00'],'Music City Center'),
     ev('Phoenix Home & Garden','PHX - Phoenix','SW',add(11),3,['10:00','17:00'],'State Fairgrounds'),
     ev('Atlanta Winter Expo','ATL - Atlanta','SE',add(18),2,['10:00','16:00'],'Cobb Galleria'),
-    ev('Dallas Home & Garden Show','DAL - Dallas','SC','2027-01-22',3,['10:00','18:00'],'Dallas Market Hall'),
+    ev('Dallas Home & Garden Show','DAL - Dallas/Ft. Worth','SC','2027-01-22',3,['10:00','18:00'],'Dallas Market Hall'),
     ev('Houston Home Show','HOU - Houston','SC-2','2027-02-05',3,['10:00','18:00'],'NRG Center'),
-    ev('Charlotte Spring Home Show','CLT - Charlotte','SA-2','2027-03-12',3,['10:00','18:00'],'Park Expo Center') ];
+    ev('Charlotte Spring Home Show','CHA - Charlotte','SA-2','2027-03-12',3,['10:00','18:00'],'Park Expo Center') ];
   // A live event for showing check-in and check-out on a call: today, starting at the most recent quarter hour,
   // running 3 hours, with one marketer (Alex Rivera) scheduled and not yet checked in. Tap “↺ Reset demo” right
   // before the call so the times line up with the clock.
   const nowD=new Date(), q=Math.floor((nowD.getHours()*60+nowD.getMinutes())/15)*15, hm=m=>pad(Math.floor(m/60)%24)+':'+pad(m%60);
-  const live=ev('Dallas Winter Home Show','DAL - Dallas','SC',t,1,[hm(q),hm(Math.min(q+180,23*60+45))],'Dallas Market Hall');
+  const live=ev('Dallas Winter Home Show','DAL - Dallas/Ft. Worth','SC',t,1,[hm(q),hm(Math.min(q+180,23*60+45))],'Dallas Market Hall');
   more.unshift(live);
   E.push(...more);
-  R.push({id:'p0',name:'Alex Rivera',office:'DAL - Dallas',email:'alex.rivera@example.com',commuteMiles:12},{id:'m2',name:'Jordan Avery',office:'CLT - Charlotte',mgr:true,email:'jordan.avery@example.com'},{id:'p5',name:'Maya Brooks',office:'CLT - Charlotte'},{id:'p6',name:'Luis Moreno',office:'CLT - Charlotte'},
-    {id:'p7',name:'Tasha Green',office:'NSH - Nashville'},{id:'p8',name:'Owen Price',office:'PHX - Phoenix'},{id:'p9',name:'Grace Kim',office:'ATL - Atlanta'});
+  R.push({id:'p0',name:'Alex Rivera',office:'DAL - Dallas/Ft. Worth',email:'alex.rivera@example.com',commuteMiles:12},{id:'m2',name:'Jordan Avery',office:'CHA - Charlotte',mgr:true,email:'jordan.avery@example.com'},{id:'p5',name:'Maya Brooks',office:'CHA - Charlotte'},{id:'p6',name:'Luis Moreno',office:'CHA - Charlotte'},
+    {id:'p7',name:'Tasha Green',office:'NAS - Nashville'},{id:'p8',name:'Owen Price',office:'PHX - Phoenix'},{id:'p9',name:'Grace Kim',office:'ATL - Atlanta'});
   const A=S.sched.assignments, as=(e,i,p)=>{ A[dayId(e,e.days[i])]=p; };
   as(more[0],0,['p0']);
   as(more[1],0,['p5','p6']); as(more[1],1,['p5']); /* day 3 open */ as(more[2],0,['p7']); /* Nashville day 2 open */ as(more[4],0,['p9']);
@@ -5114,38 +5126,63 @@ function seedDemoMore(E,R){
   // ETACC: events for deadlines, decisions, payments, the sprint’s Q1 2027 count
   const nm=new Date(parseIso(t).getFullYear(), parseIso(t).getMonth()+1, 10), nmIso=isoOf(nm);
   const X=(id,eventName,branch,startDate,status,extra)=>Object.assign({ id, eventName, branch, startDate, endDate:startDate, status, region:0, eventType:'Home Show' }, extra||{});
-  S.etacc=[ X('x1','Charlotte Fall Home Show','CLT - Charlotte',add(4),'submitted',{ paymentDueDate:add(5), paymentStatus:'Unpaid', boothCost:2400 }),
-    X('x2','Nashville Holiday Market','NSH - Nashville',add(6),'submitted',{ contractReleaseDate:add(9) }),
-    X('x3','Dallas Holiday Lights Festival','DAL - Dallas',nmIso,'researching',{ boothCost:900 }),
+  S.etacc=[ X('x1','Charlotte Fall Home Show','CHA - Charlotte',add(4),'submitted',{ paymentDueDate:add(5), paymentStatus:'Unpaid', boothCost:2400 }),
+    X('x2','Nashville Holiday Market','NAS - Nashville',add(6),'submitted',{ contractReleaseDate:add(9) }),
+    X('x3','Dallas Holiday Lights Festival','DAL - Dallas/Ft. Worth',nmIso,'researching',{ boothCost:900 }),
     X('x4','Houston Spring Garden Fair','HOU - Houston',addDays(nmIso,6),'researching',{ boothCost:1500 }),
-    X('x5','Dallas Home & Garden Show','DAL - Dallas','2027-01-22','submitted'), X('x6','Houston Home Show','HOU - Houston','2027-02-05','submitted'),
-    X('x7','Charlotte Spring Home Show','CLT - Charlotte','2027-03-12','execute'), X('x8','Katy Home & Garden Show','HOU - Houston','2027-01-15','researching'),
+    X('x5','Dallas Home & Garden Show','DAL - Dallas/Ft. Worth','2027-01-22','submitted'), X('x6','Houston Home Show','HOU - Houston','2027-02-05','submitted'),
+    X('x7','Charlotte Spring Home Show','CHA - Charlotte','2027-03-12','execute'), X('x8','Katy Home & Garden Show','HOU - Houston','2027-01-15','researching'),
     X('x9','Phoenix Home & Garden','PHX - Phoenix',add(11),'submitted'), X('x10','Atlanta Winter Expo','ATL - Atlanta',add(18),'submitted'),
-    X('x11','Nashville Lawn & Garden Show','NSH - Nashville','2027-02-19','execute') ];
+    X('x11','Nashville Lawn & Garden Show','NAS - Nashville','2027-02-19','execute') ];
   S.etaccErr='';
   // Every scheduled demo event has an ETACC opps target, so check-in shows the event, day and shift goals.
   E.forEach((e,i)=>{ const goal=Math.max(4, Math.round((e.days||[]).reduce((t,d)=>t+(shiftHours(d.start,d.stop)||8),0)*1.5)); let m=etaccMatch(e);
     if(!m){ m=X('xe'+i, e.name, e.office, e.start, 'submitted', { endDate:e.end }); S.etacc.push(m); }
     if(!num(m.forecastedOpps)) m.forecastedOpps=goal; });
+  // ETACC details the demo ETACC page shows: end dates that match the schedule, a contract cost, and the
+  // date check cleared for all but one event (so the “dates to double-check” card has one example).
+  const costs=[2400,1800,900,1500,3200,2800,2600,1200,2100,1700,1900];
+  S.etacc.forEach((x,i)=>{ const e=E.find(v=>normName(v.name)===normName(x.eventName) && v.start===x.startDate); if(e) x.endDate=e.end||e.start;
+    if(!x.contractCost) x.contractCost=String(x.boothCost||costs[i%costs.length]); if(!x.zip) x.zip='75201'; });
+  S.dateOk={}; S.etacc.filter(x=>x.id!=='x3').forEach(x=>{ S.dateOk[x.id]={ start:x.startDate, end:x.endDate||'', by:'paula.shoemaker@greatdayimprovements.com', at:T }; });
   // Expense reports: one waiting for approval, one approved
   const exp=(id,pid,status,miles,amt)=>{ const p=R.find(r=>r.id===pid), wk=addDays(mondayOf(t),-7);
     return { id, personId:pid, personName:p.name, email:p.email||'', office:p.office, region:regionOf(p.office)||'SC', isMgr:false, rate:RATE_MARKETER, commuteMiles:10, weekStart:wk, weekEnd:addDays(wk,6),
-      supervisor:'Paula Shoemaker', supervisorEmail:'paula.shoemaker@greatdayimprovements.com', method:'ach', address:{}, trips:[{ date:addDays(wk,1), from:'Office', to:'Dallas Market Hall', miles, purpose:'Fall Home & Garden Show' }],
+      supervisor:'Paula Shoemaker', supervisorEmail:'paula.shoemaker@greatdayimprovements.com', method:'ach', address:{}, trips:[{ date:addDays(wk,1), from:'4500 Oak Lawn Ave, Dallas, TX 75219', to:'Dallas Market Hall', miles, purpose:'Fall Home & Garden Show' }],
       commuteDays:'', stays:[], misc:[{ date:addDays(wk,1), what:'Parking', amount:amt }], certify:true, signature:p.name, status, createdAt:T-3*864e5, submittedAt:T-2*864e5, history:[] }; };
   S.expenses={ xa:exp('xa','p1','submitted',64,12), xb:exp('xb','p2','approved',38,8) };
   // Booth assets with supply-list pictures, a kit, and a first inventory for Dallas
   const g=(id,sku,code,office,extra)=>{ const c=SHOP_CATALOG.find(x=>x.sku===sku)||{}; return Object.assign({ id, kind:'gear', code, name:c.name||sku, category:c.category||'Other', office, cost:c.price||'', vendor:'Great Day Shop', shopSku:sku, createdAt:T-10*864e5, condition:'Good' }, extra||{}); };
-  S.assets.push(g('b1','OTH-TABLECLOTH','PE-00010','DAL - Dallas'), g('b2','OTH-TV32','PE-00011','DAL - Dallas'), g('b3','OTH-STOOL','PE-00012','DAL - Dallas'), g('b4','OTH-STOOL','PE-00013','DAL - Dallas'),
-    g('b5','OTH-BANNER-OUT','PE-00014','DAL - Dallas'), g('b6','OTH-FLASH','PE-00015','CLT - Charlotte'), g('b7','OTH-ACRYLIC','PE-00016','CLT - Charlotte'), g('b8','OTH-SIGN11X17','PE-00017','CLT - Charlotte'), g('b9','OTH-RUNNER','PE-00018','CLT - Charlotte'));
-  S.audits={ au_demo1:{ name:'DAL - Dallas first inventory – '+fmtLong(addDays(t,-5)), kind:'initial', offices:['DAL - Dallas'], startedAt:T-5*864e5, startedBy:'jordan.avery@example.com', closedAt:T-5*864e5+40*6e4, closedBy:'jordan.avery@example.com' } };
+  S.assets.push(g('b1','OTH-TABLECLOTH','PE-00010','DAL - Dallas/Ft. Worth'), g('b2','OTH-TV32','PE-00011','DAL - Dallas/Ft. Worth'), g('b3','OTH-STOOL','PE-00012','DAL - Dallas/Ft. Worth'), g('b4','OTH-STOOL','PE-00013','DAL - Dallas/Ft. Worth'),
+    g('b5','OTH-BANNER-OUT','PE-00014','DAL - Dallas/Ft. Worth'), g('b6','OTH-FLASH','PE-00015','CHA - Charlotte'), g('b7','OTH-ACRYLIC','PE-00016','CHA - Charlotte'), g('b8','OTH-SIGN11X17','PE-00017','CHA - Charlotte'), g('b9','OTH-RUNNER','PE-00018','CHA - Charlotte'));
+  S.audits={ au_demo1:{ name:'DAL - Dallas first inventory – '+fmtLong(addDays(t,-5)), kind:'initial', offices:['DAL - Dallas/Ft. Worth'], startedAt:T-5*864e5, startedBy:'jordan.avery@example.com', closedAt:T-5*864e5+40*6e4, closedBy:'jordan.avery@example.com' } };
   S.alog.push({ id:'l9', type:'count', assetId:'a4', qty:120, at:T-864e5 });
   // Alerts already sent (the bell and Today’s Activity)
   S.alerts={ al1:{ id:'al1', kind:'late', subject:'Late check-in: Ryan Powers at Katy Holiday Market', office:'HOU - Houston', createdAt:T-2*36e5, to:['paula.shoemaker@greatdayimprovements.com'] },
-    al2:{ id:'al2', kind:'early', subject:'Early check-out: Kimberly Freeman at Red Oak Founder’s Day (75 minutes early)', office:'DAL - Dallas', createdAt:T-2*864e5, to:['paula.shoemaker@greatdayimprovements.com'] },
-    al3:{ id:'al3', kind:'issue', subject:'Issue reported: Booth location problem at Red Oak Founder’s Day', office:'DAL - Dallas', createdAt:T-2*864e5, to:['paula.shoemaker@greatdayimprovements.com'] } };
+    al2:{ id:'al2', kind:'early', subject:'Early check-out: Kimberly Freeman at Red Oak Founder’s Day (75 minutes early)', office:'DAL - Dallas/Ft. Worth', createdAt:T-2*864e5, to:['paula.shoemaker@greatdayimprovements.com'] },
+    al3:{ id:'al3', kind:'issue', subject:'Issue reported: Booth location problem at Red Oak Founder’s Day', office:'DAL - Dallas/Ft. Worth', createdAt:T-2*864e5, to:['paula.shoemaker@greatdayimprovements.com'] } };
   mergeMgrTimes();
 }
 const DEMO_USER = { email:'paula.shoemaker@greatdayimprovements.com', displayName:'Paula Shoemaker' };
+/* Demo copies of ETACC and the schedule run in the same frames as the live tools and trade data with the hub
+   through window.peDemo, so a change in either one shows on the hub tiles (and the other way round). */
+const DEMO_BASE = location.pathname.includes('/hub/') ? SITE : new URL('./', location.href).href;
+const DEMO_ETACC_URL = DEMO_BASE + 'etacc-demo/index.html', DEMO_SCHEDULE_URL = DEMO_BASE + 'schedule/index.html?demo';
+if(DEMO) window.peDemo = {
+  schedDocs(){ const s=S.sched, c=o=>JSON.parse(JSON.stringify(o));
+    const events=(s.events||[]).map(e=>{ const o=Object.assign({}, e); if(e._days) o.days=e._days.map(d=>({ date:d.date, start:d.start, stop:d.stop })); delete o._days; return o; });
+    const assign=Object.entries(s.assignments||{}).map(([id,people])=>{ const times={}; (people||[]).forEach(pid=>{ const t=(s.shiftTimes||{})[id+'::'+pid]; if(t&&(t.start||t.stop)) times[pid]={ start:t.start||'', stop:t.stop||'' }; }); return Object.keys(times).length?{ id, people, times }:{ id, people }; });
+    return c({ events:{ list:events, dataAsOf:new Date().toISOString(), sourceFile:'Demo sample data' }, roster:{ list:s.roster||[] }, assignments:{ list:assign }, details:{ list:Object.values(s.details||{}) }, practices:{ text:s.practices||'' } }); },
+  putSchedDocs(d){ d=JSON.parse(JSON.stringify(d));
+    if(d.events) S.sched.events=d.events.list||[];
+    if(d.roster) S.sched.roster=d.roster.list||[];
+    if(d.assignments){ S.sched.assignments=Object.fromEntries((d.assignments.list||[]).map(x=>[x.id,x.people||[]])); S.sched.shiftTimes={}; (d.assignments.list||[]).forEach(x=>Object.entries(x.times||{}).forEach(([pid,t])=>{ S.sched.shiftTimes[x.id+'::'+pid]=t; })); }
+    if(d.details) S.sched.details=Object.fromEntries((d.details.list||[]).map(x=>[x.key,x]));
+    if(d.practices) S.sched.practices=d.practices.text||'';
+    mergeMgrTimes(); localSave(); render(); },
+  etacc(){ return JSON.parse(JSON.stringify(S.etacc||[])); },
+  setEtacc(list){ S.etacc=JSON.parse(JSON.stringify(list||[])); localSave(); render(); }
+};
 function demoBar(){
   if(!DEMO) return '';
   return `<div class="demobar no-print"><b>🧪 Demo</b><span>Sample data only. Nothing here is saved to the live hub or emailed, so click anything.</span><span class="spacer"></span>

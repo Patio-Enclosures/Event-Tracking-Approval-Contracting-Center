@@ -59,6 +59,13 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .todo .todogrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px}.todog{border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff}
 .todoh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;font-size:14px}.todoi{display:flex;flex-direction:column;padding:6px 8px;border-radius:8px;cursor:pointer;border-left:3px solid var(--gold);margin:3px 0;background:#fafafa}
 .todoi:hover{background:#f0f7f8}.todoi.red{border-left-color:var(--red)}.todoi b{font-size:13.5px}.todoi span{font-size:12px;color:var(--ink-soft)}
+.scbanner.slim{padding:10px 14px;gap:14px;border-width:2px;border-radius:12px;margin-bottom:14px}
+.scbanner.slim .ic{width:40px;height:40px;font-size:22px;border-radius:10px}
+.scbanner.slim h2{font-size:16px;margin:0}.scb-sub{display:none}.scbanner.slim .scb-sub{display:block;font-size:12px;color:#cfd0d2}.scbanner.slim .scb-main p{display:none}
+.scbanner.slim .scb-stat{padding:4px 10px;min-width:70px}.scbanner.slim .scb-stat b{font-size:16px}.scbanner.slim .scb-stat span{font-size:11px}
+.scbanner.slim .go{padding:8px 12px;font-size:13.5px}
+@media (max-width:1000px){.scbanner.slim .scb-stats{order:0;width:auto;flex:1}}
+@media (max-width:700px){.scbanner.slim{flex-wrap:wrap}.scbanner.slim .scb-stats{order:3;width:100%}.scbanner.slim .go{display:none}}
 .scb-upd{margin-top:6px!important;font-size:12.5px!important;color:var(--gold)!important}
 .searchwrap{position:relative;margin:10px auto 12px;max-width:980px}.searchwrap input{width:100%;font-size:16px;padding:11px 14px;border:2px solid var(--line);border-radius:12px}.searchwrap input:focus{border-color:var(--aqua);outline:none}
 .searchres{position:absolute;z-index:60;left:0;right:0;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.15);max-height:60vh;overflow:auto}
@@ -106,6 +113,11 @@ nav.tabs .badge{background:var(--warn);color:#fff;border-radius:9px;padding:0 6p
 .tile{position:relative;aspect-ratio:1/1;background:var(--surface);border:2px solid var(--tc,var(--line));border-radius:14px;padding:20px;cursor:pointer;display:flex;flex-direction:column;text-align:left;transition:transform .12s,box-shadow .12s,border-color .12s}
 .skuph{width:74px;cursor:pointer;position:relative;text-align:center}.skuph img{width:60px;height:60px;object-fit:contain;border:1px solid var(--line);border-radius:6px;background:#fff;display:block;margin:auto}.skuph>span{display:flex;align-items:center;justify-content:center;width:60px;height:60px;margin:auto;border:1px dashed var(--line);border-radius:6px;font-size:11px;color:var(--muted);line-height:1.2}
 .skuph.on img,.skuph.on>span{outline:3px solid var(--aqua);outline-offset:1px}.skufile{position:absolute;right:0;bottom:0;font-size:12px;cursor:pointer;background:#fff;border-radius:4px;padding:0 2px}
+.fistart{display:flex;align-items:center;gap:14px;border:2px solid var(--aqua);background:#e8f7f8}.fistart .ic{font-size:30px}
+.fihead{position:sticky;top:0;z-index:5}.fitot{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:13.5px}.fitot b{font-size:17px;color:var(--accent)}
+table.fit input.fin{width:72px}table.fit td{vertical-align:middle}table.fit tr.fihas td{background:#f0faf3}
+@media (max-width:640px){ table.fit input.fin{width:54px} .fihead{position:static} }
+.adpfirst{margin:10px 0 12px}.adpfirst .adpbox{border:2px solid var(--aqua)}
 .athumb{border-radius:6px;object-fit:contain;background:#fff;border:1px solid var(--line);flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;font-size:18px}
 .athumb.none{background:var(--soft,#f4f6f7);color:var(--muted)}
 .arow{display:flex;gap:10px;align-items:center}
@@ -122,6 +134,15 @@ details.hsec>summary .homeh{margin:14px 0 8px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.invgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin:8px 0}
 .kv>div{margin:3px 0}.kv .lbl{display:inline-block;min-width:150px}
 @media (max-width:720px){ .sprintline{grid-template-columns:1fr 1fr} .grid2{grid-template-columns:1fr} }
+.mini.off{cursor:default;opacity:.55;filter:grayscale(1)}.mini.off:hover{transform:none;box-shadow:none}
+.tiles .tile{aspect-ratio:auto;flex-direction:row;align-items:center;gap:14px;padding:14px 16px;min-height:92px}
+.tiles .tile .ic{margin:0;width:46px;height:46px;font-size:24px;flex:0 0 auto}
+.tiles .tile .tb{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.tiles .tile h2{margin:0;font-size:16.5px}.tiles .tile .stat{margin-top:0}
+.tiles .tile .flag{top:8px;right:10px}
+.tiles .tile .tilebtn{margin-top:6px}
+.tiles .tile.off:hover{padding:14px 16px}
+@media (max-width:520px){.tiles .tile{flex-direction:column;align-items:flex-start;gap:6px;padding:10px 12px;min-height:0}.tiles .tile .ic{width:36px;height:36px;font-size:19px}.tiles .tile h2{font-size:14.5px}}
 .tile .tilebtn{margin-top:10px;align-self:flex-start}
 .tile.off{cursor:default;opacity:.55;filter:grayscale(1)}
 .tile.off:hover{transform:none;box-shadow:none;border-width:2px;padding:20px}
@@ -388,9 +409,9 @@ function breakNote(bp){ if(!bp) return '';
   return `<div class="notice" style="margin:8px 0"><b>☕ Your breaks today:</b> ${breakText(bp)}. Plan them with your supervisor so the booth stays covered.${bp.meals?' Clock out on ADP for your meal break and back in when you return; you must be fully off duty.':''}${bp.rests?' Rest breaks are paid: stay clocked in.':''} Breaks can’t be skipped, combined, or used to come in late or leave early.</div>`;
 }
 function checkinBreakPlan(c){ const h=shiftHours(c.shiftStart, c.shiftStop)||hoursOf(c)||((Date.now()-c.inAt)/36e5); return breakPlan(h); }
-function adpBox(kind, checked){
+function adpBox(kind, checked, step){
   const word = kind==='in' ? 'in' : 'out';
-  return `<div class="adpbox"><div class="adpt">⏰ Clock ${word} on ADP</div>
+  return `<div class="adpbox"><div class="adpt">${step||''}⏰ Clock ${word} on ADP MyWork${step?' <span style="color:var(--red)">*</span>':''}</div>
     <div class="small">Your pay comes from ADP, not this check-${word}. Open ADP MyWork and clock ${word} now${kind==='out'?' (and record any meal break)':''}.</div>
     ${kind==='in'?`<div class="small" style="margin-top:4px"><b>Picking up equipment at the office?</b> Clock in on ADP when you <b>arrive at the office</b>, not at the booth. Your paid time runs from the office until you clock out at the end of your shift.</div>`:''}
     ${adpAppButtons()}
@@ -580,9 +601,9 @@ function computeStates(){
 }
 function stOf(a){ return (a && ST[a.id]) || {}; }
 function assetInScope(a){ const o=stOf(a).office||a.office||''; return !o || inOffice(o); }
-// Item pictures: built-in photos for supply-list items (hub/items/<SKU>.jpg), or a photo a manager adds.
+// Item pictures: built-in photos for supply-list items (hub/<SKU>.jpg), or a photo a manager adds.
 // A photo added to an item with a supply-list SKU is shared by every item with that SKU.
-const ITEM_IMG = Object.fromEntries(['OTH-TABLECLOTH','OTH-TV32','OTH-STOOL','OTH-BANNER-OUT','OTH-ACRYLIC','OTH-SIGN11X17','OTH-FLASH','OTH-10PANEL','OTH-RUNNER'].map(k=>[k,'items/'+k+'.jpg']));
+const ITEM_IMG = Object.fromEntries(['OTH-TABLECLOTH','OTH-TV32','OTH-STOOL','OTH-BANNER-OUT','OTH-ACRYLIC','OTH-SIGN11X17','OTH-FLASH','OTH-10PANEL','OTH-RUNNER'].map(k=>[k,k+'.jpg'])); // pictures sit in the hub folder next to index.html
 function photoKey(a){ return a.shopSku || a.id; }
 function assetPhoto(a){ if(!a) return ''; const P=S.assetPhotos||{}; return P[a.id] || (a.shopSku&&P[a.shopSku]) || ITEM_IMG[a.shopSku] || ''; }
 function assetThumb(a, size){ const u=assetPhoto(a), z=size||40; return u?`<img class="athumb" src="${esc(u)}" alt="" loading="lazy" style="width:${z}px;height:${z}px">`:`<span class="athumb none" style="width:${z}px;height:${z}px">${a&&a.kind==='kit'?'🧰':'📦'}</span>`; }
@@ -735,6 +756,91 @@ async function shopSave(){
   ui.notice=`Added to ${A.office}: ${made} item${made===1?'':'s'}.${codes.length?` ${codes.length} new booth asset${codes.length===1?'':'s'} are ticked below, ready to print labels.`:''}`; ui.noticeKind='ok';
   render(); return made;
 }
+/* ---------------- First inventory: a branch's starting count, item by item ---------------- */
+// Managers go down the supply list and enter what the branch has: booth assets by condition, stock on hand,
+// plus anything not on the list. A draft is kept on this device until they finish. Finishing creates the items
+// (each booth asset gets a barcode), records the count as a completed branch inventory, and ticks the new
+// booth assets for label printing.
+const FI_CONDS = [['Good','Good'],['Fair','Fair'],['Needs repair','Needs repair'],['Damaged','Replace']];
+function fiKey(o){ return 'peHub.firstInv.'+String(o||''); }
+function fiLoad(o){ try{ return JSON.parse(lsGet(fiKey(o))||'null'); }catch(e){ return null; } }
+function fiStore(o, d){ lsSet(fiKey(o), d?JSON.stringify(d):null); }
+function fiBlank(o){ return { office:o, g:{}, c:{}, r:{}, extra:[], at:Date.now() }; }
+function fiRead(){ const F=ui.fi; if(!F||!F.office) return;
+  document.querySelectorAll('[data-fig]').forEach(el=>{ const [sku,cond]=el.dataset.fig.split('|'); F.g[sku]=F.g[sku]||{}; F.g[sku][cond]=el.value; });
+  document.querySelectorAll('[data-fic]').forEach(el=>{ F.c[el.dataset.fic]=el.value; });
+  document.querySelectorAll('[data-fir]').forEach(el=>{ F.r[el.dataset.fir]=el.value; });
+  document.querySelectorAll('[data-fix]').forEach(el=>{ const [i,f]=el.dataset.fix.split('|'); if(F.extra[+i]) F.extra[+i][f]=el.value; });
+  F.at=Date.now(); fiStore(F.office, F); }
+function fiTotals(F){ let gear=0, repair=0, stock=0;
+  Object.values(F.g||{}).forEach(m=>FI_CONDS.forEach(([c])=>{ const n=Math.max(0,Math.floor(num(m[c]))); gear+=n; if(c==='Needs repair'||c==='Damaged') repair+=n; }));
+  Object.values(F.c||{}).forEach(v=>{ if(num(v)>0) stock++; });
+  (F.extra||[]).forEach(x=>{ const q=Math.max(0,Math.floor(num(x.qty))); if(!x.name||!q) return; if(x.kind==='consumable') stock++; else { gear+=q; if(x.cond==='Needs repair'||x.cond==='Damaged') repair+=q; } });
+  return { gear, repair, stock }; }
+function fiOfficeDone(o){ return Object.values(S.audits||{}).some(a=>a.kind==='initial' && (a.offices||[]).includes(o) && a.closedAt); }
+function fiMyOffices(){ const em=myEmail(); const mine=(S.sched.roster||[]).filter(p=>String(p.email||'').toLowerCase()===em && p.office).map(p=>p.office); return [...new Set(mine)].filter(o=>inOffice(o)); }
+function firstInvView(){
+  if(!S.user) return '<div class="card"><p class="muted">Sign in (top right) to do a first inventory.</p></div>';
+  const F=ui.fi||{}, o=F.office||'';
+  const offs=offices().filter(x=>inOffice(x));
+  if(!o) return `<div class="card"><div class="row"><h2 style="margin:0;flex:1">📋 First inventory</h2><button class="btn sm" data-act="fiCancel">◀ Back to inventory</button></div>
+    <p>Go down the supply list once and enter everything your branch has right now: booth assets by condition, and print and giveaway stock on hand. It takes about 20–30 minutes with the items in front of you. Your entries are saved on this device as you go, so you can stop and come back.</p>
+    <div class="field" style="max-width:360px"><label>Which branch are you counting?</label><select data-keep="fiOffice"><option value="">Choose a branch…</option>${offs.map(x=>`<option value="${esc(x)}" ${fiMyOffices().includes(x)?'selected':''}>${esc(x)}${fiOfficeDone(x)?' (first inventory done)':fiLoad(x)?' (draft saved)':''}</option>`).join('')}</select></div>
+    <button class="btn primary" data-act="fiStart">Start</button></div>`;
+  if(!ui.fiSkip) fiRead(); ui.fiSkip=false;
+  const have=S.assets.filter(a=>!a.retired && (a.office||'')===o), set=bannerSetFor(o), T=fiTotals(F);
+  const gearCat=SHOP_CATALOG.filter(x=>x.kind==='gear' && !x.bannerSet && !x.other), other=SHOP_CATALOG.filter(x=>x.kind==='gear' && x.other),
+        banners=SHOP_CATALOG.filter(x=>x.bannerSet===set), cons=SHOP_CATALOG.filter(x=>x.kind!=='gear');
+  const pic=x=>{ const u=(S.assetPhotos||{})[x.sku]||ITEM_IMG[x.sku]; return u?`<img class="athumb" src="${esc(u)}" alt="" style="width:40px;height:40px">`:`<span class="athumb none" style="width:40px;height:40px">📦</span>`; };
+  const gRow=x=>{ const m=F.g[x.sku]||{}, n=FI_CONDS.reduce((t,[c])=>t+Math.max(0,Math.floor(num(m[c]))),0), inHub=have.filter(a=>a.shopSku===x.sku).length;
+    return `<tr class="${n?'fihas':''}"><td>${pic(x)}</td><td><b>${esc(x.name)}</b><div class="small muted">${esc(x.sku)}${inHub?` · ${inHub} already in the hub`:''}</div></td>${FI_CONDS.map(([c,l])=>`<td><input type="number" min="0" step="1" inputmode="numeric" class="fin" data-fig="${x.sku}|${c}" value="${esc(m[c]??'')}" placeholder="0" aria-label="${esc(x.name)}: ${l}"></td>`).join('')}</tr>`; };
+  const cRow=x=>{ const inHub=have.find(a=>a.shopSku===x.sku);
+    return `<tr class="${num(F.c[x.sku])>0?'fihas':''}"><td>${pic(x)}</td><td><b>${esc(x.name)}</b><div class="small muted">${esc(x.unit||'each')}${inHub?` · ${stOf(inHub).qty} already in the hub`:''}</div></td><td><input type="number" min="0" step="1" inputmode="numeric" class="fin" data-fic="${x.sku}" value="${esc(F.c[x.sku]??'')}" placeholder="0" aria-label="${esc(x.name)} on hand"></td><td><input type="number" min="0" step="1" inputmode="numeric" class="fin" data-fir="${x.sku}" value="${esc(F.r[x.sku]??'')}" placeholder="—" aria-label="${esc(x.name)} reorder at"></td></tr>`; };
+  const gHead=`<thead><tr><th style="width:50px"></th><th>Item</th>${FI_CONDS.map(([,l])=>`<th style="width:84px">${l}</th>`).join('')}</tr></thead>`;
+  return `<div class="card fihead"><div class="row" style="gap:8px;flex-wrap:wrap"><h2 style="margin:0;flex:1">📋 First inventory · ${esc(o)}</h2><button class="btn sm" data-act="fiLater">💾 Save & finish later</button><button class="btn sm" data-act="fiCancel">Cancel</button></div>
+    <p class="small muted" style="margin:6px 0 0">Enter how many of each item the branch has, split by condition. Leave blank what you don’t have. “Replace” means it’s too worn or broken to use at a show. Count new pop-up banners only; never count legacy banners.${have.length?` <b>${have.length} item${have.length===1?' is':'s are'} already listed for this branch;</b> enter only what isn’t in the hub yet.`:''}</p>
+    <div class="fitot"><span><b>${T.gear}</b> booth asset${T.gear===1?'':'s'}</span><span><b>${T.repair}</b> need repair or replacing</span><span><b>${T.stock}</b> stock item${T.stock===1?'':'s'}</span></div></div>
+  ${hsec('fi-gear',`<h3 class="homeh">1. Booth assets (Great Day Shop)</h3>`,`<div class="card" style="overflow:auto"><table class="fit">${gHead}<tbody>${gearCat.map(gRow).join('')}</tbody></table></div>`)}
+  ${hsec('fi-other',`<h3 class="homeh">2. Other booth items</h3>`,`<div class="card" style="overflow:auto"><table class="fit">${gHead}<tbody>${other.map(gRow).join('')}</tbody></table></div>`)}
+  ${hsec('fi-bnr',`<h3 class="homeh">3. New pop-up banners (${esc({main:'Main',tx:'Texas',sw:'Southwest'}[set]||set)} set)</h3>`,`<div class="card" style="overflow:auto"><p class="small muted" style="margin-top:0">These go on sale ${fmtLong('2026-12-01')}. Skip this section until you have them.</p><table class="fit">${gHead}<tbody>${banners.map(gRow).join('')}</tbody></table></div>`)}
+  ${hsec('fi-stock',`<h3 class="homeh">4. Print, giveaways and badges</h3>`,`<div class="card" style="overflow:auto"><p class="small muted" style="margin-top:0">On hand now, in the unit shown. “Reorder at” is optional: the hub flags the item when stock falls to that number.</p><table class="fit"><thead><tr><th style="width:50px"></th><th>Item</th><th style="width:100px">On hand</th><th style="width:100px">Reorder at</th></tr></thead><tbody>${cons.map(cRow).join('')}</tbody></table></div>`)}
+  ${hsec('fi-extra',`<h3 class="homeh">5. Anything not on the list</h3>`,`<div class="card">${(F.extra||[]).length?`<table class="fit"><thead><tr><th>Item name</th><th>Type</th><th>Category</th><th style="width:80px">How many</th><th>Condition</th><th></th></tr></thead><tbody>${F.extra.map((x,i)=>`<tr>
+      <td><input type="text" data-fix="${i}|name" value="${esc(x.name||'')}" placeholder="e.g. Folding easel"></td>
+      <td><select data-fix="${i}|kind"><option value="gear" ${x.kind!=='consumable'?'selected':''}>Booth asset</option><option value="consumable" ${x.kind==='consumable'?'selected':''}>Stock</option></select></td>
+      <td><select data-fix="${i}|category">${ASSET_CATS.map(c=>`<option ${c===x.category?'selected':''}>${c}</option>`).join('')}</select></td>
+      <td><input type="number" min="0" step="1" class="fin" data-fix="${i}|qty" value="${esc(x.qty||'')}"></td>
+      <td><select data-fix="${i}|cond">${FI_CONDS.map(([c,l])=>`<option value="${c}" ${c===(x.cond||'Good')?'selected':''}>${l}</option>`).join('')}</select></td>
+      <td><button class="btn sm" data-act="fiDelExtra" data-i="${i}" aria-label="Remove">✕</button></td></tr>`).join('')}</tbody></table>`:'<p class="small muted" style="margin-top:0">Add anything the branch uses at shows that isn’t listed above.</p>'}<button class="btn sm" data-act="fiAddExtra">+ Add an item</button></div>`)}
+  ${ui.fiErr?`<div class="notice err">${esc(ui.fiErr)}</div>`:''}
+  <div class="card row" style="gap:10px;justify-content:flex-end"><span class="small muted" style="flex:1">Finishing adds everything to ${esc(o)}’s inventory, gives each booth asset a barcode, and marks the branch’s first inventory done.</span><button class="btn" data-act="fiLater">💾 Save & finish later</button><button class="btn primary" data-act="fiFinish" ${ui.busy?'disabled':''}>${ui.busy?'Adding…':'✅ Finish & add to inventory'}</button></div>`;
+}
+async function fiFinish(){
+  fiRead(); const F=ui.fi, o=F.office, T=fiTotals(F);
+  const badX=(F.extra||[]).find(x=>(x.name&&!num(x.qty))||(!x.name&&num(x.qty)));
+  if(badX){ ui.fiErr='Each item you added needs both a name and how many.'; render(); return; }
+  if(!T.gear && !T.stock){ ui.fiErr='Nothing entered yet. Enter at least one item, or tap Cancel.'; render(); return; }
+  if(!confirm(`Add to ${o}: ${T.gear} booth asset${T.gear===1?'':'s'}${T.repair?` (${T.repair} needing repair or replacing)`:''} and ${T.stock} stock item${T.stock===1?'':'s'}?`)) return;
+  let list=S.assets.slice(); const entries=[], codes=[], auId='au_'+uid(), now=Date.now();
+  const next=()=>{ let n=0; list.forEach(a=>{ const m=String(a.code||'').match(/^PE-(\d+)$/i); if(m) n=Math.max(n,+m[1]); }); return 'PE-'+String(n+1).padStart(5,'0'); };
+  const addGear=(base, cond, q)=>{ for(let i=0;i<q;i++){ const id='a_'+uid(); list.push(Object.assign({ id, kind:'gear', code:next(), createdAt:now, retired:false, condition:cond, serial:'', purchaseDate:'' }, base)); codes.push(id);
+      if(cond==='Needs repair'||cond==='Damaged') entries.push({ type:'status', assetId:id, status:'repair', condition:cond, note:'First inventory: '+(cond==='Damaged'?'needs replacing':'needs repair') });
+      entries.push({ type:'audit', auditId:auId, assetId:id, condition:cond, office:o }); } };
+  const addStock=(base, q, r)=>{ const ex=list.find(a=>!a.retired && a.kind==='consumable' && ((base.shopSku && a.shopSku===base.shopSku) || (!base.shopSku && a.name===base.name)) && (a.office||'')===o);
+    if(ex){ if(r!==undefined && r!=='') list=list.map(a=>a.id===ex.id?Object.assign({},a,{ reorderAt:num(r) }):a); if(q>0) entries.push({ type:'restock', assetId:ex.id, qty:q, note:'First inventory' }); return; }
+    const id='a_'+uid(); list.push(Object.assign({ id, kind:'consumable', code:next(), createdAt:now, retired:false, reorderAt:(r===undefined||r==='')?'':num(r) }, base)); if(q>0) entries.push({ type:'restock', assetId:id, qty:q, note:'First inventory' }); };
+  SHOP_CATALOG.forEach(x=>{ const base={ name:x.name, category:x.category, office:o, cost:x.price!=null?x.price:'', vendor:x.vendor||'Great Day Shop', shopSku:x.sku, shopUrl:x.url||'', notes:'' };
+    if(x.kind==='gear'){ const m=F.g[x.sku]||{}; FI_CONDS.forEach(([c])=>addGear(base, c, Math.max(0,Math.floor(num(m[c]))))); }
+    else { const q=Math.max(0,Math.floor(num(F.c[x.sku]))), r=F.r[x.sku]; if(q>0 || (r!==undefined && r!=='')) addStock(Object.assign({ unit:x.unit||'each' }, base), q, r); } });
+  (F.extra||[]).forEach(x=>{ const q=Math.max(0,Math.floor(num(x.qty))); if(!x.name||!q) return; const base={ name:x.name.trim(), category:x.category||'Other', office:o, cost:'', vendor:'', shopSku:'', shopUrl:'', notes:'Added in first inventory' };
+    if(x.kind==='consumable') addStock(Object.assign({ unit:'each' }, base), q, ''); else addGear(base, x.cond||'Good', q); });
+  ui.busy=true; render();
+  try{ await saveAssets(list); if(entries.length) await logAsset(entries);
+    await saveAudit(auId, { name:`${o} first inventory – ${fmtLong(todayIso())}`, kind:'initial', offices:[o], startedAt:F.startedAt||now, startedBy:myEmail(), closedAt:now, closedBy:myEmail(), counts:{ gear:T.gear, repair:T.repair, stock:T.stock } }); }
+  catch(e){ ui.busy=false; ui.fiErr='Couldn’t save: '+(e.code||e.message)+'. Your entries are still here; try again.'; render(); return; }
+  ui.busy=false; fiStore(o, null); ui.fi=null; ui.fiErr=''; ui.av='inventory'; ui.labelSel=codes;
+  ui.notice=`${o}’s first inventory is done: ${T.gear} booth asset${T.gear===1?'':'s'} and ${T.stock} stock item${T.stock===1?'':'s'} added. The new booth assets are ticked below; tap “🏷 Print labels” to print their barcodes.`; ui.noticeKind='ok';
+  render(); window.scrollTo(0,0);
+}
 /* ---------------- Kit templates: build, check and print kits ---------------- */
 // Each requirement: [key, label, matcher, optional]. Banner requirements use the office's banner set.
 const BNR=d=>(a,set)=>a.shopSku===`BNR-${set.toUpperCase()}-${d}`;
@@ -807,10 +913,11 @@ function assetsView(){
 
   const mgr=!!S.user, v=ui.av||'inventory';
   const subs=[['inventory','📦 Inventory'],['station','🔄 Check out / return'],['audit','📋 Annual inventory'],['log','🕘 Activity']];
+  if(v==='first') return firstInvView();
   return `<div class="row" style="margin-bottom:12px">${subs.map(([k,l])=>`<button class="btn ${v===k?'primary':''}" data-act="av" data-v="${k}">${l}</button>`).join('')}<span class="spacer"></span>${scopePicker()}</div>
   ${mgr?'':'<div class="notice">Sign in (top right) to add items, check gear out, transfer it, or run an inventory count.</div>'}
   ${ui.scanMsg?`<div class="notice ${ui.scanMsg.kind==='ok'?'ok':'err'}">${esc(ui.scanMsg.text)} ${ui.scanMsg.code&&mgr?`<button class="btn sm" data-act="addAsset" data-code="${esc(ui.scanMsg.code)}">Add it as a new item</button>`:''} <button class="btn sm" data-act="clearScan">OK</button></div>`:''}
-  ${v==='station'?stationView():v==='audit'?auditView():v==='log'?assetLogView():inventoryView()}`;
+  ${v==='first'?firstInvView():v==='station'?stationView():v==='audit'?auditView():v==='log'?assetLogView():inventoryView()}`;
 }
 function inventoryView(){
   const mgr=!!S.user, q=(ui.aq||'').toLowerCase(), cat=ui.acat||'', stf=ui.ast||'';
@@ -822,7 +929,9 @@ function inventoryView(){
   const k={ items:allGear.length, out:allGear.filter(a=>stOf(a).status==='out').length, over:allGear.filter(a=>stOf(a).overdue).length, rep:allGear.filter(a=>stOf(a).status==='repair').length, lost:allGear.filter(a=>stOf(a).status==='lost').length,
     value:allGear.reduce((t,a)=>t+num(a.cost),0)+all.filter(a=>a.kind==='consumable').reduce((t,a)=>t+num(a.cost)*Math.max(0,stOf(a).qty),0), low:all.filter(isLow).length };
   const sel=ui.labelSel||[];
-  return `<div class="kpis">
+  const fiTodo=mgr?offices().filter(o=>inOffice(o) && !fiOfficeDone(o) && !isPausedOffice(o)):[], fiDraft=fiTodo.filter(o=>fiLoad(o));
+  const fiCard=mgr&&fiTodo.length?`<div class="card fistart"><div class="ic">📋</div><div style="flex:1"><h2 style="margin:0 0 2px">First inventory</h2><p class="small" style="margin:0">Go down the supply list once and enter everything the branch has, by condition. ${fiTodo.length===1?esc(fiTodo[0])+' hasn’t':fiTodo.length+' branches haven’t'} done one yet.${fiDraft.length?` <b>Draft saved for ${fiDraft.map(esc).join(', ')}.</b>`:''}</p></div><button class="btn primary" data-act="fiOpen">${fiDraft.length?'Continue first inventory':'📋 Start first inventory'}</button></div>`:'';
+  return `${fiCard}<div class="kpis">
     <div class="kpi"><b>${k.items}</b><span>Gear & kits</span></div><div class="kpi"><b>${k.out}</b><span>Checked out</span></div>
     <div class="kpi ${k.over?'alert':''}"><b>${k.over}</b><span>Overdue</span></div><div class="kpi ${k.rep?'warn':''}"><b>${k.rep}</b><span>In repair</span></div>
     <div class="kpi ${k.lost?'alert':''}"><b>${k.lost}</b><span>Lost</span></div><div class="kpi ${k.low?'warn':''}"><b>${k.low}</b><span>Giveaways to reorder</span></div>
@@ -2536,8 +2645,10 @@ let SIGNAL_WAIT_MS = 9000;
 function withSignal(p){
   return Promise.race([p, new Promise(res=>setTimeout(()=>{ ui.queued=true; res('queued'); }, SIGNAL_WAIT_MS))]);
 }
+// Weak-signal / offline warning: only on the pages marketers use (check-in/out, expense reports there, training).
 function offlineBanner(){
   if(navigator.onLine && !ui.queued) return '';
+  if(!MARKETER_MODE && !['checkin','training'].includes(ui.tab)) return '';
   return `<div class="notice signal" role="alert">📶 ${navigator.onLine?'Weak signal: what you saved is stored on this phone and will send automatically when the signal improves. Keep this page open, or open it again later.':'You’re offline. You can still check in and out: it’s saved on this phone and sends automatically when you have signal again.'}
     ${ui.lastSms?`<div style="margin-top:6px"><a class="btn sm" href="sms:?&body=${encodeURIComponent(ui.lastSms)}">💬 Backup: text my manager</a></div>`:''}</div>`;
 }
@@ -2565,10 +2676,9 @@ const GUIDES = {
     ['Checking in (when you start working the booth)', [
       'Open the check-in page and choose your name.',
       'Tap <b>Check in</b> on today’s shift. If your shift isn’t listed, use <b>My shift isn’t listed</b>.',
+      '<b>First, clock in on ADP MyWork</b> (the button opens the app), then tick <b>I’ve clocked in on ADP</b>. If you picked up equipment at the office, tick that box and enter the time you clocked in at the office.',
       'Allow location when your phone asks. If it can’t find you, you can still check in.',
-      'Take a <b>booth setup photo</b> (required). Make sure banners, table cover and signage are in the shot.',
-      'If you picked up equipment at the office, tick that box and enter the time you clocked in on ADP at the office.',
-      'Clock in on ADP, tick <b>I’ve clocked in on ADP</b>, then tap <b>Check in</b>.' ]],
+      'Take a <b>booth setup photo</b> (required). Make sure banners, table cover and signage are in the shot, then tap <b>Check in</b>.' ]],
     ['Checking out (end of your shift)', [
       'Tap <b>Check out</b> on your shift.',
       'Enter <b>opps</b> (set appointments) and <b>unset opps</b> (customers you couldn’t set; they go to the call center to be scheduled), using 0 if none, and foot traffic.',
@@ -2799,14 +2909,15 @@ const SPRINT = {
         ['i10','Keep the consolidated inventory current in the Event Hub so every region can see what exists, where, and who has it','paula','2026-12-31'] ] } ],
   // Q1 2027 shows by region, as in the v22 workbook on Nov 9
   q1Plan:[['SC',32,10],['MW',26,11],['SE',14,4],['SA',23,14],['SW',14,5],['MAN',18,10],['MAS',17,9],['PNW',10,4],['GC',8,2],['OV',18,13],['NE',16,13],['UPL',5,2],['PL',5,2],['UMW',5,4]],
-  branchDecisions:[['Pause','Johnstown/Altoona, New Jersey North, Providence, Chicago, Wilkes-Barre/Scranton, Chattanooga'],['Fix (manager decision)','Atlanta, Birmingham'],['Probation','Las Vegas, Louisville, Portland, Greenville, Rochester'],['Restructure','Seattle, Cleveland']],
-  paused:['Johnstown','Altoona','New Jersey North','Providence','Chicago','Wilkes-Barre','Scranton','Chattanooga'],
+  branchDecisions:[['Pause','Johnstown/Altoona, New Jersey North, Providence, Chicago, Wilkes-Barre/Scranton, Chattanooga, Abilene/Sweetwater/Odessa/Midland (ASO), Las Vegas (LAS)'],['Fix (manager decision)','Atlanta, Birmingham'],['Probation','Louisville, Portland, Greenville, Rochester'],['Restructure','Seattle, Cleveland']],
+  paused:['Johnstown','Altoona','New Jersey North','Providence','Chicago','Wilkes-Barre','Scranton','Chattanooga','Abilene','Sweetwater','Odessa','Midland','Las Vegas'],
+  pausedCodes:['ASO','LAS'],   // branch codes paused Nov 9 (after v22)
   recode:[['GC','Houston','Houston Auto Show','Jan','Keep','No','$4,984','8.6','SC2 (Chris)'],['GC','Houston','Houston Home Show','Jan','Keep & Grow','Yes','$2,939','13.5','SC2 (Chris)'],['GC','Houston','Katy Home & Garden Show','Jan','Keep & Grow','No','$3,990','10','SC2 (Chris)'],['GC','Houston','Houston Spring Home & Garden Show','Feb','Keep','Yes','$4,148','6','SC2 (Chris)'],['GC','Houston','Spring Montgomery Lifestyle Home Show','Feb','Keep – bookings justify','No','$2,858','2','SC2 (Chris)'],['GC','Houston','Tamale Festival','Feb','Fix','No','$834','0.8','SC2 (Chris)'],['GC','Houston','The Woodlands Marathon','Feb','Keep & Grow','No','$1,781','4.8','SC2 (Chris)'],['GC','Mobile','Biloxi Boat Show','Feb','Keep & Grow','No','$3,294','7.7','SE (Angel)'],['PL','Omaha','Council Bluffs Home Show','Jan','Drop','Yes','$3,112','2','UPL (Angel)'],['PL','Omaha','Omaha Lawn Flower & Patio Show','Jan','Keep & Grow','No','$3,467','39.4','UPL (Angel)'],['PL','Omaha','Nebraska Home & Garden Show','Feb','Keep & Grow','No','$3,400','20.2','UPL (Angel)'],['PL','Omaha','Omaha Home & Garden Expo','Feb','Keep & Grow','No','$3,199','8.2','UPL (Angel)'],['PL','St. Louis','Gateway Home Show','Feb','Keep & Grow','Yes','$3,089','15.1','UPL (Angel)'],['UMW','Chicago','Illinois Home Show','Jan','Keep & Grow','Yes','$2,989','12.1','UPL (Angel)'],['UMW','Chicago','Kane County Show','Jan','Fix','Yes','$2,844','3.5','UPL (Angel)'],['UMW','Chicago','Oak Brook Show','Feb','Drop','Yes','$2,844','1.7','UPL (Angel)'],['UMW','Chicago','Tinley Park Show','Feb','Keep','Yes','$2,844','6.2','UPL (Angel)'],['UMW','Madison','Madison Home Expo','Jan','Keep & Grow','No','$4,477','10','UPL (Angel)']],
-  offices:'Angel|MW|Chattanooga|P;Angel|MW|Knoxville;Angel|MW|Nashville;Angel|MW-2|Cincinnati;Angel|MW-2|Indianapolis;Angel|MW-2|Louisville;Angel|OV|Charleston-Huntington;Angel|OV|Cleveland;Angel|OV|Columbus;Angel|OV|Johnstown/Altoona|P;Angel|OV|Pittsburgh;Angel|SE|Atlanta;Angel|SE|Augusta/Macon;Angel|SE|Birmingham;Angel|SE|Huntsville;Angel|SE|Mobile;Angel|SE|Montgomery;Angel|SE|Savannah;Angel|UPL|Chicago|P;Angel|UPL|Madison;Angel|UPL|Omaha;Angel|UPL|St. Louis;Chris|PNW|Portland - OR;Chris|PNW|Seattle;Chris|SC|Abilene/Sweetwater/Odessa/Midland;Chris|SC|Amarillo/Lubbock;Chris|SC|Dallas;Chris|SC|Shreveport;Chris|SC-2|Austin;Chris|SC-2|Houston;Chris|SC-2|San Antonio;Chris|SC-2|Waco;Chris|SW|Las Vegas;Chris|SW|Phoenix;Chris|SW|Tucson;Trevor|MAN|Harrisburg;Trevor|MAN|New Jersey North|P;Trevor|MAN|Philadelphia;Trevor|MAN|Wilkes-Barre/Scranton|P;Trevor|MAS|Baltimore;Trevor|MAS|Norfolk-Virginia;Trevor|MAS|Richmond;Trevor|MAS|Washington;Trevor|NE|Albany;Trevor|NE|Buffalo;Trevor|NE|Hartford;Trevor|NE|Providence|P;Trevor|NE|Rochester;Trevor|SA|Charleston;Trevor|SA|Columbia;Trevor|SA|Myrtle Beach;Trevor|SA-2|Charlotte;Trevor|SA-2|Greenville;Trevor|SA-2|Raleigh;Trevor|SA-2|Winston/Salem'
+  offices:'Angel|MW|Chattanooga|P;Angel|MW|Knoxville;Angel|MW|Nashville;Angel|MW-2|Cincinnati;Angel|MW-2|Indianapolis;Angel|MW-2|Louisville;Angel|OV|Charleston-Huntington;Angel|OV|Cleveland;Angel|OV|Columbus;Angel|OV|Johnstown/Altoona|P;Angel|OV|Pittsburgh;Angel|SE|Atlanta;Angel|SE|Augusta/Macon;Angel|SE|Birmingham;Angel|SE|Huntsville;Angel|SE|Mobile;Angel|SE|Montgomery;Angel|SE|Savannah;Angel|UPL|Chicago|P;Angel|UPL|Madison;Angel|UPL|Omaha;Angel|UPL|St. Louis;Chris|PNW|Portland - OR;Chris|PNW|Seattle;Chris|SC|Abilene/Sweetwater/Odessa/Midland|P;Chris|SC|Amarillo/Lubbock;Chris|SC|Dallas;Chris|SC|Shreveport;Chris|SC-2|Austin;Chris|SC-2|Houston;Chris|SC-2|San Antonio;Chris|SC-2|Waco;Chris|SW|Las Vegas|P;Chris|SW|Phoenix;Chris|SW|Tucson;Trevor|MAN|Harrisburg;Trevor|MAN|New Jersey North|P;Trevor|MAN|Philadelphia;Trevor|MAN|Wilkes-Barre/Scranton|P;Trevor|MAS|Baltimore;Trevor|MAS|Norfolk-Virginia;Trevor|MAS|Richmond;Trevor|MAS|Washington;Trevor|NE|Albany;Trevor|NE|Buffalo;Trevor|NE|Hartford;Trevor|NE|Providence|P;Trevor|NE|Rochester;Trevor|SA|Charleston;Trevor|SA|Columbia;Trevor|SA|Myrtle Beach;Trevor|SA-2|Charlotte;Trevor|SA-2|Greenville;Trevor|SA-2|Raleigh;Trevor|SA-2|Winston/Salem'
     .split(';').map(x=>{ const [sr,r,o,p]=x.split('|'); return { sr, r, o, paused:!!p }; }),
   kit:[['Retractable pop-up banners, Layout A, B or C (new sets only; the set for the office’s area)','Yes','—','Great Day Shop from Dec 1 · price TBD'],['Branded canopy tent (solid white acceptable)','—','Yes','GRD1785 · $538.46 (or GRD1794 · $384.60)'],['Canopy weight on every leg','—','Yes','GRD1779, pack of 4 · $63.00'],['Mesh outdoor backdrop banner','—','Yes','OTH-BANNER-OUT · $99.99'],['Branded table cover','Yes','Yes','GRD1860 · $111.00'],['6 ft table','Yes','Yes','GRD1373 · $75.00'],['Director’s chair (optional; no camp chairs)','Optional','Optional','GRD1792 · $244.62'],['$100K Sweepstakes display','One per kit','One per kit','Price TBD'],['Tradeshow ID badge and lanyard','One per marketer','One per marketer','GRD1909 · $6.96 + lanyard']],
   paper:['Current promotion only for flyers and easel posters (the Sept/Oct pieces are retired).','A 3-month supply of 8.5×11 brochures and trifolds (Patio Enclosures and Stanek Windows).','Scratch-off cards expire Dec 31: discard the remainder when the new supply arrives.','An ample supply of pre-consultation checklists and lead generation tear pads.'],
-  funding:['<b>Redeploy first.</b> The six paused branches will have idle booths, displays and tablets. Move them to Keep & Grow markets before anything is bought.','<b>Repair before replacing.</b> Anything rated “needs repair” gets fixed if the repair costs well under the price of new.','<b>Buy only for contracted Q1 shows.</b> Rank shortages by the shows they put at risk; items no Q1 show needs wait for the 2027 budget.','<b>Ask advertising what they cover.</b> Signage, banners and collateral printed through greatdayshop.com may come from the advertising budget, not the event budget.'],
+  funding:['<b>Redeploy first.</b> The paused branches (the six in v22 plus ASO and LAS) will have idle booths, displays and tablets. Move them to Keep & Grow markets before anything is bought.','<b>Repair before replacing.</b> Anything rated “needs repair” gets fixed if the repair costs well under the price of new.','<b>Buy only for contracted Q1 shows.</b> Rank shortages by the shows they put at risk; items no Q1 show needs wait for the 2027 budget.','<b>Ask advertising what they cover.</b> Signage, banners and collateral printed through greatdayshop.com may come from the advertising budget, not the event budget.'],
   cadence:['<b>Weekly meeting:</b> for these eight weeks the rotating spotlight becomes a 10-minute sprint check. Each senior regional reports their open tasks and anything blocked; Escalated risks covers what needs Paula.','<b>Gate weeks (Nov 20, Dec 4, Dec 18):</b> the Trends and decisions block reviews that gate’s finish line by region.','<b>Monday scorecard task</b> keeps October–December results flowing, so renewal calls use current numbers.','<b>This page:</b> owners tick their tasks done on My day; leaders see who’s done here and on Assign tasks.','<b>Dec 31:</b> a short retro; the 2027 calendar, staffing grid and inventory become the starting point for the January meeting.'] };
 const SPRINT_OWNERS = { paula:'Paula', seniors:'Angel, Trevor, Chris', paulaSeniors:'Paula with senior regionals', managers:'Branch managers / supervisors' };
 function sprintOn(d){ d=d||todayIso(); return d>=SPRINT.start && d<=SPRINT.end; }
@@ -2815,7 +2926,7 @@ function sprintTasks(){ return SPRINT.ws.flatMap(w=>w.tasks.map(([id,text,owner,
 function sprintTaskId(t){ return 'sp-'+SPRINT.id+'-'+t.id; }
 function sprintAssignees(owner){ const sr=['trevor.morrissey@greatdayimprovements.com','angelique.critz@greatdayimprovements.com','chris.winston@greatdayimprovements.com'];
   if(owner==='paula') return [PAULA]; if(owner==='seniors') return sr; if(owner==='paulaSeniors') return [PAULA,...sr]; return asgResolve({ mode:'all' }); }
-function isPausedOffice(o){ const x=String(o||'').toLowerCase(); return SPRINT.paused.some(c=>x.includes(c.toLowerCase())); }
+function isPausedOffice(o){ const raw=String(o||'').trim(), x=raw.toLowerCase(); return SPRINT.paused.some(c=>x.includes(c.toLowerCase())) || SPRINT.pausedCodes.some(c=>new RegExp('^'+c+'(\\b|\\s|-|$)').test(raw.toUpperCase())); }
 function sprintLoaded(){ return sprintTasks().filter(t=>(S.asg||{})[sprintTaskId(t)]).length; }
 async function sprintLoad(){
   if(!isRemUser()) return; const me=myEmail(), name=(LEADERSHIP.find(p=>p.email===me)||{}).name||me; let n=0;
@@ -2899,7 +3010,7 @@ function sprintInvExtras(lead){
     <h3 style="margin-top:16px">Banner set assignments</h3><p class="small muted" style="margin-top:0">Pick the set for each office before Great Day Shop orders open Dec 1. The suggestion is a starting point: Texas for the Texas offices, Southwest for Arizona and Nevada, Main everywhere else. The assigned set is what the hub uses for kits and banner checks.${lead?'':' Senior regionals assign the sets.'}</p>
     <div style="overflow:auto;max-height:420px"><table><thead><tr><th>Senior regional</th><th>Region</th><th>Office</th><th>Suggested</th><th>Assigned set</th><th>Note</th></tr></thead><tbody>
     ${offs.map(x=>{ const sug=TX_CITIES.some(c=>x.o.includes(c))?'tx':SW_CITIES.some(c=>x.o.includes(c))?'sw':'main', cur=sets[x.o]||'';
-      return `<tr><td class="small">${esc(x.sr)}</td><td class="small">${esc(x.r)}</td><td>${esc(x.o)}</td><td class="small">${NAMES[sug]}</td><td>${lead?`<select data-bset="${esc(x.o)}"><option value="">Not assigned (use ${NAMES[sug]})</option>${Object.entries(NAMES).map(([k,l])=>`<option value="${k}" ${cur===k?'selected':''}>${l}</option>`).join('')}</select>`:(cur?NAMES[cur]:'<span class="small muted">Not assigned</span>')}</td><td class="small">${x.paused?'<span class="pill p-gray">Paused in v22</span>':''}</td></tr>`; }).join('')}</tbody></table></div>`;
+      return `<tr><td class="small">${esc(x.sr)}</td><td class="small">${esc(x.r)}</td><td>${esc(x.o)}</td><td class="small">${NAMES[sug]}</td><td>${lead?`<select data-bset="${esc(x.o)}"><option value="">Not assigned (use ${NAMES[sug]})</option>${Object.entries(NAMES).map(([k,l])=>`<option value="${k}" ${cur===k?'selected':''}>${l}</option>`).join('')}</select>`:(cur?NAMES[cur]:'<span class="small muted">Not assigned</span>')}</td><td class="small">${x.paused?`<span class="pill p-gray">${/Abilene|Las Vegas/.test(x.o)?'Paused':'Paused in v22'}</span>`:''}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
 /* ----- assign page (Paula, Trevor, Angelique, Chris) ----- */
 function asgDraft(){ if(!ui.asg) ui.asg={ id:uid(), title:'', note:'', link:'', required:false, kind:'day', due:todayIso(), steps:[{ id:'s'+uid(), text:'', due:todayIso() }], mode:'all', value:'', people:[], notify:true }; return ui.asg; }
@@ -3452,7 +3563,7 @@ function pageHelpData(){
     how:['Type the task, and add a note or link if helpful.','Pick a day task, a week task, or a sprint with dated steps.','Choose who gets it: everyone, a division, a region, an office, or specific people.','Tick <b>Email them</b> to send a heads-up. Track who’s done on the board below.'],
     rules:['Only Paula, Trevor, Angelique and Chris can assign tasks.','It shows under “From [your name]” and in their Needs your attention.','Anything not done gets one reminder email the morning after it’s due. Use <b>Remind</b> to send another.','Archive a task to take it off everyone’s list.'] },
   checkin:{ t:'Check In / Out', what:'Where marketers check in and out of their shifts. Managers can check someone in if their phone won’t cooperate.',
-    how:['Marketers open their event’s link, tap their name, then <b>Check in</b>.','At check-in: take a booth setup photo, and confirm the ADP clock-in. Booth assets and kits are checked out at the asset station on the Asset Inventory page.','At check-out: foot traffic, opps, unset opps, ADP clock-out, gear returned and any issues.'],
+    how:['Marketers open their event’s link, tap their name, then <b>Check in</b>.','At check-in: clock in on ADP MyWork first (it’s step 1, at the top), then location and a booth setup photo. Booth assets and kits are checked out at the asset station on the Asset Inventory page.','At check-out: foot traffic, opps, unset opps, ADP clock-out, gear returned and any issues.'],
     rules:['A booth setup photo is required to check in.','On equipment-pickup days, paid time starts at the office ADP clock-in.','Check-ins work with no signal and send when the signal returns.','An issue, or damaged or missing gear, sends an alert to the supervisor.','<b>Breaks</b> (policy 3.4): shifts over 5 hours get one 30-minute <b>unpaid</b> meal break (clock out on ADP); over 10 hours, a second where state law requires it. Every 4 hours worked earns a 15-minute <b>paid</b> rest break. Breaks can’t be skipped, combined, or used to shift start or end times.','At check-out, marketers on shifts over 5 hours confirm whether they took their meal break. “No” needs a reason and alerts the supervisor.','<b>Opps goal:</b> the event’s ETACC Target Opps is split by scheduled marketer-hours. Check-in shows the event target, today’s team goal and the marketer’s own shift goal; check-out shows the shift goal again.','At check-out, 0 opps needs an explanation, and an opps number far above the shift goal is flagged as soon as it’s typed (the marketer fixes it or ticks that it’s right). Checking out more than 30 minutes before the shift ends needs a reason and alerts the supervisor.'] },
   adp:{ t:'ADP Timecards', what:'Compares each marketer’s check-ins with ADP before you approve timecards.',
     how:['In ADP, run the <b>Time Details</b> report for the pay period, export it (CSV or Excel) and upload it with <b>📥 Upload ADP Time Details</b>.','Pick the week, and review each marketer’s shifts: ADP times sit next to their check-in and check-out.','Fix anything flagged in ADP, then approve timecards in ADP.'],
@@ -3475,6 +3586,7 @@ function pageHelpData(){
   assets:{ t:'Asset Inventory & Check-Out', what:'Every office’s booth assets, kits, print and giveaways: what you have, where it is, who has it, and what to reorder.',
     how:['<b>Set up an office:</b> tap <b>🛒 Add from supply list</b>, pick the office, and enter what it actually has. Booth assets (tents, tables, covers, pop-up banners, chairs and more) get one barcode per unit; print, giveaways and badges are counted as stock with a reorder point.',
       '<b>Build kits:</b> tap <b>🧰 Build a kit</b>, choose Indoor Layout A, B or C or Outdoor, the office, and the marketer or branch it’s for. The hub fills each slot from that office’s available items using its banner set (Main, Texas or Southwest); change any pick, then <b>Create kit</b>.',
+      '<b>First inventory:</b> each branch starts with <b>📋 Start first inventory</b> on the Inventory page. Go down the supply list and enter how many of each item the branch has, by condition (Good, Fair, Needs repair, Replace), plus stock on hand and anything not on the list. It saves as a draft on your device as you go. Finishing adds everything, gives each booth asset a barcode, marks repairs, counts the branch as done for the sprint, and ticks the new assets so you can print labels.',
       '<b>Pictures:</b> the quickest way is <b>🛒 Add from supply list</b>: copy a product picture on the Great Day Shop (right-click → Copy image), click the item’s picture box and press Ctrl+V (⌘V on a Mac), or tap 📁 to pick a file. A supply-list picture shows on every item with that SKU. For any other item, open it and tap <b>📷 Add picture</b>.',
       '<b>Label everything:</b> new items and kits are ticked after you add them. Tap <b>Print labels</b> and stick one on each item and kit.',
       '<b>Check out / return:</b> scan a kit (or any item) out to a marketer for an event and back in, with its condition.',
@@ -3504,7 +3616,7 @@ function pageHelpData(){
     rules:['Late check-in: more than '+LATE_MIN+' minutes after the shift starts. Not checked in: 30 minutes after. No check-out: an hour after the shift ends.','Issues and damaged or missing gear reported at check-out alert right away.','Each alert goes to the office supervisor, copied to Paula, the regional manager and (if ticked) the division leader. No supervisor: it goes to the regional manager.','Separate more than one email with commas.'] },
   sprint:{ t:'Nov–Dec Sprint', what:'The Nov 9 – Dec 31 sprint: fill the Q1 2027 calendar, staff every Q1 show, and finish the asset inventory in every branch.',
     how:['The four two-week blocks are across the top; the current one is highlighted and each ends at a gate (Nov 20, Dec 4, Dec 18, Dec 31).','Each workstream shows its finish line, live progress by region, and its tasks with who’s done.','Tick <b>Mark done</b> on a task that’s yours (it’s also on My day on its due date, and in Needs your attention from a week before).'],
-    rules:['Live numbers: Q1 2027 contracts come from ETACC (Submitted for Contract), staffing from the marketer schedule (Q1 show days with a name on them), and inventory from branch counts started and closed since Nov 9.','The v22 plan table shows the workbook’s Nov 9 numbers for reference.','<b>Paula, Trevor, Angelique and Chris</b> can put the sprint tasks on owners’ My day (one click, no emails), record the Chicago decision, tick inactive-region shows as decided and re-coded, and assign each office’s banner set. The assigned set is what kits and banner checks use.','Branches coded GC, PL or UMW count in their new region: Houston → SC2, Mobile → SE, Omaha, St. Louis, Chicago and Madison → UPL.','Paused branches (v22) are marked on the inventory so their assets are redeployed first.'] },
+    rules:['Live numbers: Q1 2027 contracts come from ETACC (Submitted for Contract), staffing from the marketer schedule (Q1 show days with a name on them), and inventory from branch counts started and closed since Nov 9.','The v22 plan table shows the workbook’s Nov 9 numbers for reference.','<b>Paula, Trevor, Angelique and Chris</b> can put the sprint tasks on owners’ My day (one click, no emails), record the Chicago decision, tick inactive-region shows as decided and re-coded, and assign each office’s banner set. The assigned set is what kits and banner checks use.','Branches coded GC, PL or UMW count in their new region: Houston → SC2, Mobile → SE, Omaha, St. Louis, Chicago and Madison → UPL.','Paused branches (the six in v22, plus ASO and LAS) are marked on the inventory so their assets are redeployed first.'] },
   toolkit:{ t:'Manager Toolkit', what:'Guides and forms for managers from the Regional Event Managers SharePoint site: finding events, hiring, ADP and HR.', how:['Tap <b>Open</b> to view a guide or form in SharePoint (sign in with your work account).','Many are also linked right on the matching My Day tasks, marked 🧰.'], rules:['Files live on SharePoint, so they’re always the latest version. Ask Paula or Trevor if a link stops working.','<b>Paula and Trevor</b> can tap <b>✎ Edit toolkit</b> to add, rename, reorder or remove links and sections. Changes show for everyone right away; renamed links stay attached to their My Day tasks.'] },
   training:{ t:'Training', what:'Training materials and guides for managers and marketers.',
     how:['Open any item to view or download it.'],
@@ -3695,7 +3807,7 @@ function scBanner(){
   if(!S.user) return '';
   const kw=ui.scWeek, kv=ui.scView; ui.scWeek=null; ui.scView='week'; const D=scData(), t=D.total, P=D.P; ui.scWeek=kw; ui.scView=kv;
   const st=(v,l,miss)=>`<div class="scb-stat ${miss?'miss':''}"><b>${v}</b><span>${l}</span></div>`;
-  return `<a class="scbanner" href="#scorecard" data-tab="scorecard"><div class="ic">🏆</div><div class="scb-main"><h2>Event Marketing Scorecard</h2><p>Last week (${fmtMD(P.ws)}–${fmtMD(P.we)}) · ${t.shows} event${t.shows===1?'':'s'} · opps, goals, cost per opp and REM numbers by region</p><p class="scb-upd">🕒 ${scUpdatedLine(true)}</p></div>
+  return `<a class="scbanner slim" href="#scorecard" data-tab="scorecard"><div class="ic">🏆</div><div class="scb-main"><h2>Event Marketing Scorecard</h2><div class="scb-sub">Last week · ${fmtMD(P.ws)}–${fmtMD(P.we)}</div><p>Last week (${fmtMD(P.ws)}–${fmtMD(P.we)}) · ${t.shows} event${t.shows===1?'':'s'} · opps, goals, cost per opp and REM numbers by region</p><p class="scb-upd">🕒 ${scUpdatedLine(true)}</p></div>
     <div class="scb-stats">${st(t.opps+(t.goal?' / '+t.goal:''),'Opps vs goal',scMiss('pctGoal',t.pctGoal))}${st(scPct(t.pctGoal),'To goal',scMiss('pctGoal',t.pctGoal))}${st(scMoney(t.cpo),'Cost / opp',scMiss('cpo',t.cpo))}${st(scPct(t.setRate),'Set rate',scMiss('setRate',t.setRate))}</div><span class="go">Open scorecard ↗</span></a>`;
 }
 function scorecardView(){
@@ -4110,7 +4222,7 @@ function tilesView(){
   const out=gear.filter(g=>g.status==='out').length, overdue=gear.filter(g=>g.overdue).length, repair=gear.filter(g=>g.status==='repair').length;
   const low=scopedAssets().filter(isLow).length, staff=needsStaffing().length;
   const TC={ today:['var(--aqua)','#e0f4f6'], events:['#000','#ededed'], schedule:['var(--gray)','#eeeeef'], checkin:['var(--aqua)','#e0f4f6'], assets:['var(--gold)','#fef0dc'], evals:['#000','#ededed'], expenses:['var(--gray)','#eeeeef'], travel:['var(--aqua)','#e0f4f6'], adp:['var(--gold)','#fef0dc'], costs:['#000','#ededed'], scorecard:['var(--gold)','#fef0dc'] };
-  const tile=(k,desc,stat,cls,flag,flagCls,extra)=>{ const [ic,l]=SECTIONS[k], [c,soft]=TC[k]||['var(--aqua)','#e0f4f6']; const off=k==='evals'&&EVALS_PAUSED; return `<div class="tile${off?' off':''}" ${off?'aria-disabled="true" title="Evaluations are paused"':`data-tab="${k}" role="button" tabindex="0"`} style="--tc:${c};--tcs:${soft}">${flag?`<span class="flag ${flagCls||''}">${flag}</span>`:''}<div class="ic">${ic}</div><h2>${esc(l)}</h2><p>${desc}</p><div class="stat ${cls||''}">${stat}</div>${extra||''}</div>`; };
+  const tile=(k,desc,stat,cls,flag,flagCls,extra)=>{ const [ic,l]=SECTIONS[k], [c,soft]=TC[k]||['var(--aqua)','#e0f4f6']; const off=k==='evals'&&EVALS_PAUSED; return `<div class="tile${off?' off':''}" ${off?'aria-disabled="true" title="Evaluations are paused"':`data-tab="${k}" role="button" tabindex="0"`} style="--tc:${c};--tcs:${soft}" ${off?'':`title="${esc(String(desc).replace(/<[^>]+>/g,''))}"`}>${flag?`<span class="flag ${flagCls||''}">${flag}</span>`:''}<div class="ic">${ic}</div><div class="tb"><h2>${esc(l)}</h2><div class="stat ${cls||''}">${stat}</div>${extra||''}</div></div>`; };
   const T={
     today:()=>tile('today','Who’s scheduled, checked in, late or done, with photos and results.', today.length?`${today.length} shifts · ${inNow} working now${late?` · ${late} late`:''}`:'No shifts today', late?'alert':'', late||'', 'alert'),
     events:()=>tile('events','Track, approve and contract events in ETACC.', `${upcoming} event${upcoming===1?'':'s'} in the next 7 days`),
@@ -4123,13 +4235,13 @@ function tilesView(){
     adp:()=>{ const f=adpRows(mondayOf(t)).filter(x=>x.flag).length; return tile('adp','Compare this week’s check-ins with ADP, then approve timecards.', f?`${f} shift${f===1?'':'s'} to double-check`:'Approve timecards', f?'warn':'', f||''); },
     travel:()=>{ const n=travelNeeds().length; return tile('travel','Book and manage team hotels in Navan.', n?`${n} event${n===1?'':'s'} may need hotels`:'Book hotels', n?'warn':''); } };
   const MINI={ today:['📋','Today’s Activity'], events:['📅','Events (ETACC)'], schedule:['🗓️','Schedule'], checkin:['📍','Check In / Out'], assets:['📦','Equipment'], evals:['📝','Evaluations'], costs:['💲','Cost per Opp'], expenses:['🧾','Expense Reports'], adp:['⏱️','ADP timecards'], travel:['🏨','Navan travel'] };
-  const mini=(k)=>{ const [ic,l]=MINI[k]; const [c,soft]=TC[k]||['var(--aqua)','#e0f4f6']; return `<div class="mini" data-tab="${k}" role="button" tabindex="0" style="--tc:${c};--tcs:${soft}"><span class="ic">${ic}</span><span class="mt"><b>${esc(l)}</b></span></div>`; };
+  const mini=(k)=>{ const [ic,l]=MINI[k]; const [c,soft]=TC[k]||['var(--aqua)','#e0f4f6']; if(k==='evals'&&EVALS_PAUSED) return `<div class="mini off" aria-disabled="true" title="Evaluations are paused" style="--tc:var(--line);--tcs:#f2f2f2"><span class="ic">${ic}</span><span class="mt"><b>${esc(l)}</b><small>Paused for now</small></span></div>`; return `<div class="mini" data-tab="${k}" role="button" tabindex="0" style="--tc:${c};--tcs:${soft}"><span class="ic">${ic}</span><span class="mt"><b>${esc(l)}</b></span></div>`; };
   const link=(u,ic,l,sub,c,soft)=>`<a class="mini" href="${u}" target="_blank" rel="noopener" style="--tc:${c};--tcs:${soft}"><span class="ic">${ic}</span><span class="mt"><b>${l} ↗</b><small>${sub}</small></span></a>`;
   const links=`${link(LINKS.pcms,'📇','PCMS','Opps & unset opps','#000','#ededed')}${link(LINKS.tableau,'📊','Tableau','Reports & dashboards','var(--gray)','#eeeeef')}<div class="mini" data-tab="guide" role="button" tabindex="0" style="--tc:var(--gray);--tcs:#eeeeef"><span class="ic">📖</span><span class="mt"><b>How-to guides</b><small>Step by step</small></span></div><div class="mini" data-tab="toolkit" role="button" tabindex="0" style="--tc:var(--aqua);--tcs:#e0f4f6"><span class="ic">🧰</span><span class="mt"><b>Manager toolkit</b><small>Hiring, ADP, HR forms</small></span></div>`;
   const banners=`<div class="banners"><a class="teamsbanner" href="${TEAMS_HUB_URL}" target="_blank" rel="noopener"><div class="ic">👥</div><div style="flex:1"><h2>Team Resource Hub</h2><p>Guides, forms, standards and announcements in Microsoft Teams.</p></div><span class="go">Open in Teams ↗</span></a>
   <a class="teamsbanner trainbanner" href="#training" data-tab="training"><div class="ic">📚</div><div style="flex:1"><h2>Training</h2><p>Our pitch, products, booth setup and standards.</p></div><span class="go">Open ↗</span></a></div>`;
   if(!S.user) return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span><button class="btn sm helpbtn" data-act="pageHelp" title="How the hub home works">? Help</button>${scopePicker()}</div>${banners}<div class="tiles">${TOOL_ORDER.map(k=>T[k]()).join('')}</div>${leaderCard()}</div>`;
-  const order=TOOL_ORDER.slice(), mine=order.slice(0,6), rest=order.slice(6);
+  const order=TOOL_ORDER.slice(); if(EVALS_PAUSED){ const i=order.indexOf('evals'), j=order.indexOf('assets'); if(i>-1&&j>-1){ order[i]='assets'; order[j]='evals'; } } const mine=order.slice(0,6), rest=order.slice(6).filter(k=>!(k==='evals'&&EVALS_PAUSED)); // evaluations hidden while paused
   const leader=isRemUser()?`<details class="hsec" data-hsec="leadtools" ${hsecOpen('leadtools')?'open':''}><summary><h3 class="homeh">Leader tools</h3></summary><div class="minis">
     <div class="mini" data-tab="assign" role="button" tabindex="0" style="--tc:var(--red);--tcs:#fde2e1"><span class="ic">📌</span><span class="mt"><b>Assign tasks</b><small>One-offs & sprints</small></span></div>
     <div class="mini" data-tab="sprint" role="button" tabindex="0" style="--tc:var(--navy,#14365a);--tcs:#e3ebf5"><span class="ic">🏁</span><span class="mt"><b>Nov–Dec Sprint</b><small>Calendar, staffing, inventory</small></span></div>
@@ -4140,10 +4252,10 @@ function tilesView(){
   return `<div class="home"><div class="row" style="margin-bottom:6px"><b>${fmtLong(t)}</b><span class="spacer"></span><button class="btn sm helpbtn" data-act="pageHelp" title="How the hub home works">? Help</button>${scopePicker()}</div>
   ${mgrBar()}
   ${todoCard({compact:true})}
-  ${sprintBanner()}${scBanner()}
+  ${scBanner()}
   ${leader}
   ${hsec('tools','<h3 class="homeh">Your tools</h3>',`<div class="tiles">${mine.map(k=>T[k]()).join('')}</div>`)}
-  ${hsec('links','<h3 class="homeh">All tools & links</h3>',`<div class="minis">${rest.map(mini).join('')}${links}</div>`)}
+  ${hsec('links','<h3 class="homeh">All tools & links</h3>',`<div class="minis">${!isRemUser()&&sprintOn()?`<div class="mini" data-tab="sprint" role="button" tabindex="0" style="--tc:var(--navy,#14365a);--tcs:#e3ebf5"><span class="ic">🏁</span><span class="mt"><b>Nov–Dec Sprint</b><small>Through Dec 31</small></span></div>`:''}${rest.map(mini).join('')}${links}</div>`)}
   ${banners}
   ${leaderCard()}</div>`;
 }
@@ -4327,13 +4439,13 @@ function checkInPanel(p){
   const s=p.shift, me=person(p.pid)||{};
   const gear=S.assets.filter(a=>!a.retired && isGear(a) && !kitOf(a.id) && (!(stOf(a).office) || stOf(a).office===s.ev.office || p.gear.includes(a.id) || (stOf(a).holder||{}).personId===p.pid)).sort((a,b)=>(b.kind==='kit')-(a.kind==='kit')||a.name.localeCompare(b.name));
   return `<div class="panel"><h2>Check in · ${esc(s.ev.name)}</h2><div class="sub">${fmtLong(s.day.date)} · ${timeRange(s.day)} · ${esc(me.name||'')}</div>
+    <div class="adpfirst">${adpBox('in', p.adpIn, '1. ')}
+      <label class="chk" style="margin-top:8px"><input type="checkbox" data-keep="office-pick" ${p.officePickup?'checked':''}> I picked up equipment at the office today</label>
+      <div class="field" style="max-width:220px"><label class="small">Clocked in on ADP at the office at</label><input type="time" data-keep="office-time" value="${esc(p.officeTime||'')}"></div></div>
     ${goalNote(shiftGoal(s.ev, s.day, s.personId, s.dayId))}${breakNote(breakPlan(shiftHours(s.day.start, s.day.stop)))}
     <div class="grid">
-      <div><div class="lbl">1. Location</div>${p.loc?`<div class="small">📍 Location captured (±${p.loc.acc} m). <a href="${mapLink(p.loc)}" target="_blank" rel="noopener">View</a></div>`:p.locNote?`<div class="small" style="color:var(--warn)">${esc(p.locNote)} You can still check in.</div> <button class="btn sm" data-act="getLoc">Try again</button>`:'<div class="small muted">Getting your location…</div>'}</div>
-      <div><div class="lbl">2. Booth setup photo <span style="color:var(--red)">*</span></div><label class="btn big photobtn">📷 ${p.photo?'Retake booth photo':'Take booth photo'}<input type="file" accept="image/*" capture="environment" data-act="photo" data-slot="in" style="display:none"></label>${p.photo?`<img class="preview" src="${p.photo}" alt="Booth photo">`:''}</div>
-      <div>${adpBox('in', p.adpIn)}</div>
-      <div><label class="chk"><input type="checkbox" data-keep="office-pick" ${p.officePickup?'checked':''}> I picked up equipment at the office today</label>
-        <div class="field" style="max-width:220px"><label class="small">Clocked in on ADP at the office at</label><input type="time" data-keep="office-time" value="${esc(p.officeTime||'')}"></div></div>
+      <div><div class="lbl">2. Location</div>${p.loc?`<div class="small">📍 Location captured (±${p.loc.acc} m). <a href="${mapLink(p.loc)}" target="_blank" rel="noopener">View</a></div>`:p.locNote?`<div class="small" style="color:var(--warn)">${esc(p.locNote)} You can still check in.</div> <button class="btn sm" data-act="getLoc">Try again</button>`:'<div class="small muted">Getting your location…</div>'}</div>
+      <div><div class="lbl">3. Booth setup photo <span style="color:var(--red)">*</span></div><label class="btn big photobtn">📷 ${p.photo?'Retake booth photo':'Take booth photo'}<input type="file" accept="image/*" capture="environment" data-act="photo" data-slot="in" style="display:none"></label>${p.photo?`<img class="preview" src="${p.photo}" alt="Booth photo">`:''}</div>
       <div class="field"><label>Note (optional)</label><textarea data-keep="in-note" placeholder="Anything your manager should know at setup">${esc(p.note||'')}</textarea></div>
     </div>
     ${p.err?`<div class="notice err" style="margin-top:10px">${esc(p.err)}</div>`:''}
@@ -4732,6 +4844,16 @@ document.addEventListener('click', async ev=>{
     await guard(()=>saveAudit(id,{ name:nm, offices:offs, startedAt:Date.now(), startedBy:(S.user&&S.user.email)||'' })); ui.audit=id; render(); return; }
   if(a==='auditBranch'){ const o=((document.querySelector('[data-keep="auditBranch"]')||{}).value||''); if(!o){ ui.notice='Choose the branch to count.'; ui.noticeKind='warn'; render(); return; } const id='au_'+uid();
     await guard(()=>saveAudit(id,{ name:`${o} inventory – ${fmtLong(todayIso())}`, offices:[o], startedAt:Date.now(), startedBy:(S.user&&S.user.email)||'' })); ui.audit=id; ui.auditOffice=o; render(); return; }
+  if(a==='fiOpen'){ const mine=fiMyOffices(), d=mine.find(o=>fiLoad(o))||offices().filter(o=>inOffice(o)).find(o=>fiLoad(o));
+    ui.av='first'; ui.fiErr=''; ui.fi = d ? fiLoad(d) : (mine.length===1 ? (fiLoad(mine[0])||Object.assign(fiBlank(mine[0]),{ startedAt:Date.now() })) : {}); ui.fiSkip=true; render(); window.scrollTo(0,0); return; }
+  if(a==='fiStart'){ const o=((document.querySelector('[data-keep="fiOffice"]')||{}).value||''); if(!o){ ui.notice='Choose the branch you’re counting.'; ui.noticeKind='warn'; render(); return; }
+    if(fiOfficeDone(o) && !confirm(`${o} already finished a first inventory. Start another? Everything you enter is added on top of what’s listed.`)) return;
+    ui.fi=fiLoad(o)||Object.assign(fiBlank(o),{ startedAt:Date.now() }); ui.fiSkip=true; render(); window.scrollTo(0,0); return; }
+  if(a==='fiAddExtra'){ fiRead(); ui.fi.extra.push({ name:'', kind:'gear', category:'Other', qty:'', cond:'Good' }); fiStore(ui.fi.office, ui.fi); ui.fiSkip=true; render(); return; }
+  if(a==='fiDelExtra'){ fiRead(); ui.fi.extra.splice(+t.dataset.i,1); fiStore(ui.fi.office, ui.fi); ui.fiSkip=true; render(); return; }
+  if(a==='fiLater'){ fiRead(); ui.notice=`Draft saved for ${ui.fi.office} on this device. Tap “Continue first inventory” on the Inventory page to pick up where you left off.`; ui.noticeKind='ok'; ui.fi=null; ui.av='inventory'; render(); window.scrollTo(0,0); return; }
+  if(a==='fiCancel'){ if(ui.fi && ui.fi.office){ fiRead(); const T=fiTotals(ui.fi); if((T.gear||T.stock) && !confirm('Leave the first inventory? Your entries stay saved as a draft on this device.')) return; } ui.fi=null; ui.av='inventory'; render(); return; }
+  if(a==='fiFinish'){ await fiFinish(); return; }
   if(a==='skuPick'){ if(ev.target.closest('.skufile')) return; ui.pasteSku=t.dataset.sku; render(); return; }
   if(a==='sprintLoad'){ if(!isRemUser()) return; ui.busy=true; render(); try{ const n=await sprintLoad(); ui.notice=n?`${n} sprint task${n===1?'':'s'} put on owners’ My day.`:'Sprint tasks were already loaded.'; ui.noticeKind='ok'; }catch(e){ ui.notice='Couldn’t load the sprint tasks: '+(e.code||e.message); ui.noticeKind='err'; } ui.busy=false; render(); return; }
   if(a==='itemPhotoDel'){ const x=assetById(t.dataset.aid); if(!x||!S.user) return; if(!confirm('Remove this picture?')) return; const P=S.assetPhotos||{}; if(P[x.id]) await guard(()=>saveAssetPhoto(x.id,null)); if(x.shopSku && P[x.shopSku]) await guard(()=>saveAssetPhoto(x.shopSku,null)); render(); return; }
@@ -4766,6 +4888,7 @@ document.addEventListener('paste', async e=>{
 });
 document.addEventListener('dragover', e=>{ if(e.target.closest && e.target.closest('.skuph')) e.preventDefault(); });
 document.addEventListener('drop', async e=>{ const c=e.target.closest && e.target.closest('.skuph'); if(!c) return; e.preventDefault(); const f=[...(e.dataTransfer.files||[])].find(x=>x.type.startsWith('image/')); if(f) await saveSkuPhoto(c.dataset.sku, f); else { ui.notice='Drop a picture file here, or copy the picture and paste it.'; ui.noticeKind='err'; render(); } });
+document.addEventListener('input', ev=>{ if(ui.av==='first' && ui.fi && ui.fi.office && ev.target.matches && ev.target.matches('[data-fig],[data-fic],[data-fir],[data-fix]')){ fiRead(); const T=fiTotals(ui.fi), el=document.querySelector('.fitot'); if(el) el.innerHTML=`<span><b>${T.gear}</b> booth asset${T.gear===1?'':'s'}</span><span><b>${T.repair}</b> need repair or replacing</span><span><b>${T.stock}</b> stock item${T.stock===1?'':'s'}</span>`; const tr=ev.target.closest('tr'); if(tr && !ev.target.matches('[data-fix]')){ const v=[...tr.querySelectorAll('input.fin')].some(i=>num(i.value)>0); tr.classList.toggle('fihas', v); } } });
 document.addEventListener('change', async ev=>{
   if(ev.target.dataset && ev.target.dataset.bset!==undefined){ if(!isRemUser()) return; const m=Object.assign({}, (S.bannerSets&&S.bannerSets.sets)||{}); if(ev.target.value) m[ev.target.dataset.bset]=ev.target.value; else delete m[ev.target.dataset.bset]; await guard(()=>saveBannerSets(m)); return; }
   if(ev.target.dataset && ev.target.dataset.sprecode){ if(!isRemUser()) return; const r=Object.assign({}, (S.sprintDoc||{}).recoded||{}); if(ev.target.checked) r[ev.target.dataset.sprecode]={ by:myEmail(), at:Date.now() }; else delete r[ev.target.dataset.sprecode]; await guard(()=>saveSprintDoc({ recoded:r })); return; }

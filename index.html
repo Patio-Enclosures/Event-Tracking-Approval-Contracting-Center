@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Event Tracking, Approval & Contracting Center</title>
+<title>DEMO · Event Tracking, Approval & Contracting Center</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -1238,19 +1238,75 @@
 <body>
 <div id="root"></div>
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import {
-  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import {
-  getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, writeBatch
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import {
-  getFunctions, httpsCallable
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
-import {
-  getStorage, ref as storageRefFn, uploadBytes, getDownloadURL
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+/* ====================== DEMO BUILD ======================
+   This copy of ETACC runs on sample data for the Event Hub demo. Firebase is replaced by a small
+   in-browser stand-in: events come from the demo hub that holds this page in a frame (window.parent.peDemo),
+   and changes go back to it, so the hub tiles see them. Nothing is saved to the real ETACC. */
+const DEMO_USER_EMAIL = 'paula.shoemaker@greatdayimprovements.com';
+function demoHub(){ try{ return (window.parent!==window && window.parent.peDemo) || null; }catch(e){ return null; } }
+const DEMO_LS = 'peHub.demo.etaccStore';
+const _demoStore = (()=>{ try{ return JSON.parse(localStorage.getItem(DEMO_LS)||'{}'); }catch(e){ return {}; } })();
+function _demoSaveStore(){ try{ localStorage.setItem(DEMO_LS, JSON.stringify(_demoStore)); }catch(e){} }
+// Import flags set to "done" so none of the real event batches load into the demo.
+['events-migration-v2-flag','import-v1-flag','import-v2-flag','import-v3-flag','import-v4-flag','import-v5-flag','import-v6-flag','import-v7-flag','import-champion-v1-flag']
+  .forEach(k=>{ _demoStore.dashboardStorage=_demoStore.dashboardStorage||{}; _demoStore.dashboardStorage[k]={ value:'done' }; });
+const DEMO_BRANCH_ALIAS = { CLT:'CHA', NSH:'NAS' };
+function _demoFull(x){
+  const code=String(x.branch||'').split(' - ')[0].trim().toUpperCase(), b=(typeof BRANCHES!=='undefined'?BRANCHES:[]).find(y=>y.code===(DEMO_BRANCH_ALIAS[code]||code));
+  const names=(typeof state!=='undefined'&&state.regionNames)||[];
+  let region=typeof x.region==='number' && x._etacc ? x.region : (b ? Math.max(0,names.indexOf(b.region)) : (x.region||0));
+  const base=emptyDraft(region);
+  const ev=Object.assign(base, x, { region, _etacc:true });
+  if(!ev.endDate) ev.endDate=ev.startDate;
+  if(!ev.history) ev.history=[];
+  if(!ev.createdBy) ev.createdBy=DEMO_USER_EMAIL;
+  if(!ev.zip) ev.zip='75201';
+  return ev;
+}
+function _demoEvents(){ const H=demoHub(); if(H) return H.etacc().map(_demoFull); return Object.values((_demoStore.dashboardEvents)||{}).map(_demoFull); }
+function _demoPutEvents(list){ const H=demoHub(); if(H) H.setEtacc(list); else { _demoStore.dashboardEvents=Object.fromEntries(list.map(e=>[e.id,e])); _demoSaveStore(); } }
+function _demoSnap(id,data){ return { id, exists:()=>data!=null, data:()=>data==null?undefined:JSON.parse(JSON.stringify(data)) }; }
+function initializeApp(){ return {}; }
+const _demoUser = { email:DEMO_USER_EMAIL, uid:'demo', getIdTokenResult: async()=>({ claims:{ brand:'patio-enclosures' } }) };
+function getAuth(){ return { currentUser:_demoUser }; }
+function onAuthStateChanged(auth, cb){ setTimeout(()=>cb(_demoUser), 0); return ()=>{}; }
+async function signInWithEmailAndPassword(){ return { user:_demoUser }; }
+async function signOut(){ alert('This is the demo. Sign-out is turned off.'); }
+function getFirestore(){ return { demo:true }; }
+function collection(db, coll){ return { coll }; }
+function doc(db, coll, id){ return { coll, id }; }
+async function getDoc(ref){
+  if(ref.coll==='dashboardEvents'){ const e=_demoEvents().find(x=>x.id===ref.id); return _demoSnap(ref.id, e||null); }
+  const c=_demoStore[ref.coll]||{}; return _demoSnap(ref.id, c[ref.id]==null?null:c[ref.id]);
+}
+async function getDocs(ref){
+  const items = ref.coll==='dashboardEvents' ? _demoEvents().map(e=>_demoSnap(e.id,e)) : Object.entries(_demoStore[ref.coll]||{}).map(([id,d])=>_demoSnap(id,d));
+  return { docs:items, size:items.length, empty:!items.length, forEach:f=>items.forEach(f) };
+}
+function _demoApply(ops){
+  let evs=null;
+  ops.forEach(([kind,ref,data,opt])=>{
+    if(ref.coll==='dashboardEvents'){ if(!evs) evs=_demoEvents();
+      const i=evs.findIndex(x=>x.id===ref.id);
+      if(kind==='delete'){ if(i>=0) evs.splice(i,1); }
+      else { const d=JSON.parse(JSON.stringify(data)); const v=(opt&&opt.merge&&i>=0)?Object.assign(evs[i],d):d; if(i>=0) evs[i]=v; else evs.push(v); }
+    } else { const c=_demoStore[ref.coll]=_demoStore[ref.coll]||{};
+      if(kind==='delete') delete c[ref.id]; else c[ref.id]=(opt&&opt.merge&&c[ref.id])?Object.assign(c[ref.id],JSON.parse(JSON.stringify(data))):JSON.parse(JSON.stringify(data)); }
+  });
+  if(evs) _demoPutEvents(evs); _demoSaveStore();
+}
+async function setDoc(ref, data, opt){ _demoApply([['set',ref,data,opt]]); }
+async function deleteDoc(ref){ _demoApply([['delete',ref]]); }
+function writeBatch(){ const ops=[]; return { set(ref,d,o){ ops.push(['set',ref,d,o]); return this; }, update(ref,d){ ops.push(['set',ref,d,{merge:true}]); return this; }, delete(ref){ ops.push(['delete',ref]); return this; }, async commit(){ _demoApply(ops); } }; }
+function getFunctions(){ return {}; }
+function httpsCallable(){ return async()=>{ throw new Error('Not available in the demo.'); }; }
+function getStorage(){ return {}; }
+const _demoFiles={};
+function storageRefFn(st, path){ return { path }; }
+async function uploadBytes(ref, file){ try{ _demoFiles[ref.path]=URL.createObjectURL(file); }catch(e){ _demoFiles[ref.path]='#'; } return { ref }; }
+async function getDownloadURL(ref){ return _demoFiles[ref.path]||'#'; }
+// The hub calls this when the Events tile opens, so changes made elsewhere in the demo show here.
+window.peDemoRefresh = ()=>{ try{ if(typeof state!=='undefined' && !state.panelOpen && typeof loadData==='function') loadData(); }catch(e){} };
 /* ============================================================================
    FIREBASE STORAGE ADAPTER
    ----------------------------------------------------------------------------
@@ -5891,7 +5947,7 @@ function render(){
         <div class="header-stats">
           ${pendingApprovalCount>0 ? `<button class="pending-approval-badge" id="pendingApprovalBadge">⚠ ${pendingApprovalCount} Pending Approval</button>` : ''}
           ${vettingNeededEvents.length>0 ? `<button class="pending-approval-badge" id="vettingNeededBadge" style="background:var(--amber-soft);color:var(--amber);">📋 ${vettingNeededEvents.length} Vetting Checklist${vettingNeededEvents.length===1?'':'s'} Needed</button>` : ''}
-          ${isSuperAdmin() ? `
+          ${false && isSuperAdmin() ? `
           <div class="stat" style="text-align:right;">
             <div class="stat-label">Viewing brand (Super Admin)</div>
             <select id="brandSwitcherSelect" style="font-family:var(--font-mono);font-size:11px;padding:3px 6px;border-radius:4px;">

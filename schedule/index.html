@@ -200,7 +200,18 @@ details.sec[open]>summary::before{transform:rotate(90deg)}
    - Saved to Firebase (Event Management Dashboard project, collection "patioEnclosuresSchedule").
      Falls back to this browser only if Firebase can't be reached.
    ====================================================================== */
-const STORE_KEY = 'pe-marketer-schedule-v1';
+// ?demo: sample data from the Event Hub demo (the hub that holds this page in a frame). Nothing reaches Firebase.
+const DEMO = new URLSearchParams(location.search).has('demo');
+const STORE_KEY = DEMO ? 'pe-marketer-schedule-demo' : 'pe-marketer-schedule-v1';
+function demoHub(){ try{ return (window.parent!==window && window.parent.peDemo) || null; }catch(e){ return null; } }
+function initDemo(){
+  cloud.status='live'; cloud.user={ email:'paula.shoemaker@greatdayimprovements.com' }; cloud.fb={ demo:true };
+  const H=demoHub(), docs=H ? H.schedDocs() : null;
+  if(docs) DOCS.forEach(n=>applyCloud(n, docs[n]||null, true)); else DOCS.forEach(n=>{ cloud.loaded[n]='yes'; cloud.pushed[n]=JSON.stringify(cloudPayload(n)); });
+  cloud.dirty=false; render();
+}
+// The hub calls this when the Schedule tile opens, so changes made elsewhere in the demo show here.
+window.peDemoRefresh = ()=>{ if(!DEMO || cloud.dirty) return; const H=demoHub(); if(!H) return; const docs=H.schedDocs(); DOCS.forEach(n=>applyCloud(n, docs[n]||null, true)); };
 const INCLUDE_STATUSES = ['Approved','Submitted for Contract'];
 const DOCS = ['events','roster','assignments','details','practices'];
 // Best practices included in the schedule email. Simple formatting: "## Heading", "- bullet", **bold**.
@@ -317,6 +328,7 @@ function cloudPayload(name){
 }
 async function pushCloud(only){
   if(!(cloud.status==='live' && cloud.user && cloud.fb)) return false;
+  if(DEMO){ const out={}; (only||DOCS).forEach(n=>{ out[n]=cloudPayload(n); cloud.pushed[n]=JSON.stringify(out[n]); }); const H=demoHub(); if(H) H.putSchedDocs(out); return true; }
   const {fsM, db} = cloud.fb;
   for(const name of (only || DOCS)){
     const body = cloudPayload(name), sig = JSON.stringify(body);
@@ -772,12 +784,12 @@ function render(){
     <div class="brand"><b>Patio Enclosures</b><span>Field Marketing</span></div>
     <div>
       <h1>${me ? esc(me.name)+'’s Schedule' : 'Marketer Weekly Schedule'}</h1>
-      <div class="asof"><span class="cstat ${cloud.status}">${cloud.status==='live' ? '● Live' : cloud.status==='connecting' ? '○ Connecting…' : '○ This device only'}</span> · ${data.dataAsOf ? `ETACC data as of ${esc(fmtFull(data.dataAsOf))}` : 'No ETACC data imported yet'}${ui.office||ui.region?` · ${esc(viewLabel())}`:''}</div>
+      <div class="asof"><span class="cstat ${cloud.status}">${cloud.status==='live' ? (DEMO?'● Demo data':'● Live') : cloud.status==='connecting' ? '○ Connecting…' : '○ This device only'}</span> · ${data.dataAsOf ? `ETACC data as of ${esc(fmtFull(data.dataAsOf))}` : 'No ETACC data imported yet'}${ui.office||ui.region?` · ${esc(viewLabel())}`:''}</div>
     </div>
     <div class="spacer"></div>
-    <a class="btn primary no-print" href="../hub/?m=1${me?'&p='+encodeURIComponent(me.id):''}" style="text-decoration:none">📍 Check in / out</a>
+    ${DEMO?'':`<a class="btn primary no-print" href="../hub/?m=1${me?'&p='+encodeURIComponent(me.id):''}" style="text-decoration:none">📍 Check in / out</a>
     <a class="btn no-print" href="../hub/?m=1#training" style="text-decoration:none">📚 Training</a>
-    <a class="btn no-print" href="../hub/" style="text-decoration:none">Event Hub</a>
+    <a class="btn no-print" href="../hub/" style="text-decoration:none">Event Hub</a>`}
     <div class="print-only" style="font-weight:600;">Week of ${esc(label)}</div>
   </header>
   <div class="toolbar">
@@ -1091,6 +1103,7 @@ function emailModal(days, label){
 const ETACC_LABEL = { researching:'Researching', execute:'Submitted for Approval', submitted:'Submitted for Contract', declined:'Declined', not_pursuing:'Not Pursuing' };
 async function loadEtaccForStaffing(){
   ui.etacc={ loading:true, list:[], q:'' }; render();
+  if(DEMO){ const H=demoHub(); ui.etacc={ loading:false, list:H?H.etacc():[], q:'' }; render(); return; }
   try{ const {fsM,db}=cloud.fb; const snap=await fsM.getDocs(fsM.collection(db,'dashboardEvents')); const a=[]; snap.forEach(d=>a.push(Object.assign({ id:d.id }, d.data())));
     ui.etacc={ loading:false, list:a, q:'' }; }
   catch(e){ ui.etacc={ loading:false, list:[], q:'', err:e.code||e.message }; }
@@ -1180,7 +1193,7 @@ document.addEventListener('click', e=>{
   switch(a){
     case 'signin': e.preventDefault(); signIn(document.getElementById('siEmail').value.trim(), document.getElementById('siPw').value); break;
     case 'forgot': e.preventDefault(); resetPw(document.getElementById('siEmail').value.trim()); break;
-    case 'signout': e.preventDefault();
+    case 'signout': e.preventDefault(); if(DEMO) break;
       if(cloud.dirty && !confirm('You have unsaved changes. Sign out and lose them?')) break;
       if(cloud.dirty){ cloud.dirty=false; DOCS.forEach(n=>applyCloud(n, cloud.remote[n]||null, true)); }
       cloud.fb && cloud.fb.authM.signOut(cloud.fb.auth); break;
@@ -1415,7 +1428,7 @@ document.addEventListener('keydown', e=>{
 load();
 if(!data.roster.length) seedRoster();
 render();
-initCloud();
+if(DEMO) initDemo(); else initCloud();
 </script>
 </body>
 </html>

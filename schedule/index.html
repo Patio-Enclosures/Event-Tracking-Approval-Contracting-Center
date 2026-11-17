@@ -265,6 +265,8 @@ let ui = { weekStart: sundayOf(todayIso()), weeks:1, office:'', region:'', showA
 function load(){
   try{ const raw = localStorage.getItem(STORE_KEY); if(raw) data = Object.assign(data, JSON.parse(raw)); }catch(e){}
   try{ const u = JSON.parse(localStorage.getItem(STORE_KEY+'-ui')||'{}'); if(u.office!==undefined) ui.office=u.office; if(u.region) ui.region=u.region; if(u.weeks) ui.weeks=u.weeks; if(u.person) ui.person=u.person; }catch(e){}
+  // ?p=<marketer id> (from the "My schedule" card on the check-in page): open straight to that marketer's schedule, 4 weeks ahead.
+  const P=new URLSearchParams(location.search).get('p'); if(P){ ui.person=P; ui.office=''; ui.region=''; ui.weeks=Math.max(ui.weeks||1,4); }
 }
 // Collapsible sections: which ones are closed is remembered on this device.
 let secClosed = (()=>{ try{ return new Set(JSON.parse(localStorage.getItem(STORE_KEY+'-sec')||'[]')); }catch(e){ return new Set(); } })();

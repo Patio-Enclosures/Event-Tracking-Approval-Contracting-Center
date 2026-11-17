@@ -4473,7 +4473,18 @@ function checkinView(){
       <div class="small muted" style="margin:6px 0">Pick the event you’re working today. Your manager will see this as an unscheduled shift.</div>
       ${otherToday.length?otherToday.map(e=>{ const d=e.days.find(x=>x.date===today); return `<div class="row" style="margin-bottom:6px"><button class="btn sm" data-act="unsched" data-ev="${esc(e.key)}">Check in here</button><span>${esc(e.name)} <span class="muted small">· ${esc(e.office)} · ${timeRange(d)}</span></span></div>`; }).join(''):'<p class="muted small">No events in your office today.</p>'}
       ${ui.showOtherShift!=='all'?'<button class="btn sm" data-act="otherAll">Show events in all offices</button>':''}
-    </details></div>`+myExpensesCard(me)+leaderCard()+(MARKETER_MODE?'':upcomingLinks());
+    </details></div>`+myScheduleCard(me)+myExpensesCard(me)+leaderCard()+(MARKETER_MODE?'':upcomingLinks());
+}
+// Marketer's upcoming shifts (next 4 weeks, after tomorrow) on the check-in page, with a link to the full schedule.
+function myScheduleCard(me){
+  const today=todayIso(), out=[];
+  for(let i=2;i<=28;i++){ const d=addDays(today,i); shiftsOn(d).filter(s=>s.personId===me.id).forEach(s=>out.push(s)); }
+  const link=DEMO?'':`<a class="btn" style="text-decoration:none;margin-top:8px" href="${SCHEDULE_URL}?p=${encodeURIComponent(me.id)}" target="_blank" rel="noopener">📅 Open my full schedule</a>`;
+  const row=s=>{ const addr=[s.ev.venueName,s.ev.venueAddress].filter(Boolean).join(', ');
+    return `<tr><td style="white-space:nowrap"><b>${DOW_NAMES[new Date(s.day.date+'T12:00:00').getDay()].slice(0,3)}</b> ${fmtMD(s.day.date)}</td><td>${esc(s.ev.name)}${addr?`<div class="small muted">${esc(addr)}</div>`:''}</td><td class="small" style="white-space:nowrap">${s.day.start||s.day.stop?esc(fmtTime(s.day.start)+'–'+fmtTime(s.day.stop)):''}</td></tr>`; };
+  return `<div class="card"><h2>📅 My schedule</h2><div class="sub">Your shifts for the next 4 weeks (today and tomorrow are above).</div>
+    ${out.length?`<table><tbody>${out.map(row).join('')}</tbody></table>`:'<p class="muted">No other shifts scheduled in the next 4 weeks yet.</p>'}
+    ${link}</div>`;
 }
 function eventLinkView(e){
   const today=todayIso(), day=e.days.find(d=>d.date===today);

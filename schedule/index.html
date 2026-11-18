@@ -381,11 +381,11 @@ async function initCloud(){
     const app = appM.initializeApp(FIREBASE_CONFIG)  /* default app: shares the sign-in with the hub and ETACC (same site, same Firebase project) */;
     const auth = authM.getAuth(app), db = fsM.getFirestore(app);
     cloud.fb = { authM, fsM, auth, db };
-    authM.onAuthStateChanged(auth, u=>{ cloud.user = u; cloud.authErr=''; if(u && DOCS.every(n=>cloud.loaded[n])) cloud.dirty = unsavedDocs().length>0; render(); });
+    authM.onAuthStateChanged(auth, u=>{ cloud.user = u; cloud.authErr=''; if(u && DOCS.every(n=>cloud.loaded[n])){ cloud.dirty = unsavedDocs().length>0; syncEtacc(true); } render(); });
     let failed = false;
     DOCS.forEach(name=>{
       fsM.onSnapshot(fsM.doc(db, CLOUD_COLL, name),
-        snap=>{ clearTimeout(timeout); cloud.status='live'; applyCloud(name, snap.exists() ? snap.data() : null); if(cloud.user && DOCS.every(n=>cloud.loaded[n])){ cloud.dirty = unsavedDocs().length>0; render(); } },
+        snap=>{ clearTimeout(timeout); cloud.status='live'; applyCloud(name, snap.exists() ? snap.data() : null); if(cloud.user && DOCS.every(n=>cloud.loaded[n])){ cloud.dirty = unsavedDocs().length>0; render(); if(!syncLast) syncEtacc(true); } },
         err=>{ if(failed) return; failed = true; clearTimeout(timeout); cloud.status='local'; cloud.err = err.code||err.message; render(); });
     });
   }catch(e){ clearTimeout(timeout); cloud.status='local'; cloud.err = e.message||'unavailable'; render(); }
@@ -791,7 +791,7 @@ function render(){
     <div class="brand"><b>Patio Enclosures</b><span>Field Marketing</span></div>
     <div>
       <h1>${me ? esc(me.name)+'’s Schedule' : 'Marketer Weekly Schedule'}</h1>
-      <div class="asof"><span class="cstat ${cloud.status}">${cloud.status==='live' ? (DEMO?'● Demo data':'● Live') : cloud.status==='connecting' ? '○ Connecting…' : '○ This device only'}</span> · ${data.dataAsOf ? `ETACC data as of ${esc(fmtFull(data.dataAsOf))}` : 'No ETACC data imported yet'}${ui.office||ui.region?` · ${esc(viewLabel())}`:''}</div>
+      <div class="asof"><span class="cstat ${cloud.status}">${cloud.status==='live' ? (DEMO?'● Demo data':'● Live') : cloud.status==='connecting' ? '○ Connecting…' : '○ This device only'}</span> · ${data.sourceFile==='ETACC (automatic)' && data.importedAt ? `Events synced from ETACC automatically · last ${esc(new Date(data.importedAt).toLocaleString([], { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }))}${cloud.user?' <a href="#" data-act="syncnow">Sync now</a>':''}` : data.dataAsOf ? `ETACC data as of ${esc(fmtFull(data.dataAsOf))}` : 'No ETACC data imported yet'}${ui.office||ui.region?` · ${esc(viewLabel())}`:''}</div>
     </div>
     <div class="spacer"></div>
     ${DEMO?'':`<a class="btn primary no-print" href="../hub/?m=1${me?'&p='+encodeURIComponent(me.id):''}" style="text-decoration:none">📍 Check in / out</a>
@@ -882,7 +882,7 @@ function buildHtml(days, weekShifts, weekEvents, label){
     : `<div class="hint" style="margin-bottom:8px;">${cloud.status==='connecting' ? 'Connecting to Firebase…' : `Not connected to Firebase${cloud.err?` (${esc(cloud.err)})`:''} — changes are saved in this browser only, and marketers won’t see them.`}</div>`;
   return `${saveBar}
     <div class="buildbar">
-      <button class="btn primary" data-act="import">⬆ Import ETACC CSV</button>
+      <button class="btn" data-act="import" title="Not needed any more: events sync from ETACC automatically when a manager is signed in. Use this only as a backup.">⬆ Import ETACC CSV (backup)</button>
       ${cloud.status==='live' && cloud.user ? `<button class="btn" data-act="addetacc" title="Staff an ETACC event that isn’t Submitted for Contract yet">+ Staff another ETACC event</button>`:''}
       <button class="btn" data-act="roster">👥 Roster (${data.roster.length})</button>
       <input type="date" data-act="pick" value="${ui.weekStart}" aria-label="Jump to week">
@@ -891,7 +891,7 @@ function buildHtml(days, weekShifts, weekEvents, label){
       <button class="btn" data-act="restore">Restore</button>
     </div>
     <div class="hint" style="margin:-4px 0 12px;">${data.hpiAsOf ? `Hrs/Issued as of ${esc(fmtFull(data.hpiAsOf))} (${esc(HPI_NOTE)}). ` : ''}Approved and Submitted for Contract events come in with the ETACC import. To staff an event that isn’t submitted yet, use <b>+ Staff another ETACC event</b>.</div>
-    ${!data.events.length ? `<div class="empty"><p>In ETACC click <b>⬇ Export CSV</b>, then click <b>⬆ Import ETACC CSV</b> above.</p>${!data.roster.length?'<p>Then add your marketers under <b>👥 Roster</b>.</p>':''}</div>` : `
+    ${!data.events.length ? `<div class="empty"><p>Sign in and the events load from ETACC automatically. (Backup: in ETACC click <b>⬇ Export CSV</b>, then <b>⬆ Import ETACC CSV</b> above.)</p>${!data.roster.length?'<p>Then add your marketers under <b>👥 Roster</b>.</p>':''}</div>` : `
     <details class="sec" data-sec="assign" ${secOpen('assign')?'open':''}><summary><h3 class="bh" style="display:inline">Assign marketers — week of ${esc(label)}</h3></summary>
     <div class="sub">Pick a name on each event day. Each office’s best Hrs/Issued is listed first, with PBS hours left.</div>
     <div class="days7">
@@ -1010,7 +1010,7 @@ function detailCard(e,days){
   const editRow = (k,v)=> editing ? `<dt>${k}</dt><dd>${v}</dd>` : row(k,v);
   return `<div class="det">
     <h3>${esc(e.name)}</h3>
-    <div class="office">${esc(e.office)}${e.region && e.region!==e.office ? ' ('+esc(e.region)+')' : ''} · ${esc(e.status)}${e.added?' · <span class="need" title="Added for staffing before it was submitted in ETACC">Not submitted in ETACC yet</span>':''}</div>
+    <div class="office">${esc(e.office)}${e.region && e.region!==e.office ? ' ('+esc(e.region)+')' : ''} · ${esc(e.status)}${e.added?' · <span class="need" title="Added for staffing before it was submitted in ETACC">Not submitted in ETACC yet</span>':''}${e.etaccGone?` · <span class="need" title="This event is no longer Submitted for Approval or Contract in ETACC, but marketers are assigned">ETACC: ${esc(e.etaccGone)}. Check before the event</span>`:''}</div>
     ${det.off && !editing ? `<div class="offnote">${offLine(det.off, e)}</div>` : ''}
     <dl>
       ${editing
@@ -1132,6 +1132,63 @@ function etaccModal(){
     <div class="row" style="margin-top:12px;justify-content:flex-end;"><button class="btn" data-act="closemodal-btn">Finished</button></div>
   </div></div>`;
 }
+/* ---------- Automatic ETACC sync ----------
+   Whenever a signed-in manager has the schedule open (on its own, or inside the Event Hub), it reads ETACC's live
+   events and keeps the schedule's event list current: every upcoming Patio Enclosures event that is Submitted for
+   Approval or Submitted for Contract is on the schedule, with its dates, hours, venue and contacts from ETACC.
+   Assignments, booth notes and date changes made here are kept. An event that leaves those statuses is taken off
+   if nobody is assigned, or flagged on its card if someone is. The CSV upload still works as a backup. */
+const ETACC_SYNC_STATUSES = ['execute','submitted'];
+const ETACC_REGIONS = ['MAN','MAS','MW','MW-2','NE','OV','PNW','SA','SA-2','SC','SC-2','SE','SW','UPL'];
+const SYNC_EVERY_MIN = 15;
+let syncBusy=false, syncLast=0;
+function canonEvent(e){ const o=Object.assign({}, e, { days:etaccDays(e).map(d=>({ date:d.date, start:d.start||'', stop:d.stop||'' })), start:e._start||e.start, end:e._end||e.end }); delete o._days; delete o._start; delete o._end; return o; }
+function eventStaffed(e){ return Object.entries(data.assignments||{}).some(([k,v])=>k.startsWith(e.key+'#') && (v||[]).length); }
+async function readEtaccLive(){
+  if(DEMO){ const H=demoHub(); return H?H.etacc():null; }
+  const {fsM,db}=cloud.fb; const snap=await fsM.getDocs(fsM.collection(db,'dashboardEvents')); const a=[]; snap.forEach(d=>a.push(Object.assign({ id:d.id }, d.data()))); return a;
+}
+async function syncEtacc(force){
+  if(DEMO || syncBusy || !(cloud.status==='live' && cloud.user) || !DOCS.every(n=>cloud.loaded[n])) return;
+  if(!force && Date.now()-syncLast < SYNC_EVERY_MIN*60e3) return;
+  syncBusy=true; syncLast=Date.now();
+  let list; try{ list=await readEtaccLive(); }catch(e){ syncBusy=false; console.warn('ETACC sync', e); return; }
+  if(!Array.isArray(list)){ syncBusy=false; return; }
+  const t0=addDays(todayIso(),-60), byEtacc=new Map(list.map(x=>[x.id,x]));
+  const want=list.filter(x=>ETACC_SYNC_STATUSES.includes(x.status) && x.branch && x.eventName && x.startDate && (x.endDate||x.startDate)>=t0);
+  const before=JSON.stringify(data.events.map(canonEvent));
+  const out=data.events.map(canonEvent), idx=new Map(), seenIds=new Set(); let added=0, updated=0, removed=0, flagged=[];
+  out.forEach((e,i)=>{ if(e.etaccId) idx.set('id:'+e.etaccId,i); idx.set('key:'+e.key,i); });
+  want.forEach(x=>{
+    const f=eventFromEtacc(x); delete f.added; f.etaccId=x.id; f.status=x.status==='submitted'?'Submitted for Contract':'Approved';
+    f.region=recodeRegion(x.branch, ETACC_REGIONS[x.region]||'')||regionOf(x.branch)||'';
+    seenIds.add(x.id);
+    const i=idx.has('id:'+x.id)?idx.get('id:'+x.id):idx.get('key:'+f.key);
+    if(i===undefined){ out.push(f); idx.set('id:'+x.id,out.length-1); added++; return; }
+    const e=out[i], next=Object.assign({}, e);
+    Object.entries(f).forEach(([k,v])=>{ if(k==='key'||k==='setup'||k==='notes') return; if(v===''||v==null) return; next[k]=v; });
+    next.days=f.days.map(d=>{ const o=(e.days||[]).find(z=>z.date===d.date)||{}; return { date:d.date, start:d.start||o.start||'', stop:d.stop||o.stop||'' }; });
+    delete next.added; delete next.etaccGone;
+    if(JSON.stringify(next)!==JSON.stringify(e)){ out[i]=next; updated++; }
+  });
+  const kept=out.filter(e=>{
+    if(!e.etaccId || seenIds.has(e.etaccId) || e.added) return true;
+    if((e.end||e.start)<t0) return true;
+    if(!eventStaffed(e)){ removed++; return false; }
+    const x=byEtacc.get(e.etaccId), why=x?(ETACC_LABEL[x.status]||x.status||'changed'):'Removed from ETACC';
+    if(e.etaccGone!==why){ e.etaccGone=why; flagged.push(e.name); }
+    return true;
+  });
+  if(JSON.stringify(kept)!==before){
+    data.events=kept; data.importedAt=new Date().toISOString(); data.dataAsOf=todayIso(); data.sourceFile='ETACC (automatic)';
+    save(); await pushCloud(['events']); cloud.dirty=unsavedDocs().length>0;
+    const parts=[]; if(added) parts.push(`${added} new event${added===1?'':'s'} added`); if(updated) parts.push(`${updated} updated`); if(removed) parts.push(`${removed} no longer in ETACC removed`);
+    if(flagged.length) parts.push(`${flagged.length} staffed event${flagged.length===1?' is':'s are'} no longer approved in ETACC: ${flagged.slice(0,3).join(', ')}${flagged.length>3?'…':''}`);
+    if(parts.length) ui.notice='ETACC sync: '+parts.join(' · ')+'.';
+  } else if(data.sourceFile==='ETACC (automatic)' && data.dataAsOf!==todayIso()){ data.dataAsOf=todayIso(); data.importedAt=new Date().toISOString(); save(); await pushCloud(['events']); cloud.dirty=unsavedDocs().length>0; }
+  syncBusy=false; render();
+}
+setInterval(()=>{ syncEtacc(false); }, 60e3);
 function eventFromEtacc(x){
   const start=x.startDate, end=x.endDate||start, days=[]; const h=x.hoursByDay||{};
   for(let d=start; d<=end && days.length<31; d=addDays(d,1)) days.push({ date:d, start:(h[d]&&h[d].open)||'', stop:(h[d]&&h[d].close)||'' });
@@ -1200,6 +1257,7 @@ document.addEventListener('click', e=>{
   switch(a){
     case 'signin': e.preventDefault(); signIn(document.getElementById('siEmail').value.trim(), document.getElementById('siPw').value); break;
     case 'forgot': e.preventDefault(); resetPw(document.getElementById('siEmail').value.trim()); break;
+    case 'syncnow': e.preventDefault(); syncEtacc(true); break;
     case 'signout': e.preventDefault(); if(DEMO) break;
       if(cloud.dirty && !confirm('You have unsaved changes. Sign out and lose them?')) break;
       if(cloud.dirty){ cloud.dirty=false; DOCS.forEach(n=>applyCloud(n, cloud.remote[n]||null, true)); }

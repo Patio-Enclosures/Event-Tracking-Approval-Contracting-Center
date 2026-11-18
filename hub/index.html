@@ -633,7 +633,7 @@ function fixItemName(n){ return String(n||'').replace(/\bSept\/Oct\b/,'Special')
 function assetInScope(a){ const o=stOf(a).office||a.office||''; return !o || inOffice(o); }
 // Item pictures: built-in photos for supply-list items (hub/<SKU>.jpg), or a photo a manager adds.
 // A photo added to an item with a supply-list SKU is shared by every item with that SKU.
-const ITEM_IMG = Object.fromEntries(['OTH-TABLECLOTH','OTH-TV32','OTH-STOOL','OTH-BANNER-OUT','OTH-ACRYLIC','OTH-SIGN11X17','OTH-FLASH','OTH-10PANEL','OTH-RUNNER'].map(k=>[k,k+'.jpg'])); // pictures sit in the hub folder next to index.html
+const ITEM_IMG = Object.fromEntries(['OTH-TABLECLOTH','OTH-TV32','OTH-STOOL','OTH-BANNER-OUT','OTH-ACRYLIC','OTH-SIGN11X17','OTH-FLASH','OTH-10PANEL','OTH-RUNNER','LEG-V4','LEG-V5','LEG-V6','LEG-V7','LEG-V8','LEG-V9','LEG-V10','LEG-V11','LEG-V12','LEG-V13'].map(k=>[k,k+'.jpg'])); // pictures sit in the hub folder next to index.html
 function photoKey(a){ return a.shopSku || a.id; }
 function assetPhoto(a){ if(!a) return ''; const P=S.assetPhotos||{}; return P[a.id] || (a.shopSku&&P[a.shopSku]) || ITEM_IMG[a.shopSku] || ''; }
 function assetThumb(a, size){ const u=assetPhoto(a), z=size||40; return u?`<img class="athumb" src="${esc(u)}" alt="" loading="lazy" style="width:${z}px;height:${z}px">`:`<span class="athumb none" style="width:${z}px;height:${z}px">${a&&a.kind==='kit'?'🧰':'📦'}</span>`; }
@@ -731,6 +731,14 @@ const SHOP_URL = 'https://www.greatdayshop.com/category/patio-enclosures';
 // Pop-up (retractable) banners: one per design, per regional artwork set. Orderable from the Great Day Shop on Dec 1, 2026 (price and link added then).
 (()=>{ const designs=[['qr','Scan to Learn More (QR code)'],['enclose','Enclose Your Patio or Porch'],['benefits','Enjoy These Benefits'],['sunrooms','Sunrooms & Screen Rooms'],['financing','Financing Available']];
   [['main','Main'],['tx','Texas'],['sw','Southwest']].forEach(([k,label])=>designs.forEach(([d,name])=>SHOP_CATALOG.push({ sku:`BNR-${k.toUpperCase()}-${d.toUpperCase()}`, name:`Pop-up banner (${label} set): ${name}`, kind:'gear', category:'Banner / sign', unit:'', price:null, url:SHOP_URL, available:'2026-12-01', bannerSet:k }))); })();
+// Legacy pop-up banners (the old art, V4–V13): counted and tracked like the new ones, but no longer sold, so never reordered.
+// Picture files LEG-V4.jpg … LEG-V13.jpg sit in the hub folder. V13 (Stanek Windows) belongs to every set.
+[['V6','main','Main','Sunrooms | Screen Rooms'],['V5','main','Main','We Bring the Showroom to You'],['V4','main','Main','Enclose Your Patio'],
+ ['V7','sw','Southwest','Sunrooms | Screen Rooms'],['V8','sw','Southwest','We Bring the Showroom to You'],['V9','sw','Southwest','Enclose Your Patio'],
+ ['V12','tx','Texas','Sunrooms | Screen Rooms'],['V11','tx','Texas','We Bring the Showroom to You'],['V10','tx','Texas','Enclose Your Patio'],
+ ['V13','all','All sets','Stanek Windows: Quality Windows & Doors']]
+ .forEach(([v,set,label,name])=>SHOP_CATALOG.push({ sku:`LEG-${v}`, name:`Legacy banner ${v} (${label}): ${name}`, kind:'gear', category:'Banner / sign', unit:'', price:null, url:'', vendor:'Legacy (no longer sold)', legacySet:set }));
+function legacyFor(office){ const set=bannerSetFor(office); return SHOP_CATALOG.filter(x=>x.legacySet && (x.legacySet===set || x.legacySet==='all')); }
 /* ---------------- Add items from the Great Day Shop catalog ---------------- */
 function shopOverlay(){
   const A=ui.shopAdd; if(!A) return '';
@@ -738,7 +746,7 @@ function shopOverlay(){
   const row=x=>{ const have=inOff(x.sku), g=x.kind==='gear';
     const pp=!g && isPaperCat(x), haveTxt=g ? (have.length?`${have.length} in hub`:'') : pp ? (have.length&&levelOf(have[0])?(PAPER_LEVELS.find(l=>l[0]===levelOf(have[0]))||[0,''])[1]:'') : (have.length?`${stOf(have[0]).qty} on hand`:'');
     const ph=(S.assetPhotos||{})[x.sku]||ITEM_IMG[x.sku]||'';
-    return `<tr><td class="skuph ${ui.pasteSku===x.sku?'on':''}" data-act="skuPick" data-sku="${x.sku}" title="Click, then paste a copied picture (Ctrl+V / ⌘V), or choose a file">${ph?`<img src="${esc(ph)}" alt="">`:'<span>📷<br>Add</span>'}<label class="skufile" title="Choose a picture file">📁<input type="file" accept="image/*" data-skuphoto="${x.sku}" style="display:none"></label></td><td>${x.url?`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.name)}</a>`:`<b>${esc(x.name)}</b>`}<div class="small muted">${x.price!=null?`${x.sku} · $${x.price.toFixed(2)}`:`Price TBD${x.available&&x.available>todayIso()?` · orderable ${fmtLong(x.available)}`:''}`}${x.unit?' · '+esc(x.unit):''}${haveTxt?' · <b>'+haveTxt+'</b>':''}</div></td>
+    return `<tr><td class="skuph ${ui.pasteSku===x.sku?'on':''}" data-act="skuPick" data-sku="${x.sku}" title="Click, then paste a copied picture (Ctrl+V / ⌘V), or choose a file">${ph?`<img src="${esc(ph)}" alt="">`:'<span>📷<br>Add</span>'}<label class="skufile" title="Choose a picture file">📁<input type="file" accept="image/*" data-skuphoto="${x.sku}" style="display:none"></label></td><td>${x.url?`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.name)}</a>`:`<b>${esc(x.name)}</b>`}<div class="small muted">${x.legacySet?`${x.sku} · No longer sold`:x.price!=null?`${x.sku} · $${x.price.toFixed(2)}`:`Price TBD${x.available&&x.available>todayIso()?` · orderable ${fmtLong(x.available)}`:''}`}${x.unit?' · '+esc(x.unit):''}${haveTxt?' · <b>'+haveTxt+'</b>':''}</div></td>
       <td class="small">${g?'Booth asset':'Stock'}</td>
       <td>${pp?levelSelect(`data-shopq="${x.sku}" data-keep="shopq-${esc(A.office||"")}-${x.sku}" aria-label="Supply for ${esc(x.name)}"`, A.qty[x.sku]||''):`<input type="number" min="0" step="1" data-shopq="${x.sku}" data-keep="shopq-${esc(A.office||"")}-${x.sku}" value="${esc(A.qty[x.sku]??'')}" placeholder="0" style="width:80px" aria-label="${g?'Units':'Quantity on hand'} for ${esc(x.name)}">`}</td>
       <td>${pp?'<span class="small muted">—</span>':g?'<span class="small muted">—</span>':`<input type="number" min="0" step="1" data-shopr="${x.sku}" data-keep="shopr-${esc(A.office||"")}-${x.sku}" value="${esc(A.reorder[x.sku]??(have[0]&&have[0].reorderAt!==''&&have[0].reorderAt!=null?have[0].reorderAt:''))}" placeholder="—" style="width:80px" aria-label="Reorder point for ${esc(x.name)}">`}</td></tr>`; };
@@ -748,9 +756,10 @@ function shopOverlay(){
     <div class="notice" style="margin:6px 0 10px"><b>📷 Adding pictures:</b> open the item on the Great Day Shop (the item name is a link), right-click its picture and choose <b>Copy image</b>, then click the item’s picture box here and press <b>Ctrl+V</b> (<b>⌘V</b> on a Mac). Or tap 📁 to choose a saved picture. Pictures save right away (no office needed) and show on every item with that SKU.${ui.pasteSku?` <span class="pill p-blue">Ready to paste for ${esc((SHOP_CATALOG.find(x=>x.sku===ui.pasteSku)||{}).name||ui.pasteSku)}</span>`:''}</div>
     <div class="field" style="max-width:320px"><label>Office</label><select data-shopoff>${['',...offs].map(o=>`<option value="${esc(o)}" ${o===(A.office||'')?'selected':''}>${o?esc(o):'Choose an office…'}</option>`).join('')}</select></div>
     <div style="max-height:52vh;overflow:auto"><table><thead><tr><th style="width:74px">Picture</th><th>Item</th><th>Type</th><th>Units / on hand</th><th>Reorder at</th></tr></thead><tbody>
-      <tr><td colspan="5" class="small" style="background:#f4f6f6"><b>Booth assets</b>: how many units this office has</td></tr>${gear.filter(x=>!x.bannerSet && !x.other).map(row).join('')}
+      <tr><td colspan="5" class="small" style="background:#f4f6f6"><b>Booth assets</b>: how many units this office has</td></tr>${gear.filter(x=>!x.bannerSet && !x.other && !x.legacySet).map(row).join('')}
       <tr><td colspan="5" class="small" style="background:#f4f6f6"><b>Other booth items</b> (not from the Great Day Shop)</td></tr>${gear.filter(x=>x.other).map(row).join('')}
-      <tr><td colspan="5" class="small" style="background:#f4f6f6"><b>Pop-up banners</b>: count the new banners only (never legacy ones). Use the set for this office’s area. On order from the Great Day Shop starting ${fmtLong('2026-12-01')}.</td></tr>${gear.filter(x=>x.bannerSet).sort((a,b)=>(a.bannerSet===bannerSetFor(A.office)?0:1)-(b.bannerSet===bannerSetFor(A.office)?0:1)).map(row).join('')}
+      <tr><td colspan="5" class="small" style="background:#f4f6f6"><b>New pop-up banners</b>: use the set for this office’s area. On order from the Great Day Shop starting ${fmtLong('2026-12-01')}.</td></tr>${gear.filter(x=>x.bannerSet).sort((a,b)=>(a.bannerSet===bannerSetFor(A.office)?0:1)-(b.bannerSet===bannerSetFor(A.office)?0:1)).map(row).join('')}
+      <tr><td colspan="5" class="small" style="background:#f4f6f6"><b>Legacy pop-up banners</b> (old art, V4–V13): count what this office still has. They’re no longer sold, so they’re never reordered, and they’re never used together with new banners. This office’s set is listed first.</td></tr>${gear.filter(x=>x.legacySet).sort((a,b)=>((a.legacySet===bannerSetFor(A.office)||a.legacySet==='all')?0:1)-((b.legacySet===bannerSetFor(A.office)||b.legacySet==='all')?0:1)).map(row).join('')}
       <tr><td colspan="5" class="small" style="background:#f4f6f6"><b>Paper supplies</b>: no counting, just pick Enough on hand, Running low or Out</td></tr>${cons.filter(isPaperCat).map(row).join('')}
       <tr><td colspan="5" class="small" style="background:#f4f6f6"><b>Badges and other stock</b>: quantity on hand now (in the unit shown), and when to reorder</td></tr>${cons.filter(x=>!isPaperCat(x)).map(row).join('')}
     </tbody></table></div>
@@ -823,7 +832,7 @@ function firstInvView(){
     <button class="btn primary" data-act="fiStart">Start</button></div>`;
   if(!ui.fiSkip) fiRead(); ui.fiSkip=false;
   const have=S.assets.filter(a=>!a.retired && (a.office||'')===o), set=bannerSetFor(o), T=fiTotals(F);
-  const gearCat=SHOP_CATALOG.filter(x=>x.kind==='gear' && !x.bannerSet && !x.other), other=SHOP_CATALOG.filter(x=>x.kind==='gear' && x.other),
+  const gearCat=SHOP_CATALOG.filter(x=>x.kind==='gear' && !x.bannerSet && !x.other && !x.legacySet), legacy=legacyFor(o), other=SHOP_CATALOG.filter(x=>x.kind==='gear' && x.other),
         banners=SHOP_CATALOG.filter(x=>x.bannerSet===set), cons=SHOP_CATALOG.filter(x=>x.kind!=='gear');
   const pic=x=>{ const u=(S.assetPhotos||{})[x.sku]||ITEM_IMG[x.sku]; return u?`<img class="athumb" src="${esc(u)}" alt="" style="width:40px;height:40px">`:`<span class="athumb none" style="width:40px;height:40px">📦</span>`; };
   const gRow=x=>{ const m=F.g[x.sku]||{}, n=FI_CONDS.reduce((t,[c])=>t+Math.max(0,Math.floor(num(m[c]))),0), inHub=have.filter(a=>a.shopSku===x.sku).length;
@@ -834,19 +843,21 @@ function firstInvView(){
     return `<tr class="${num(F.c[x.sku])>0?'fihas':''}"><td>${pic(x)}</td><td><b>${esc(x.name)}</b><div class="small muted">${esc(x.unit||'each')}${inHub?` · ${stOf(inHub).qty} already in the hub`:''}</div></td><td><input type="number" min="0" step="1" inputmode="numeric" class="fin" data-fic="${x.sku}" value="${esc(F.c[x.sku]??'')}" placeholder="0" aria-label="${esc(x.name)} on hand"></td><td><input type="number" min="0" step="1" inputmode="numeric" class="fin" data-fir="${x.sku}" value="${esc(F.r[x.sku]??'')}" placeholder="—" aria-label="${esc(x.name)} reorder at"></td></tr>`; };
   const gHead=`<thead><tr><th style="width:50px"></th><th>Item</th>${FI_CONDS.map(([,l])=>`<th style="width:84px">${l}</th>`).join('')}</tr></thead>`;
   return `<div class="card fihead"><div class="row" style="gap:8px;flex-wrap:wrap"><h2 style="margin:0;flex:1">📋 First inventory · ${esc(o)}</h2><button class="btn sm" data-act="fiLater">💾 Save & finish later</button><button class="btn sm" data-act="fiCancel">Cancel</button></div>
-    <p class="small muted" style="margin:6px 0 0">Enter how many of each item the branch has, split by condition. Leave blank what you don’t have. “Replace” means it’s too worn or broken to use at a show. Count new pop-up banners only; never count legacy banners.${have.length?` <b>${have.length} item${have.length===1?' is':'s are'} already listed for this branch;</b> enter only what isn’t in the hub yet.`:''}</p>
+    <p class="small muted" style="margin:6px 0 0">Enter how many of each item the branch has, split by condition. Leave blank what you don’t have. “Replace” means it’s too worn or broken to use at a show. Count new pop-up banners and legacy banners in their own sections.${have.length?` <b>${have.length} item${have.length===1?' is':'s are'} already listed for this branch;</b> enter only what isn’t in the hub yet.`:''}</p>
     <div class="fitot"><span><b>${T.gear}</b> booth asset${T.gear===1?'':'s'}</span><span><b>${T.repair}</b> need repair or replacing</span><span><b>${T.stock}</b> stock item${T.stock===1?'':'s'}</span></div></div>
   ${hsec('fi-gear',`<h3 class="homeh">1. Booth assets (Great Day Shop)</h3>`,`<div class="card" style="overflow:auto"><table class="fit">${gHead}<tbody>${gearCat.map(gRow).join('')}</tbody></table></div>`)}
   ${hsec('fi-other',`<h3 class="homeh">2. Other booth items</h3>`,`<div class="card" style="overflow:auto"><table class="fit">${gHead}<tbody>${other.map(gRow).join('')}</tbody></table></div>`)}
   ${hsec('fi-bnr',`<h3 class="homeh">3. New pop-up banners (${esc({main:'Main',tx:'Texas',sw:'Southwest'}[set]||set)} set)</h3>`,`<div class="card" style="overflow:auto"><p class="small muted" style="margin-top:0">These go on sale ${fmtLong('2026-12-01')}. Skip this section until you have them.</p><table class="fit">${gHead}<tbody>${banners.map(gRow).join('')}</tbody></table></div>`)}
-  ${hsec('fi-stock',`<h3 class="homeh">4. Print, giveaways and badges</h3>`,`<div class="card" style="overflow:auto"><p class="small muted" style="margin-top:0"><b>Paper supplies</b> (flyers, posters, brochures, trifolds, tear pads, checklists, scratch-offs): don’t count them, just pick <b>Enough on hand</b>, <b>Running low</b> or <b>Out</b>. Badges and lanyards: enter how many are on hand; “Reorder at” is optional and flags the item when stock falls to that number.</p><table class="fit"><thead><tr><th style="width:50px"></th><th>Item</th><th style="width:100px">On hand</th><th style="width:100px">Reorder at</th></tr></thead><tbody>${cons.filter(isPaperCat).map(cRow).join('')}${cons.filter(x=>!isPaperCat(x)).map(cRow).join('')}</tbody></table></div>`)}
-  ${hsec('fi-extra',`<h3 class="homeh">5. Anything not on the list</h3>`,`<div class="card">${(F.extra||[]).length?`<table class="fit"><thead><tr><th>Item name</th><th>Type</th><th>Category</th><th style="width:80px">How many</th><th>Condition</th><th></th></tr></thead><tbody>${F.extra.map((x,i)=>`<tr>
+  ${hsec('fi-leg',`<h3 class="homeh">4. Legacy pop-up banners (old art)</h3>`,`<div class="card" style="overflow:auto"><p class="small muted" style="margin-top:0">Count the legacy banners the branch still has (${esc({main:'Main',tx:'Texas',sw:'Southwest'}[set]||set)} set, plus Stanek V13). They’re no longer sold, so they’re never reordered. Never use them together with new banners.</p><table class="fit">${gHead}<tbody>${legacy.map(gRow).join('')}</tbody></table></div>`)}
+  ${hsec('fi-stock',`<h3 class="homeh">5. Print, giveaways and badges</h3>`,`<div class="card" style="overflow:auto"><p class="small muted" style="margin-top:0"><b>Paper supplies</b> (flyers, posters, brochures, trifolds, tear pads, checklists, scratch-offs): don’t count them, just pick <b>Enough on hand</b>, <b>Running low</b> or <b>Out</b>. Badges and lanyards: enter how many are on hand; “Reorder at” is optional and flags the item when stock falls to that number.</p><table class="fit"><thead><tr><th style="width:50px"></th><th>Item</th><th style="width:100px">On hand</th><th style="width:100px">Reorder at</th></tr></thead><tbody>${cons.filter(isPaperCat).map(cRow).join('')}${cons.filter(x=>!isPaperCat(x)).map(cRow).join('')}</tbody></table></div>`)}
+  ${hsec('fi-extra',`<h3 class="homeh">6. Anything not on the list</h3>`,`<div class="card">${(F.extra||[]).length?`<table class="fit"><thead><tr><th>Item name</th><th>Type</th><th>Category</th><th style="width:80px">How many</th><th>Condition</th><th></th></tr></thead><tbody>${F.extra.map((x,i)=>`<tr>
       <td><input type="text" data-fix="${i}|name" value="${esc(x.name||'')}" placeholder="e.g. Folding easel"></td>
       <td><select data-fix="${i}|kind"><option value="gear" ${x.kind!=='consumable'?'selected':''}>Booth asset</option><option value="consumable" ${x.kind==='consumable'?'selected':''}>Stock</option></select></td>
       <td><select data-fix="${i}|category">${ASSET_CATS.map(c=>`<option ${c===x.category?'selected':''}>${c}</option>`).join('')}</select></td>
       <td><input type="number" min="0" step="1" class="fin" data-fix="${i}|qty" value="${esc(x.qty||'')}"></td>
       <td><select data-fix="${i}|cond">${FI_CONDS.map(([c,l])=>`<option value="${c}" ${c===(x.cond||'Good')?'selected':''}>${l}</option>`).join('')}</select></td>
       <td><button class="btn sm" data-act="fiDelExtra" data-i="${i}" aria-label="Remove">✕</button></td></tr>`).join('')}</tbody></table>`:'<p class="small muted" style="margin-top:0">Add anything the branch uses at shows that isn’t listed above.</p>'}<button class="btn sm" data-act="fiAddExtra">+ Add an item</button></div>`)}
+  ${(()=>{ const L=orderLinesFromDraft(F), R=orderRecipients(o); return hsec('fi-order',`<h3 class="homeh">7. What to order (${L.length})</h3>`,`<div class="card"><div class="row" style="margin-bottom:6px"><p class="small muted" style="margin:0;flex:1">Paper supplies marked Running low or Out, stock at or below its reorder point, and anything marked Replace. When you tap <b>Finish</b>, this list is emailed to ${esc(R.to.join(', '))}${R.cc.length?` (copy to ${esc(R.cc.join(', '))})`:''}.</p><button class="btn sm" data-act="fiRefresh">↻ Update list</button></div>${L.length?orderTable(L):'<p class="muted" style="margin:0">Nothing to order yet.</p>'}</div>`); })()}
   ${ui.fiErr?`<div class="notice err">${esc(ui.fiErr)}</div>`:''}
   <div class="card row" style="gap:10px;justify-content:flex-end"><span class="small muted" style="flex:1">Finishing adds everything to ${esc(o)}’s inventory, gives each booth asset a barcode, and marks the branch’s first inventory done.</span><button class="btn" data-act="fiLater">💾 Save & finish later</button><button class="btn primary" data-act="fiFinish" ${ui.busy?'disabled':''}>${ui.busy?'Adding…':'✅ Finish & add to inventory'}</button></div>`;
 }
@@ -874,10 +885,64 @@ async function fiFinish(){
   try{ await saveAssets(list); if(entries.length) await logAsset(entries);
     await saveAudit(auId, { name:`${o} first inventory – ${fmtLong(todayIso())}`, kind:'initial', offices:[o], startedAt:F.startedAt||now, startedBy:myEmail(), closedAt:now, closedBy:myEmail(), counts:{ gear:T.gear, repair:T.repair, stock:T.stock } }); }
   catch(e){ ui.busy=false; ui.fiErr='Couldn’t save: '+(e.code||e.message)+'. Your entries are still here; try again.'; render(); return; }
+  const orderL=orderLinesFromDraft(F); let sent=null; try{ sent=await sendOrderEmail(o, orderL, 'first'); }catch(e){ sent=false; }
   ui.busy=false; fiStore(o, null); ui.fi=null; ui.fiErr=''; ui.av='inventory'; ui.labelSel=codes;
-  ui.notice=`${o}’s first inventory is done: ${T.gear} booth asset${T.gear===1?'':'s'} and ${T.stock} stock item${T.stock===1?'':'s'} added. The new booth assets are ticked below; tap “🏷 Print labels” to print their barcodes.`; ui.noticeKind='ok';
+  ui.notice=`${o}’s first inventory is done: ${T.gear} booth asset${T.gear===1?'':'s'} and ${T.stock} stock item${T.stock===1?'':'s'} added. The new booth assets are ticked below; tap “🏷 Print labels” to print their barcodes.${orderL.length?(sent?` The list of ${orderL.length} item${orderL.length===1?'':'s'} to order was emailed to ${sent.to.join(', ')}; it’s also under “What to order” at the bottom of this page.`:` ${orderL.length} item${orderL.length===1?'':'s'} to order are listed at the bottom of this page.`):''}`; ui.noticeKind='ok';
   render(); window.scrollTo(0,0);
 }
+/* ---------------- What to order: from a first inventory draft, or from an office's current inventory ----------------
+   Paper supplies marked Running low or Out, stock at or below its reorder point, and booth assets marked Replace
+   (or lost). Each line links to where it's ordered. Legacy banners are never reordered. */
+function orderLink(x){ if(!x) return ''; if(x.url||x.shopUrl) return x.url||x.shopUrl; return (x.vendor==='Other supplier'||x.other||x.legacySet)?'':SHOP_URL; }
+function catBySku(sku){ return SHOP_CATALOG.find(x=>x.sku===sku)||null; }
+function orderLinesFromDraft(F){
+  const out=[];
+  SHOP_CATALOG.forEach(x=>{
+    if(x.legacySet) return;
+    if(x.kind==='gear'){ const n=Math.max(0,Math.floor(num(((F.g||{})[x.sku]||{}).Damaged))); if(n) out.push({ name:x.name, sku:x.sku, why:`${n} to replace`, url:orderLink(x), vendor:x.vendor||'Great Day Shop', red:true }); return; }
+    const v=(F.c||{})[x.sku];
+    if(isPaperCat(x)){ if(v==='low'||v==='out') out.push({ name:x.name, sku:x.sku, why:v==='out'?'Out – order now':'Running low', url:orderLink(x), vendor:x.vendor||'Great Day Shop', red:v==='out' }); return; }
+    const r=(F.r||{})[x.sku]; if(r!==undefined && r!=='' && v!==undefined && v!=='' && num(v)<=num(r)) out.push({ name:x.name, sku:x.sku, why:`${num(v)} on hand (reorder at ${num(r)})`, url:orderLink(x), vendor:x.vendor||'Great Day Shop' });
+  });
+  return out;
+}
+function orderLinesForOffice(o){
+  const out=[];
+  S.assets.filter(a=>!a.retired && (stOf(a).office||a.office||'')===o).forEach(a=>{
+    if(/^LEG-/.test(a.shopSku||'')) return;
+    const x=catBySku(a.shopSku)||a, s=stOf(a);
+    if(a.kind==='consumable'){ if(isLow(a)) out.push({ name:a.name, sku:a.shopSku||a.code||'', why:isPaper(a)?(levelOf(a)==='out'?'Out – order now':'Running low'):`${s.qty} on hand (reorder at ${a.reorderAt})`, url:orderLink(x), vendor:a.vendor||x.vendor||'', red:isPaper(a)&&levelOf(a)==='out' }); return; }
+    if(isGear(a) && a.kind!=='kit' && (s.status==='lost' || s.condition==='Damaged')){ const k=a.shopSku||a.name, ex=out.find(l=>l.key===k);
+      if(ex){ ex.n++; ex.why=`${ex.n} to replace`; } else out.push({ key:k, n:1, name:a.name, sku:a.shopSku||'', why:'1 to replace', url:orderLink(x), vendor:a.vendor||x.vendor||'', red:true }); }
+  });
+  return out;
+}
+function orderTable(lines, email){
+  const td=email?'style="padding:5px 10px 5px 0;border-bottom:1px solid #e3e6e6;vertical-align:top"':'';
+  const link=l=>l.url?`<a href="${esc(l.url)}" target="_blank" rel="noopener">${email?'Order':'Order ↗'}</a>`:`<span ${email?'style="color:#5a6760"':'class="small muted"'}>${esc(l.vendor&&l.vendor!=='Great Day Shop'?l.vendor:'Your usual supplier')}</span>`;
+  return `<table ${email?'style="font:14px Helvetica Neue,Helvetica,Arial,sans-serif;border-collapse:collapse"':''}><thead><tr><th ${td} align="left">Item</th><th ${td} align="left">Why</th><th ${td} align="left">Where to order</th></tr></thead><tbody>${lines.map(l=>`<tr><td ${td}><b>${esc(l.name)}</b>${l.sku?` <span ${email?'style="color:#5a6760;font-size:12px"':'class="small muted"'}>${esc(l.sku)}</span>`:''}</td><td ${td}>${l.red&&!email?`<span class="pill p-red">${esc(l.why)}</span>`:esc(l.why)}</td><td ${td}>${link(l)}</td></tr>`).join('')}</tbody></table>`;
+}
+// The person's supervisor for this office: the regional manager; a regional manager's supervisor is the division leader; theirs is Paula.
+function orderRecipients(office){
+  const me=myEmail(), c=alertCfg(), r=regionOf(office), d=divisionOf(r), rm=splitEmails(c.regions[r]), dl=d?[String(d.leader.email).toLowerCase()]:[];
+  let to = rm.length && !rm.includes(me) ? rm : dl.length && !dl.includes(me) ? dl : [PAULA];
+  if(to.includes(me)) to=[PAULA];
+  return { to, cc:cleanList([me, PAULA]).filter(x=>!to.includes(x)) };
+}
+async function sendOrderEmail(office, lines, source){
+  if(!lines.length) return null;
+  const R=orderRecipients(office), who=(S.user&&(S.user.displayName||S.user.email))||'A manager';
+  const html=mailShell(`Supplies to order: ${esc(office)}`, `<p>${esc(who)} ${source==='first'?'finished the first inventory for':'reviewed the inventory for'} <b>${esc(office)}</b>. These ${lines.length} item${lines.length===1?' needs':'s need'} to be ordered:</p>${orderTable(lines,true)}<p style="color:#5a6760;font-size:12px">Great Day Shop items link straight to the item. Legacy banners are never reordered.</p>`);
+  const ok=await queueMail(`order-${hash(office+'|'+todayIso()+'|'+lines.map(l=>l.sku+l.why).join(','))}`, { to:R.to, cc:R.cc, subject:`Supplies to order: ${office} (${lines.length} item${lines.length===1?'':'s'})`, html, text:`${lines.length} item${lines.length===1?'':'s'} to order for ${office}`, office, kind:'order' });
+  return ok ? R : false;
+}
+function orderCard(){
+  const offs=[...new Set(scopedAssets().map(a=>stOf(a).office||a.office||'').filter(Boolean))].sort(), groups=offs.map(o=>[o,orderLinesForOffice(o)]).filter(([,L])=>L.length);
+  const n=groups.reduce((t,[,L])=>t+L.length,0);
+  return `<div class="card" id="orderCard"><h2>🛒 What to order (${n})</h2><div class="sub">Paper supplies marked Running low or Out, stock at or below its reorder point, and booth assets marked Replace or lost. Great Day Shop items link straight to the item.</div>
+    ${groups.length?groups.map(([o,L])=>{ const R=orderRecipients(o); return `<div style="margin-top:12px"><div class="row" style="margin-bottom:4px"><b style="flex:1">${esc(o)}</b><button class="btn sm" data-act="orderMail" data-o="${esc(o)}" title="Email this list to ${esc(R.to.join(', '))}">📧 Email to ${esc(R.to.length===1?(personByEmailName(R.to[0])||R.to[0]):'supervisor')}</button></div>${orderTable(L)}</div>`; }).join(''):'<p class="muted" style="margin:0">Nothing to order right now.</p>'}</div>`;
+}
+function personByEmailName(em){ em=String(em||'').toLowerCase(); let n=''; ORG.forEach(d=>{ if(String(d.leader.email).toLowerCase()===em) n=d.leader.name; Object.values(d.regions).forEach(x=>{ if(String(x.email).toLowerCase()===em) n=x.name; }); }); if(!n && em===PAULA) n='Paula Shoemaker'; return n; }
 /* ---------------- Kit templates: build, check and print kits ---------------- */
 // Each requirement: [key, label, matcher, optional]. Banner requirements use the office's banner set.
 const BNR=d=>(a,set)=>a.shopSku===`BNR-${set.toUpperCase()}-${d}`;
@@ -984,7 +1049,7 @@ function inventoryView(){
       return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td><div class="arow">${assetThumb(a)}<div>${a.kind==='kit'?'🧰 ':''}${esc(a.name)}<div class="small muted">${esc(a.category||'')}${a.kind==='kit'?` · ${(a.contents||[]).length} items`:''}${kit?` · in ${esc(kit.name)}`:''}${a.kind==='kit'&&a.assignedTo?` · assigned to ${esc(a.assignedTo.name||a.assignedTo.office||'')}`:''}</div>${a.kind==='kit'&&a.kitType?(()=>{ const m=kitCheck(a)||[]; return m.length?`<span class="pill p-warn" title="${esc(m.join(', '))}">missing ${m.length}</span>`:'<span class="pill p-green">complete</span>'; })():''}</div></div></td><td class="small">${esc(s.office||'Any')}${isPausedOffice(s.office)?' <span class="pill p-gray" title="Branch paused in the 2027 plan (v22): redeploy its assets to Keep & Grow markets before buying new">Paused</span>':''}</td><td>${statusPill(a)}</td><td class="small">${esc(s.condition||'')}</td><td class="small">${a.cost?money(a.cost):''}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No booth assets match.</p>'}`)}
     ${hsec('a-cons',`<h3 style="display:inline">Giveaways & print (${cons.length})</h3>`,`${cons.length?`<table><thead><tr><th style="width:26px"></th><th>Code</th><th>Item</th><th>Office</th><th>On hand</th><th>Reorder at</th><th>Used (30 days)</th><th>Last checked</th></tr></thead><tbody>${cons.map(a=>{ const s=stOf(a), pp=isPaper(a);
       return `<tr class="click" data-item="${a.id}"><td><input type="checkbox" data-sel="${a.id}" ${sel.includes(a.id)?'checked':''}></td><td class="small"><code>${esc(a.code||'')}</code></td><td><div class="arow">${assetThumb(a)}<div>${esc(a.name)}<div class="small muted">${esc(a.category||'')}</div></div></div></td><td class="small">${esc(s.office||'Any')}${isPausedOffice(s.office)?' <span class="pill p-gray" title="Branch paused in the 2027 plan (v22): redeploy its assets to Keep & Grow markets before buying new">Paused</span>':''}</td><td>${statusPill(a)}</td><td class="small">${pp?'<span class="muted">Order when low</span>':a.reorderAt!==''&&a.reorderAt!=null?esc(a.reorderAt):'—'}</td><td class="small">${pp?'—':usedLast(a,30)}</td><td class="small">${s.lastCount?fmtStamp(s.lastCount):'—'}</td></tr>`; }).join('')}</tbody></table>`:'<p class="muted">No giveaway or print items match.</p>'}`)}
-  </div>`;
+  </div>${mgr?orderCard():''}`;
 }
 function stationView(){
   if(!S.user) return '<div class="card"><p class="muted">Sign in to check gear out, take returns or transfer items.</p></div>';
@@ -1015,7 +1080,7 @@ function stationView(){
 }
 /* ---------------- Banner standards: legacy + new mix, and retractable banners outdoors ---------------- */
 function isNewBanner(a){ return !!a && /^BNR-/.test(a.shopSku||''); }
-function isRetractable(a){ if(!a || a.kind==='kit') return false; if(isNewBanner(a) || a.legacyBanner) return true; if(a.shopSku==='OTH-BANNER-OUT') return false;
+function isRetractable(a){ if(!a || a.kind==='kit') return false; if(isNewBanner(a) || a.legacyBanner || /^LEG-V/.test(a.shopSku||'')) return true; if(a.shopSku==='OTH-BANNER-OUT') return false;
   return a.category==='Banner / sign' && /retractable|pop-?up|roll-?up|banner/i.test(a.name||'') && !/mesh|backdrop|outdoor|cling|holder|window|canvas/i.test(a.name||''); }
 function isLegacyBanner(a){ return isRetractable(a) && !isNewBanner(a); }
 // An event is outdoor when it's tagged "outdoor" in ETACC (Tags field).
@@ -2511,8 +2576,8 @@ function mailShell(title, bodyHtml){
     <p style="margin-top:16px"><a href="${SITE}hub/" style="background:#00A7B7;color:#000;text-decoration:none;padding:7px 12px;border-radius:6px;font-weight:600">Open the Event Hub</a></p>
     <p style="color:#5a6760;font-size:12px">Automatic alert from the Event Activity Hub.</p></div></div>`;
 }
-const ALERT_TAB = { early:'today', banner:'assets', late:'today', noshow:'today', noout:'today', issue:'today', expense:'expenses', summary:'summary', newmgr:'alerts', test:'alerts', rem:'remnums', task:'myday' };
-const ALERT_ICON = { early:'🏃', banner:'🚩', late:'⏰', noshow:'🚫', noout:'⌛', issue:'⚠️', expense:'🧾', summary:'📊', newmgr:'👋', test:'🔔', rem:'✍️', task:'📌' };
+const ALERT_TAB = { order:'assets', early:'today', banner:'assets', late:'today', noshow:'today', noout:'today', issue:'today', expense:'expenses', summary:'summary', newmgr:'alerts', test:'alerts', rem:'remnums', task:'myday' };
+const ALERT_ICON = { order:'🛒', early:'🏃', banner:'🚩', late:'⏰', noshow:'🚫', noout:'⌛', issue:'⚠️', expense:'🧾', summary:'📊', newmgr:'👋', test:'🔔', rem:'✍️', task:'📌' };
 function htmlText(h){ const m=String(h||'').match(/<p>([\s\S]*?)<\/p>/); const d=document.createElement('div'); d.innerHTML=m?m[1]:''; return (d.textContent||'').trim().slice(0,300); }
 async function queueMail(id, src){
   const mail={ to:cleanList(src.to||[]), cc:cleanList(src.cc||[]), message:{ subject:src.subject, html:src.html }, kind:src.kind||'', createdAt:Date.now() };
@@ -2948,7 +3013,7 @@ const SPRINT = {
         ['i3','Order label stock, add every non-paper asset to the annual branch inventory, then print its barcode label from the Event Hub and apply it','managers','2026-12-04'],
         ['i4','Assign each asset to a team member, so every marketer’s kit has an owner','managers','2026-12-04'],
         ['i5','Check each kit against the standard (indoor and outdoor) and the region’s Q1 show calendar; flag shortages and items to retire','seniors','2026-12-09'],
-        ['i6','Order the new pop-up banner set for each office’s area (Main, Texas or Southwest) once the Great Day Shop opens orders Dec 1; never count or reorder legacy banners','managers','2026-12-11'],
+        ['i6','Order the new pop-up banner set for each office’s area (Main, Texas or Southwest) once the Great Day Shop opens orders Dec 1; never reorder legacy banners','managers','2026-12-11'],
         ['i7','Clear stale paper: retire Sept/Oct flyers and posters, discard expiring scratch-offs when the new supply arrives, top up brochures and trifolds to a 3-month supply','managers','2026-12-18'],
         ['i8','Move surplus assets between branches, starting with kits from paused branches, before buying new (branch managers approve moves)','managers','2026-12-18'],
         ['i9','Approve only must-have replacements left after redeploying and repairing; order through the Great Day Shop once funding is agreed','paula','2026-12-18'],
@@ -4382,7 +4447,8 @@ function syncFrames(){
   const want = ui.tab==='events' ? 'events' : ui.tab==='schedule' ? 'schedule' : '';
   [['events',DEMO?DEMO_ETACC_URL:ETACC_URL,'Event Tracking, Approval & Contracting Center'],['schedule',DEMO?DEMO_SCHEDULE_URL:SCHEDULE_URL,'Marketer Weekly Schedule']].forEach(([k,url,title])=>{
     let f=box.querySelector(`iframe[data-k="${k}"]`);
-    if(!f && want===k){ f=document.createElement('iframe'); f.className='tool'; f.dataset.k=k; f.src=url; f.title=title; box.appendChild(f); }
+    // The schedule loads quietly in the background for signed-in managers, so it syncs new ETACC events even if nobody opens the Schedule tile.
+    if(!f && (want===k || (k==='schedule' && !DEMO && S.mode==='live' && S.user))){ f=document.createElement('iframe'); f.className='tool'; f.dataset.k=k; f.src=url; f.title=title; box.appendChild(f); }
     else if(f && want===k && DEMO && f.style.display==='none'){ try{ f.contentWindow.peDemoRefresh && f.contentWindow.peDemoRefresh(); }catch(e){} }
     if(f) f.style.display = want===k ? 'block' : 'none';
   });
@@ -4958,6 +5024,9 @@ document.addEventListener('click', async ev=>{
   if(a==='fiDelExtra'){ fiRead(); ui.fi.extra.splice(+t.dataset.i,1); fiStore(ui.fi.office, ui.fi); ui.fiSkip=true; render(); return; }
   if(a==='fiLater'){ fiRead(); ui.notice=`Draft saved for ${ui.fi.office} on this device. Tap “Continue first inventory” on the Inventory page to pick up where you left off.`; ui.noticeKind='ok'; ui.fi=null; ui.av='inventory'; render(); window.scrollTo(0,0); return; }
   if(a==='fiCancel'){ if(ui.fi && ui.fi.office){ fiRead(); const T=fiTotals(ui.fi); if((T.gear||T.stock) && !confirm('Leave the first inventory? Your entries stay saved as a draft on this device.')) return; } ui.fi=null; ui.av='inventory'; render(); return; }
+  if(a==='orderMail'){ const o=t.dataset.o, L=orderLinesForOffice(o); let r=null; try{ r=await sendOrderEmail(o, L, 'list'); }catch(e){ r=false; }
+    ui.notice = r ? `The ${L.length}-item order list for ${o} was emailed to ${r.to.join(', ')}.` : r===false ? `This list was already sent today, or the email couldn’t be queued.` : 'Nothing to order.'; ui.noticeKind=r?'ok':'warn'; render(); return; }
+  if(a==='fiRefresh'){ fiRead(); render(); return; }
   if(a==='fiFinish'){ await fiFinish(); return; }
   if(a==='demoReset'){ if(!confirm('Reset the demo to its starting sample data?')) return; try{ localStorage.removeItem(LOCAL_KEY); Object.keys(localStorage).filter(k=>k.startsWith('peHub.firstInv.')||k.startsWith('pe-marketer-schedule-demo')||k==='peHub.demo.etaccStore'||k.startsWith('peHub.welcome.')||k.startsWith('peHub.lastSeen.')).forEach(k=>localStorage.removeItem(k)); }catch(e){} location.hash=''; location.reload(); return; }
   if(a==='demoPhone'){ location.hash='checkin'; location.reload(); return; }

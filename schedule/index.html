@@ -184,6 +184,7 @@ details.sec>summary h2{display:inline}
 details.sec>summary::before{content:'▸';display:inline-block;width:18px;color:var(--muted,#777);transition:transform .15s}
 details.sec[open]>summary::before{transform:rotate(90deg)}
 .staffwarn details.sec>summary h2{display:inline}
+.nmgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}.nmf{display:flex;flex-direction:column;gap:3px;font-size:13px;font-weight:600}.nmf input,.nmf select{font-weight:400}.nmf .hint{font-weight:400}@media(max-width:560px){.nmgrid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -647,10 +648,32 @@ function byHpi(a,b){ const x=a.hpi==null?1e9:a.hpi, y=b.hpi==null?1e9:b.hpi; ret
 
 /* ---------- derived ---------- */
 function dayId(e,d){ return e.key+'#'+d.date; }
+// Branch names: ETACC branches look like "RAL - Raleigh". Older roster rows say just "Raleigh", "Dallas-Ft. Worth" or "OMA",
+// which made the same branch show twice. bestBranch() finds the ETACC branch a name means (by code or city; the region
+// settles Charleston SC vs WV). Region codes ("NE", "MW-2") are never offices.
+const REGION_CODES_ALL = ['MAN','MAS','MW','MW-2','MW2','NE','OV','PNW','SA','SA-2','SA2','SC','SC-2','SC2','SE','SW','UPL','GC','PL','UMW'];
+function isRegionCode(o){ return REGION_CODES_ALL.includes(String(o||'').trim().toUpperCase()); }
+function isBranchLabel(o){ return /^[A-Z]{2,4} - \S/.test(String(o||'')); }
+function cityToks(v){ return String(v||'').toLowerCase().replace(/^patio[\s-]*stanek\s*/,'').replace(/[^a-z]+/g,' ').trim().split(' ').filter(Boolean); }
+function bestBranch(o, region, list){
+  o=String(o||'').trim(); if(!o || isBranchLabel(o)) return o; const L=list||[];
+  const byCode=L.filter(b=>b.split(' - ')[0]===o.toUpperCase()); if(byCode.length===1) return byCode[0];
+  const t=cityToks(o); if(!t.length) return '';
+  const pre=(a,b)=>a.length<=b.length && a.every((x,i)=>x===b[i]);
+  let c=L.filter(b=>{ const bt=cityToks(b.split(' - ').slice(1).join(' - ')); return pre(t,bt)||pre(bt,t); });
+  if(c.length>1 && region){ const r=c.filter(b=>regionOfBranch(b)===region); if(r.length) c=r; }
+  if(c.length>1){ const ex=c.filter(b=>cityToks(b.split(' - ').slice(1).join(' - ')).join(' ')===t.join(' ')); if(ex.length===1) c=ex; }
+  return c.length===1 ? c[0] : '';
+}
+function regionOfBranch(b){ return regionOf(b); }
+function branchList(){ return [...new Set(data.events.map(e=>e.office).filter(isBranchLabel))]; }
 function offices(){
-  const s = new Set(); data.events.forEach(e=>e.office&&s.add(e.office)); data.roster.forEach(r=>r.office&&s.add(r.office));
+  const L=branchList(), s=new Set(L); const add=(o,r)=>{ if(!o || isRegionCode(o)) return; s.add(bestBranch(o,r,L)||o); };
+  data.events.forEach(e=>add(e.office,e.region)); data.roster.forEach(r=>add(r.office,r.region));
   return [...s].sort((a,b)=>a.localeCompare(b));
 }
+// One-time cleanup, run by the ETACC sync: roster offices written as plain city names become the ETACC branch label.
+function fixRosterOffices(){ const L=branchList(); let n=0; data.roster.forEach(r=>{ if(!r.office || isBranchLabel(r.office)) return; const b=bestBranch(r.office, r.region, L); if(b && b!==r.office){ r.office=b; n++; } }); return n; }
 // Region of an office comes from the ETACC Region column on that office's events.
 function regionMap(){ const c={}; data.events.forEach(e=>{ if(e.office&&e.region){ c[e.office]=c[e.office]||{}; c[e.office][e.region]=(c[e.office][e.region]||0)+1; } });
   const m={}; Object.entries(c).forEach(([o,r])=>{ m[o]=recodeRegion(o, Object.entries(r).sort((a,b)=>b[1]-a[1])[0][0]); }); return m; }
@@ -679,8 +702,8 @@ function myArea(){
 function inArea(o){ const a=myArea(); if(!a) return true; return a.offs.has(o) || a.regs.has(regionOf(o)); }
 function inAreaP(r){ const a=myArea(); if(!a) return true; return a.offs.has(r.office) || a.regs.has(personRegion(r)); }
 function inView(o){ if(!inArea(o)) return false; if(ui.office) return o===ui.office; if(ui.region) return regionOf(o)===ui.region; return true; }
-// A person's region: from the roster upload if given, otherwise from their branch's ETACC events.
-function personRegion(r){ return (r && (r.region || regionOf(r.office))) || ''; }
+// A person's region: from their branch's ETACC events, otherwise the roster upload.
+function personRegion(r){ return (r && (regionOf(r.office) || r.region)) || ''; }  // the branch's region wins (e.g. Houston is SC-2 even if an old roster file says SC)
 function inViewP(r){ if(!inAreaP(r)) return false; if(ui.office) return r.office===ui.office; if(ui.region) return personRegion(r)===ui.region; return true; }
 // "Patio South Atlantic Region" -> "SA", "Patio Midwest Region" -> "MW", "Mid-Atlantic North" -> "MAN".
 function regionCode(v){
@@ -860,7 +883,7 @@ function render(){
       <tr><td>.13 and below</td><td>Over 7 hours</td><td>Up to 6</td></tr>
     </table></details>
   </details>
-  ${ui.modal==='roster' ? rosterModal() : ''}${ui.modal==='etacc' ? etaccModal() : ''}${ui.modal==='email' ? emailModal(vdays, vlabel) : ''}`;
+  ${ui.modal==='roster' ? rosterModal() : ''}${ui.modal==='newmktr' ? newMarketerModal() : ''}${ui.modal==='etacc' ? etaccModal() : ''}${ui.modal==='email' ? emailModal(vdays, vlabel) : ''}`;
 }
 function staffBanner(){
   const list=needsStaffing(); if(!list.length) return '';
@@ -885,6 +908,7 @@ function buildHtml(days, weekShifts, weekEvents, label){
       <button class="btn" data-act="import" title="Not needed any more: events sync from ETACC automatically when a manager is signed in. Use this only as a backup.">⬆ Import ETACC CSV (backup)</button>
       ${cloud.status==='live' && cloud.user ? `<button class="btn" data-act="addetacc" title="Staff an ETACC event that isn’t Submitted for Contract yet">+ Staff another ETACC event</button>`:''}
       <button class="btn" data-act="roster">👥 Roster (${data.roster.length})</button>
+      ${canEdit()?'<button class="btn" data-act="newmktr">➕ New marketer</button>':''}
       <input type="date" data-act="pick" value="${ui.weekStart}" aria-label="Jump to week">
       <div class="spacer"></div>
       <button class="btn" data-act="backup">Backup</button>
@@ -1186,6 +1210,7 @@ async function syncEtacc(force){
     if(flagged.length) parts.push(`${flagged.length} staffed event${flagged.length===1?' is':'s are'} no longer approved in ETACC: ${flagged.slice(0,3).join(', ')}${flagged.length>3?'…':''}`);
     if(parts.length) ui.notice='ETACC sync: '+parts.join(' · ')+'.';
   } else if(data.sourceFile==='ETACC (automatic)' && data.dataAsOf!==todayIso()){ data.dataAsOf=todayIso(); data.importedAt=new Date().toISOString(); save(); await pushCloud(['events']); cloud.dirty=unsavedDocs().length>0; }
+  if(fixRosterOffices()){ save(); await pushCloud(['roster']); cloud.dirty=unsavedDocs().length>0; }
   syncBusy=false; render();
 }
 setInterval(()=>{ syncEtacc(false); }, 60e3);
@@ -1198,6 +1223,52 @@ function eventFromEtacc(x){
     boothNumber:x.boothNumber||'', boothLocation:x.boothLocation||'', boothSize:x.boothSize||'', setup:[], notes:'',
     added:{ by:(cloud.user&&cloud.user.email)||'', at:new Date().toISOString(), etaccStatus:ETACC_LABEL[x.status]||x.status||'' } };
 }
+// Add one new marketer (or manager) with everything the schedule, check-in and expense reports need.
+const NEW_FIELDS = [
+  ['first','First name','text',true,''],['last','Last name','text',true,''],
+  ['office','Branch','office',true,'The branch they work out of. Events and alerts are sorted by branch.'],
+  ['phone','Mobile phone','tel',true,'Used to text them their check-in link and schedule.'],
+  ['email','Email','email',true,'Personal or work email. Used for expense reports and the schedule email.'],
+  ['empId','ADP employee ID','text',true,'From ADP (e.g. W2N004863). Matches their ADP hours to their shifts.'],
+  ['hire','Hire date','date',false,''],
+  ['title','Title','text',false,''],
+  ['commuteMiles','Round-trip commute (miles)','number',false,'Home ↔ branch, round trip. Subtracted from mileage on expense reports.'],
+  ['region','Region','region',false,'Leave blank to use the branch’s region.'] ];
+function newMarketerModal(){
+  const f=ui.newm||{ title:'Event Marketer', office:ui.office||'' }, offs=offices(), err=ui.newmErr||'';
+  const field=([k,label,type,req,hint])=>{ const v=f[k]??'', star=req?' <span style="color:var(--red)">*</span>':'';
+    const input = type==='office' ? `<select id="nm-${k}"><option value="">Choose a branch…</option>${offs.map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')}</select>`
+      : type==='region' ? `<input type="text" id="nm-${k}" list="regionList2" value="${esc(v)}" placeholder="${esc(regionOf(f.office||'')||'From the branch')}"><datalist id="regionList2">${regions().map(r=>`<option value="${esc(r)}">`).join('')}</datalist>`
+      : `<input type="${type}" id="nm-${k}" value="${esc(v)}" ${type==='number'?'min="0" step="0.1" inputmode="decimal"':''} ${type==='tel'?'inputmode="tel" placeholder="555-555-5555"':''}>`;
+    return `<label class="nmf"><span>${esc(label)}${star}</span>${input}${hint?`<span class="hint">${esc(hint)}</span>`:''}</label>`; };
+  return `<div class="modal-bg" data-act="closemodal"><div class="modal" role="dialog" aria-modal="true" aria-label="New marketer" style="max-width:640px;">
+    <h2>➕ Add a new marketer</h2>
+    <div class="hint" style="margin-bottom:10px;">Fields marked <span style="color:var(--red)">*</span> are needed to schedule them, text their check-in link, match their ADP hours and pay their expense reports. Adding them publishes to the schedule right away.</div>
+    <div class="nmgrid">${NEW_FIELDS.map(field).join('')}</div>
+    <label class="chk" style="margin-top:8px;"><input type="checkbox" id="nm-mgr" ${f.mgr?'checked':''}> This person is a manager (not scheduled at events)</label>
+    ${err?`<div class="need" style="margin-top:8px;">${esc(err)}</div>`:''}
+    <div class="row" style="margin-top:12px;justify-content:flex-end;gap:8px;"><button class="btn" data-act="closemodal-btn">Cancel</button><button class="btn primary" data-act="newmktrsave">Add marketer</button></div>
+  </div></div>`;
+}
+function readNewMarketer(){ const f={}; NEW_FIELDS.forEach(([k])=>{ const el=document.getElementById('nm-'+k); if(el) f[k]=String(el.value||'').trim(); }); const m=document.getElementById('nm-mgr'); f.mgr=!!(m&&m.checked); return f; }
+async function saveNewMarketer(){
+  const f=readNewMarketer(); ui.newm=f;
+  const miss=NEW_FIELDS.filter(([k,,,req])=>req && !f[k]).map(([,l])=>/^[A-Z]{2,}/.test(l)?l:l.charAt(0).toLowerCase()+l.slice(1));
+  if(f.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email)) miss.push('a valid email');
+  if(f.phone && f.phone.replace(/\D/g,'').length<10) miss.push('a 10-digit phone number');
+  if(miss.length){ ui.newmErr='Please add: '+miss.join(', ')+'.'; render(); return; }
+  const name=`${f.first} ${f.last}`.replace(/\s+/g,' ').trim();
+  const dupe=data.roster.find(r=>(f.empId && r.empId && String(r.empId).toUpperCase()===f.empId.toUpperCase()) || r.name.toLowerCase()===name.toLowerCase());
+  if(dupe){ ui.newmErr=`${dupe.name} is already on the roster${dupe.office?` (${dupe.office})`:''}. Edit them under 👥 Roster instead.`; render(); return; }
+  const digits=f.phone.replace(/\D/g,'').slice(-10), phone=`${digits.slice(0,3)}-${digits.slice(3,6)}-${digits.slice(6)}`;
+  const rec={ id:uid(), name, office:f.office, mgr:f.mgr, title:f.title||(f.mgr?'Manager':'Event Marketer'), email:f.email.toLowerCase(), phone, empId:f.empId.toUpperCase() };
+  if(f.hire) rec.hire=f.hire; if(f.commuteMiles!=='' && f.commuteMiles!=null) rec.commuteMiles=+f.commuteMiles; if(f.region) rec.region=f.region;
+  data.roster.push(rec); save();
+  let ok=true; if(cloud.status==='live' && cloud.user){ ok=await pushCloud(['roster']); cloud.dirty=unsavedDocs().length>0; }
+  ui.modal=null; ui.newm=null; ui.newmErr='';
+  ui.notice = ok ? `${name} was added to ${rec.office} and can be scheduled now.` : `${name} was added on this device, but saving to the schedule failed. Click Save to try again.`;
+  render();
+}
 function rosterModal(){
   const offs = offices();
   return `<div class="modal-bg" data-act="closemodal"><div class="modal" role="dialog" aria-modal="true" aria-label="Roster">
@@ -1206,7 +1277,8 @@ function rosterModal(){
       ${canUploadRoster() ? `<button class="btn sm" data-act="rosterfile">Upload roster (Excel or CSV)…</button>` : `<span class="hint">Roster uploads are limited to Paula Shoemaker and Trevor Morrissey.</span>`}
       <button class="btn sm" data-act="rosterdl">⬇ Download roster CSV</button>
       <span class="hint">Columns read: Employee ID, Name (or First/Last), Branch, Region, Email, Phone, Commute Miles, Title, Hire Date, Status, Hrs/Issued. People are matched by Employee ID, then name. Tip: download the roster, fill it in with Excel, save as CSV and upload it back.</span></div>
-    <div class="hint" style="margin-bottom:8px;">Or paste one name per line, type or pick their office, and click Add.</div>
+    <div class="row" style="margin-bottom:8px;"><button class="btn sm primary" data-act="newmktr">➕ Add a new marketer with their details</button></div>
+    <div class="hint" style="margin-bottom:8px;">Or paste one name per line, type or pick their office, and click Add (fill in their details in the list below).</div>
     <textarea id="rosterNames" placeholder="Jane Smith&#10;Carlos Rivera"></textarea>
     <div class="row" style="margin-top:8px;">
       <input type="text" id="rosterOffice" list="officeList" placeholder="Office" value="${esc(ui.office)}" aria-label="Office">
@@ -1353,7 +1425,10 @@ document.addEventListener('click', e=>{
       a.href=url; a.download=`patio-enclosures-roster_${todayIso()}.csv`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); break;
     }
     case 'roster': ui.modal='roster'; render(); setTimeout(()=>{ const el=document.getElementById('rosterNames'); el&&el.focus(); },0); break;
-    case 'closemodal': case 'closemodal-btn': ui.modal=null; render(); break;
+    case 'closemodal': if(e.target!==t) break; if(ui.modal==='newmktr'){ ui.newm=readNewMarketer(); break; } ui.modal=null; render(); break; // a click outside the new-marketer form doesn't throw away what was typed
+    case 'closemodal-btn': ui.modal=null; render(); break;
+    case 'newmktr': ui.modal='newmktr'; ui.newm=null; ui.newmErr=''; render(); setTimeout(()=>{ const el=document.getElementById('nm-first'); if(el) el.focus(); },50); break;
+    case 'newmktrsave': saveNewMarketer(); break;
     case 'rosteradd': {
       const names = document.getElementById('rosterNames').value.split(/\n/).map(s=>s.trim()).filter(Boolean);
       const office = document.getElementById('rosterOffice').value.trim();

@@ -308,6 +308,7 @@ table.extab th{font-size:11px}table.meals{width:auto;margin:6px 0}table.meals td
 @keyframes sigflash{0%,100%{background:#C8102E;box-shadow:0 0 0 0 rgba(200,16,46,.6)}50%{background:#8B0A1F;box-shadow:0 0 0 6px rgba(200,16,46,0)}}
 @media (prefers-reduced-motion:reduce){.notice.signal{animation:none}}
 .alpop{position:fixed;right:18px;bottom:18px;z-index:180;width:min(440px,calc(100vw - 24px));background:#fff;border:1px solid var(--line,#d9dbdc);border-top:4px solid #00A7B7;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.22)}.alpop.anim{animation:alpopin .25s ease-out}.alpophead{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #eef0f0}.alpopbody{padding:6px 12px;max-height:50vh;overflow:auto}.alpopfoot{padding:8px 12px;border-top:1px solid #eef0f0;text-align:right}@keyframes alpopin{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}@media print{.alpop{display:none}}
+table.sumedit td,table.sumedit th{padding:4px 6px;vertical-align:middle}table.sumedit input,table.sumedit select{padding:5px 6px}
 </style>
 </head>
 <body>
@@ -1619,7 +1620,9 @@ function expenseLines(x){
   if(x.approvedAt) L.push(`Approved by ${x.approvedBy||''} - ${fmtStamp(x.approvedAt)}`);
   return L.flatMap(l=>{ const out=[]; let s=l; while(s.length>105){ const i=s.lastIndexOf(' ',105); const k=i>20?i:105; out.push(s.slice(0,k)); s='    '+s.slice(k).trim(); } out.push(s); return out; });
 }
-async function sendExpenseToAP(x){
+// The report as a PDF plus every receipt, split into email-sized parts (part 1 holds the report). Used for the
+// approval email to the supervisor and for the email to Accounts Payable.
+async function expenseMailParts(x){
   const recs=[...(x.stays||[]).map((s,i)=>({ id:s.receipt, label:`Hotel receipt ${i+1}${s.hotel?' - '+s.hotel:''}` })), ...(x.misc||[]).map((r,i)=>({ id:r.receipt, label:`Receipt - ${fmtMD(r.date)} ${r.category||''} ${money2(r.amount)}` }))].filter(r=>r.id);
   for(const r of recs){ r.data=ui.photoCache[r.id]!==undefined?ui.photoCache[r.id]:await getPhoto(r.id); }
   const jpg=recs.filter(r=>r.data && /^data:image\/jpe?g/.test(r.data)), other=recs.filter(r=>r.data && !/^data:image\/jpe?g/.test(r.data));
@@ -1627,16 +1630,24 @@ async function sendExpenseToAP(x){
   const groups=[[]]; let size=20000;
   jpg.forEach(r=>{ const n=r.data.length; if(size+n>AP_PART_LIMIT && groups[groups.length-1].length){ groups.push([]); size=0; } groups[groups.length-1].push(r); size+=n; });
   const others=[]; other.forEach(r=>{ const n=r.data.length; if(size+n>AP_PART_LIMIT){ groups.push([]); size=0; } (groups[groups.length-1].other=groups[groups.length-1].other||[]).push(r); size+=n; });
-  const c=expCalc(x), base=`Expense report - ${x.personName} - week of ${fmtMD(x.weekStart)}`, fname=s=>s.replace(/[\\/:*?"<>|]+/g,'-');
-  const N=groups.length;
+  const base=`Expense report - ${x.personName} - week of ${fmtMD(x.weekStart)}`, fname=s=>s.replace(/[\\/:*?"<>|]+/g,'-');
+  const N=groups.length, parts=[];
   for(let i=0;i<N;i++){
     const g=groups[i], pdf=await buildPdf(i===0?expenseLines(x):[`**${base} - receipts (part ${i+1} of ${N})`], g);
     const att=[{ filename:fname(`${base}${N>1?` (part ${i+1} of ${N})`:''}.pdf`), content:bytesB64(pdf), encoding:'base64', contentType:'application/pdf' }];
     (g.other||[]).forEach((r,k)=>{ const m=String(r.data).match(/^data:([^;]+);base64,(.*)$/); if(m) att.push({ filename:fname(`${r.label}${m[1]==='application/pdf'?'.pdf':m[1]==='image/png'?'.png':''}`), content:m[2], encoding:'base64', contentType:m[1] }); });
+    parts.push(att);
+  }
+  return { parts, N, base, receipts:recs.filter(r=>r.data).length };
+}
+async function sendExpenseToAP(x){
+  const { parts, N, base, receipts }=await expenseMailParts(x), c=expCalc(x);
+  for(let i=0;i<N;i++){
+    const att=parts[i];
     const html=mailShell(`Approved expense report${N>1?` (part ${i+1} of ${N})`:''}`, `<p><b>${esc(x.personName)}</b>${x.empId?' (ID '+esc(x.empId)+')':''} · ${esc([x.region,x.office].filter(Boolean).join(' · '))}</p>
       <p>Week of ${fmtLong(x.weekStart)} – ${fmtLong(x.weekEnd)} · <b>Total ${money2(c.total)}</b> (mileage GL 73200 ${money2(c.mileage)}, per diem GL 73300 ${money2(c.perDiem)}, reimbursable expenses ${money2(c.misc)})</p>
       <p>Reimbursement: ${x.method==='check'?'mail check':x.method==='achsetup'?'ACH – first time / bank changed (banking sent separately through the secure form)':'ACH on file'}.</p>
-      <p>Approved by ${esc(x.approvedBy||'')} on ${fmtStamp(x.approvedAt||Date.now())}. ${i===0?`The report${jpg.length||other.length?' and receipts are':' is'} attached${N>1?`; more receipts follow in ${N-1} more email${N>2?'s':''}`:''}.`:'More receipts for this report are attached.'}</p>`);
+      <p>Approved by ${esc(x.approvedBy||'')} on ${fmtStamp(x.approvedAt||Date.now())}. ${i===0?`The report${receipts?' and receipts are':' is'} attached${N>1?`; more receipts follow in ${N-1} more email${N>2?'s':''}`:''}.`:'More receipts for this report are attached.'}</p>`);
     const mail={ to:[ACCOUNTING_EMAIL], cc:cleanList([x.approvedBy]), message:{ subject:`${base} - ${money2(c.total)}${N>1?` (part ${i+1} of ${N})`:''}`, html, attachments:att }, kind:'expAP', createdAt:Date.now() };
     if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'mail',`ap-${x.id}-${x.approvedAt||0}-${i+1}`), mail); }
     else { S.mailLog=S.mailLog||{}; S.mailLog[`ap-${x.id}-${i+1}`]=mail; }
@@ -2304,6 +2315,14 @@ function sumRange(){
   return r;
 }
 function evalFor(e){ const saved=S.evals[evalKey(e)], m=etaccMatch(e); return Object.assign({}, m||{}, saved?saved.fields:{}); }
+function evOverrideId(key){ return 'ev_'+hash(String(key||'')); }
+function evOverride(key){ return (S.scManual||{})[evOverrideId(key)]||null; }
+async function saveEvOverride(e, field, value){
+  const id=evOverrideId(e.key); S.scManual=S.scManual||{}; const cur=Object.assign({ eventKey:e.key, eventName:e.name, office:e.office||'' }, S.scManual[id]||{});
+  cur[field] = ['opps','unset','hrs'].includes(field) ? (String(value).trim()===''?'':num(value)) : String(value||'').trim();
+  cur.updatedAt=Date.now(); cur.updatedBy=(S.user&&S.user.email)||''; S.scManual[id]=cur;
+  if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'peHubScorecard',id), cur, { merge:true }); } else localSave();
+}
 function activationData(from, to){
   const t=todayIso();
   const evs=liveEvents().filter(e=>inOffice(e.office) && e.days.some(d=>d.date>=from && d.date<=to && d.date<=t)).sort((a,b)=>a.start.localeCompare(b.start)||a.name.localeCompare(b.name));
@@ -2318,8 +2337,12 @@ function activationData(from, to){
     if(!status && !inRange.length && offD.length && offD.length===rd.length){ status='Not Activated'; reason=offD[0].off.reason+(offD[0].off.note?': '+offD[0].off.note:''); }
     if(!status) status = inRange.length ? 'Activated' : 'Not Activated';
     const inferred = !ev.eventActivationStatus && !(offD.length && offD.length===rd.length);
-    if(status!=='Activated' && !reason) reason = inRange.length ? '' : (scheduled ? 'No check-ins recorded. Reason needed (complete the evaluation).' : 'No marketers scheduled and no check-ins. Reason needed.');
-    return { e, ev, status, inferred, reason, leads, appts, hrs, scheduled, cs:inRange, done,
+    // Numbers and status typed in by leadership on the summary page win over check-outs and evaluations.
+    const O=evOverride(e.key); let manual=false, A=appts, Ld=leads, Hr=hrs, St=status, Rs=reason, inf=inferred;
+    if(O){ if(scHas(O.opps)){ A=num(O.opps); manual=true; } if(scHas(O.unset)){ Ld=A+num(O.unset); manual=true; } else if(scHas(O.opps)) Ld=Math.max(leads, A+Math.max(0,leads-appts));
+      if(scHas(O.hrs)){ Hr=num(O.hrs); manual=true; } if(O.status){ St=O.status; inf=false; manual=true; if(St==='Activated') Rs=''; } if(O.reason){ Rs=O.reason; manual=true; } }
+    if(St!=='Activated' && !Rs) Rs = inRange.length ? '' : (scheduled ? 'No check-ins recorded. Reason needed (complete the evaluation).' : 'No marketers scheduled and no check-ins. Reason needed.');
+    return { e, ev, status:St, inferred:inf, reason:Rs, leads:Ld, appts:A, hrs:Hr, manual, hub:{ appts, unset:Math.max(0,leads-appts), hrs, status, reason }, scheduled, cs:inRange, done,
       names:[...new Set(inRange.map(c=>c.personName))], issues:inRange.filter(c=>(c.issues||[]).length||c.issueText).map(c=>`${c.personName}: ${[...(c.issues||[]),c.issueText].filter(Boolean).join('; ')}`),
       notes:done.filter(c=>c.notes).map(c=>`${c.personName}: ${c.notes}`), traffic:[...new Set(done.map(c=>c.traffic).filter(Boolean))].join(', ') };
   });
@@ -2342,10 +2365,10 @@ function summaryHtml(from, to, forEmail){
     ${h(`Events not activated (${not.length})`)}
     ${not.length?tbl(['Event','Office','Dates','Status','Reason','Scheduled shifts'], not.map(x=>`<tr><td style="${td}"><b>${esc(x.e.name)}</b>${x.e.venueName?`<br><span style="color:#5a6760">${esc(x.e.venueName)}</span>`:''}</td><td style="${td}">${esc(x.e.office||'')}</td><td style="${td}">${fmtMD(x.e.start)}${x.e.end&&x.e.end!==x.e.start?'–'+fmtMD(x.e.end):''}</td><td style="${td}">${esc(x.status)}${x.inferred?' <i>(no evaluation yet)</i>':''}</td><td style="${td}${/needed/.test(x.reason)?'color:#b42318;font-weight:600;':''}">${esc(x.reason||'—')}</td><td style="${td}">${x.scheduled}</td></tr>`).join('')):`<p style="${F}color:#5a6760">None.</p>`}
     ${h(`All activated events (${act.length})`)}
-    ${act.length?tbl(['Event','Office','Dates','Marketers','Opps','Unset opps','Hours','Opps/hr'], act.map(x=>`<tr><td style="${td}">${esc(x.e.name)}</td><td style="${td}">${esc(x.e.office||'')}</td><td style="${td}">${fmtMD(x.e.start)}${x.e.end&&x.e.end!==x.e.start?'–'+fmtMD(x.e.end):''}</td><td style="${td}">${x.names.length}</td><td style="${td}${x.appts?'':'color:#b42318;font-weight:600;'}">${x.appts}</td><td style="${td}">${Math.max(0,x.leads-x.appts)}</td><td style="${td}">${round1(x.hrs)}</td><td style="${td}">${x.hrs?round1(x.appts/x.hrs):0}</td></tr>`).join('')):`<p style="${F}color:#5a6760">None.</p>`}
+    ${act.length?tbl(['Event','Office','Dates','Marketers','Opps','Unset opps','Hours','Opps/hr'], act.map(x=>`<tr><td style="${td}">${esc(x.e.name)}${x.manual?' ✎':''}</td><td style="${td}">${esc(x.e.office||'')}</td><td style="${td}">${fmtMD(x.e.start)}${x.e.end&&x.e.end!==x.e.start?'–'+fmtMD(x.e.end):''}</td><td style="${td}">${x.names.length}</td><td style="${td}${x.appts?'':'color:#b42318;font-weight:600;'}">${x.appts}</td><td style="${td}">${Math.max(0,x.leads-x.appts)}</td><td style="${td}">${round1(x.hrs)}</td><td style="${td}">${x.hrs?round1(x.appts/x.hrs):0}</td></tr>`).join('')):`<p style="${F}color:#5a6760">None.</p>`}
     ${costSummaryHtml(from,to)}
     ${forEmail?scorecardEmailHtml():''}
-    ${forEmail?`<p style="${F}color:#5a6760">Opps, unset opps and hours come from marketer check-outs in the Event Hub; statuses and reasons from post-event evaluations.</p>`:''}
+    ${forEmail?`<p style="${F}color:#5a6760">Opps, unset opps and hours come from marketer check-outs in the Event Hub; statuses and reasons from post-event evaluations.${rows.some(x=>x.manual)?' Numbers marked ✎ were entered by leadership.':''}</p>`:''}
   </div>`;
 }
 function summarySubject(from,to){ return `Event activation summary – ${scopeLabel()} – ${fmtMD(from)} to ${fmtMD(to)}`; }
@@ -2360,7 +2383,35 @@ function summaryView(){
     <a class="btn primary" style="text-decoration:none" href="mailto:${SUMMARY_TO.join(';')}?subject=${encodeURIComponent(summarySubject(r.from,r.to))}">✉ 1. Open email to leadership</a>
     <button class="btn primary" data-act="sumCopy">📋 2. Copy summary</button></div>
     <div class="small muted" style="margin-bottom:8px">Opens an Outlook email to ${SUMMARY_TO.map(esc).join(', ')}. Click in the body and press Ctrl+V to paste the summary.${ui.sumNote?` <b style="color:var(--accent)">${esc(ui.sumNote)}</b>`:''}</div>
-    <div id="sumPrev" class="emailprev">${summaryHtml(r.from,r.to,true)}</div></div>`;
+    <div id="sumPrev" class="emailprev">${summaryHtml(r.from,r.to,true)}</div></div>
+  ${isRemUser()?summaryEditor(r):''}`;
+}
+// Leadership (Paula, Trevor, Angelique, Chris) can type numbers straight into the summary: each event's status, reason,
+// opps, unset opps and hours (blank = use the hub's), and each region's weekly meets and cancels and monthly sales.
+function summaryEditor(r){
+  const open=!!ui.sumEdit;
+  if(!open) return `<div class="card row"><div style="flex:1"><b>✏️ Enter or correct numbers</b><div class="small muted">Event status, reasons, opps, unset opps and hours, plus each region’s meets, cancels and sales. The summary above updates as you type.</div></div><button class="btn primary" data-act="sumEditToggle">✏️ Enter numbers</button></div>`;
+  const rows=activationData(r.from,r.to), M=scManual(), wks=scWeeksIn(r.from,r.to), ym=r.to.slice(0,7);
+  const ev=x=>{ const O=evOverride(x.e.key)||{}, k=esc(x.e.key), ph=v=>`placeholder="${esc(String(v))}"`;
+    return `<tr><td><b>${esc(x.e.name)}</b><div class="small muted">${esc(x.e.office||'')} · ${fmtMD(x.e.start)}${x.e.end&&x.e.end!==x.e.start?'–'+fmtMD(x.e.end):''}</div></td>
+      <td><select data-evo="${k}|status" data-keep="evo-${k}-status"><option value="">From the hub (${esc(x.hub.status)})</option>${['Activated','Not Activated'].map(s=>`<option ${O.status===s?'selected':''}>${s}</option>`).join('')}</select></td>
+      <td><input type="text" data-evo="${k}|reason" data-keep="evo-${k}-reason" value="${esc(O.reason||'')}" ${ph(x.hub.reason||'Reason if not activated')} style="min-width:160px"></td>
+      <td><input type="number" min="0" step="1" data-evo="${k}|opps" data-keep="evo-${k}-opps" value="${scHas(O.opps)?esc(O.opps):''}" ${ph(x.hub.appts)} style="width:72px"></td>
+      <td><input type="number" min="0" step="1" data-evo="${k}|unset" data-keep="evo-${k}-unset" value="${scHas(O.unset)?esc(O.unset):''}" ${ph(x.hub.unset)} style="width:72px"></td>
+      <td><input type="number" min="0" step="0.1" data-evo="${k}|hrs" data-keep="evo-${k}-hrs" value="${scHas(O.hrs)?esc(O.hrs):''}" ${ph(round1(x.hub.hrs))} style="width:72px"></td>
+      <td class="small muted">${O.updatedBy?`${esc(O.updatedBy.split('@')[0].replace(/\./g,' '))}<br>${fmtStamp(O.updatedAt)}`:''}</td></tr>`; };
+  const regs=[]; ORG.forEach(d=>Object.keys(d.regions).forEach(rg=>{ if(scScopeHas(rg)) regs.push([rg,d]); }));
+  const val=(id,f)=>{ const o=M[id]||{}; return scHas(o[f])?esc(o[f]):''; };
+  const reg=([rg,d])=>`<tr><td><b>${esc(REGION_NAMES[rg]||rg)}</b><div class="small muted">${esc(d.regions[rg].name)}</div></td>
+      ${wks.map(w=>`<td><input type="number" min="0" step="1" data-scm="w|${w}|${rg}|meets" data-keep="se-w-${w}-${rg}-meets" value="${val(`w_${w}_${rg}`,'meets')}" style="width:70px" aria-label="Meets"></td><td><input type="number" min="0" step="1" data-scm="w|${w}|${rg}|cancels" data-keep="se-w-${w}-${rg}-cancels" value="${val(`w_${w}_${rg}`,'cancels')}" style="width:70px" aria-label="Cancels"></td>`).join('')}
+      <td><input type="number" step="0.01" data-scm="m|${ym}|${rg}|sales" data-keep="se-m-${ym}-${rg}-sales" value="${val(`m_${ym}_${rg}`,'sales')}" style="width:110px" aria-label="Sales month to date"></td></tr>`;
+  return `<div class="card"><div class="row" style="margin-bottom:6px"><h2 style="margin:0;flex:1">✏️ Enter numbers</h2><button class="btn sm" data-act="sumEditToggle">Finished</button></div>
+    <div class="small muted" style="margin-bottom:8px">Saves as you leave each box. Leave a box blank to use the hub’s number (shown in gray). Typed numbers are marked ✎ in the summary and the email.</div>
+    <h3 style="margin:8px 0 4px">Events, ${fmtMD(r.from)} – ${fmtMD(r.to)} (${rows.length})</h3>
+    ${rows.length?`<div style="overflow:auto"><table class="sumedit"><thead><tr><th>Event</th><th>Status</th><th>Reason (not activated)</th><th>Opps</th><th>Unset opps</th><th>Hours</th><th>Last change</th></tr></thead><tbody>${rows.map(ev).join('')}</tbody></table></div>`:'<p class="muted">No events in this range.</p>'}
+    <h3 style="margin:14px 0 4px">Region numbers</h3>
+    ${wks.length?'':'<div class="small muted">Meets and cancels are entered by week (Monday start); this range has no full week start, so only monthly sales show.</div>'}
+    <div style="overflow:auto"><table class="sumedit"><thead><tr><th>Region</th>${wks.map(w=>`<th>Meets<div class="small muted">wk ${fmtMD(w)}</div></th><th>Cancels<div class="small muted">wk ${fmtMD(w)}</div></th>`).join('')}<th>Sales MTD<div class="small muted">${esc(new Date(ym+'-01T12:00').toLocaleString('en-US',{month:'long'}))}</div></th></tr></thead><tbody>${regs.map(reg).join('')}</tbody></table></div></div>`;
 }
 async function copySummary(){
   const r=sumRange(), html=summaryHtml(r.from,r.to,true);
@@ -2609,7 +2660,7 @@ const ALERT_TAB = { order:'assets', early:'today', banner:'assets', late:'today'
 const ALERT_ICON = { order:'🛒', early:'🏃', banner:'🚩', late:'⏰', noshow:'🚫', noout:'⌛', issue:'⚠️', expense:'🧾', summary:'📊', newmgr:'👋', test:'🔔', rem:'✍️', task:'📌' };
 function htmlText(h){ const m=String(h||'').match(/<p>([\s\S]*?)<\/p>/); const d=document.createElement('div'); d.innerHTML=m?m[1]:''; return (d.textContent||'').trim().slice(0,300); }
 async function queueMail(id, src){
-  const mail={ to:cleanList(src.to||[]), cc:cleanList(src.cc||[]), message:{ subject:src.subject, html:src.html }, kind:src.kind||'', createdAt:Date.now() };
+  const mail={ to:cleanList(src.to||[]), cc:cleanList(src.cc||[]), message:Object.assign({ subject:src.subject, html:src.html }, src.attachments&&src.attachments.length?{ attachments:src.attachments }:{}), kind:src.kind||'', createdAt:Date.now() };
   if(!mail.to.length) return false;
   // In-hub alert (shows on the manager's page when they sign in), plus the email.
   const alert={ to:mail.to, cc:mail.cc, kind:mail.kind, subject:src.subject, text:src.text||htmlText(src.html), office:src.office||'', tab:ALERT_TAB[mail.kind]||'', createdAt:mail.createdAt };
@@ -2646,9 +2697,18 @@ async function alertEarlyCheckout(c){
     html:mailShell('Early check-out', `<p>${esc(c.personName)} checked out at <b>${fmtClock(c.outAt)}</b>, <b>${dur}</b> before the shift ends (${esc(fmt12(c.shiftStop))}).</p>`+shiftTable(c, row2('Reason',esc(c.earlyWhy||'')))) });
 }
 async function alertExpenseSubmitted(x){
-  const r=alertRecipients(x.office||(person(x.personId)||{}).office||'');
-  await queueMail(`exp-${x.id}-${x.submittedAt||Date.now()}`, { ...r, office:x.office||'', kind:'expense', subject:`Expense report to approve: ${x.personName} – week of ${fmtMD(x.weekStart)}`,
-    html:mailShell('Expense report waiting for approval', `<p>${esc(x.personName)} submitted an expense report for the week of <b>${fmtLong(x.weekStart)}</b>: <b>${money2(expCalc(x).total)}</b>.</p><p>Open the hub → Expense Reports to approve or return it.</p>`) });
+  const r=alertRecipients(x.office||(person(x.personId)||{}).office||''), c=expCalc(x), id=`exp-${x.id}-${x.submittedAt||Date.now()}`;
+  // The report PDF and every receipt go with the email, so the supervisor can review it from their inbox. If building them
+  // fails (an old phone, no signal), the email still goes out without them.
+  let P=null; try{ P=await expenseMailParts(x); }catch(e){ console.warn('expense attachments', e); }
+  const N=P?P.N:1, att=P?P.parts[0]:[];
+  const body=`<p>${esc(x.personName)}${x.office?` (${esc(x.office)})`:''} submitted an expense report for the week of <b>${fmtLong(x.weekStart)}</b>: <b>${money2(c.total)}</b>.</p>
+    <table style="font:14px Helvetica Neue,Helvetica,Arial,sans-serif;border-collapse:collapse">${row2('Mileage (GL 73200)',`${money2(c.mileage)} · ${round1(c.eligible)} eligible miles`)}${row2('Per diem (GL 73300)',`${money2(c.perDiem)} · ${c.b} breakfast, ${c.l} lunch, ${c.d} dinner`)}${row2('Reimbursable expenses',money2(c.misc))}${row2('Supervisor named',esc(x.supervisor||''))}</table>
+    <p>${P?`The report (PDF)${P.receipts?` and ${P.receipts} receipt${P.receipts===1?'':'s'} are`:' is'} attached${N>1?`; more receipts follow in ${N-1} more email${N>2?'s':''}`:''}.`:'Open the hub to see the receipts.'} To approve or return it, open the hub → <b>Expense Reports</b>.</p>`;
+  await queueMail(id, { ...r, office:x.office||'', kind:'expense', subject:`Expense report to approve: ${x.personName} – week of ${fmtMD(x.weekStart)} – ${money2(c.total)}${N>1?' (part 1 of '+N+')':''}`,
+    html:mailShell('Expense report waiting for approval', body), text:`${x.personName} submitted ${money2(c.total)} for the week of ${fmtMD(x.weekStart)}.`, attachments:att });
+  for(let i=1;i<N;i++){ const mail={ to:cleanList(r.to), cc:cleanList(r.cc||[]), message:{ subject:`Expense report to approve: ${x.personName} – week of ${fmtMD(x.weekStart)} (part ${i+1} of ${N})`, html:mailShell(`More receipts (part ${i+1} of ${N})`, `<p>More receipts for ${esc(x.personName)}’s expense report, week of ${fmtLong(x.weekStart)}.</p>`), attachments:P.parts[i] }, kind:'expense', createdAt:Date.now() };
+    try{ if(S.mode==='live'){ const {fsM,db}=DB.fb; await fsM.setDoc(fsM.doc(db,'mail',`${id}-p${i+1}`), mail); } else { S.mailLog=S.mailLog||{}; S.mailLog[`${id}-p${i+1}`]=mail; } }catch(e){ console.warn('expense mail part', e); } }
 }
 async function alertExpenseReturned(x, note){
   const p=person(x.personId)||{}, r=alertRecipients(x.office||p.office||'');
@@ -3331,7 +3391,7 @@ function eventCost(e, from, to){
   delete est.mileage; delete est.perDiem; delete est.phone; delete est.misc;
   const total=Object.values(cost).reduce((a,b)=>a+b,0);
   const leads=done.length?done.reduce((t,c)=>t+num(c.leads),0):num(ev.numberOfLeads);
-  const appts=done.length?done.reduce((t,c)=>t+num(c.appts),0):num(ev.totalAppointments);
+  const OV=evOverride(e.key), appts=(OV&&scHas(OV.opps))?num(OV.opps):(done.length?done.reduce((t,c)=>t+num(c.appts),0):num(ev.totalAppointments));  // leadership's typed opps win
   const hrs=done.reduce((t,c)=>t+paidHours(c),0);
   return { e, cost, total:Math.round(total*100)/100, leads, appts, hrs, est, noFee:!m.contractCost && !m.id, cpl:leads?total/leads:null, cpa:appts?total/appts:null, pendingReports:Object.values(S.expenses).some(x=>['submitted','returned','draft'].includes(x.status)&&[...(x.trips||[]),...(x.stays||[]),...(x.misc||[])].some(y=>y.eventKey===e.key)) };
 }
@@ -4926,6 +4986,7 @@ document.addEventListener('click', async ev=>{
     ui.notice='Approved. Save it as a PDF and email it to Accounts Payable using the steps on the report.'; ui.noticeKind='ok'; render(); return; }
   if(a==='expAP'){ const x=S.expenses[ui.expView]; if(!x||x.status!=='approved') return; ui.busy=true; render(); try{ const n=await sendExpenseToAP(x); ui.notice=`Emailed to Accounts Payable${n>1?` in ${n} emails`:''} with the receipts.`; ui.noticeKind='ok'; }catch(e){ console.error(e); ui.notice='Couldn’t email Accounts Payable: '+(e.code||e.message); ui.noticeKind='err'; } ui.busy=false; render(); return; }
   if(a==='expReturn'){ const x=S.expenses[ui.expView]; const note=prompt('What needs to change? (the marketer will see this)',''); if(note===null) return; await guard(()=>expAction(x,'returned',note)); alertExpenseReturned(x, note); ui.expView=null; render(); return; }
+  if(a==='sumEditToggle'){ ui.sumEdit=!ui.sumEdit; render(); return; }
   if(a==='alPopLater'){ alertPopupList().forEach(x=>ui.alPopped.add(x.id)); render(); return; }
   if(a==='alRead'){ await guard(()=>markAlertsRead([t.dataset.id])); return; }
   if(a==='alReadAll'){ await guard(()=>markAlertsRead(unreadAlerts().map(x=>x.id))); return; }
@@ -5131,6 +5192,8 @@ document.addEventListener('change', async ev=>{
   if(el.id==='adpFile' && el.files[0]){ ui.adpMsg='Reading the ADP file…'; render(); try{ ui.adpMsg=await importAdpTime(el.files[0]); const D=adpData(); if(D && !(addDays(ui.adpWeek||mondayOf(todayIso()),6)>=D.from && (ui.adpWeek||mondayOf(todayIso()))<=D.to)) ui.adpWeek=mondayOf(D.to); }catch(e){ ui.adpMsg=e.message||String(e); } el.value=''; render(); return; }
   if(el.id==='srFile' && el.files[0]){ ui.srMsg='Reading the file…'; render(); try{ ui.srMsg=await importShowReport(el.files[0]); }catch(e){ ui.srMsg=e.message||String(e); } el.value=''; render(); return; }
   if(el.id==='remFile' && el.files[0]){ ui.remMsg='Reading the file…'; render(); try{ ui.remMsg=await importRemJotform(el.files[0]); }catch(e){ ui.remMsg=e.message||String(e); } el.value=''; render(); return; }
+  if(el.dataset.evo){ const i=el.dataset.evo.lastIndexOf('|'), key=el.dataset.evo.slice(0,i), field=el.dataset.evo.slice(i+1), e=liveEvents().find(v=>v.key===key);
+    if(e){ try{ await saveEvOverride(e, field, el.value); render(); }catch(err){ alert('Couldn’t save: '+(err.code||err.message)); } } return; }
   if(el.dataset.scm){ const [kind,key,region,field]=el.dataset.scm.split('|'); try{ await saveScManual(`${kind}_${key}_${region}`, field, el.value); render(); }catch(e){ alert('Couldn’t save: '+(e.code||e.message)); } return; }
   if(el.dataset.act==='costFrom'||el.dataset.act==='costTo'){ const r=Object.assign({}, costRange()); if(el.value){ if(el.dataset.act==='costFrom') r.from=el.value; else r.to=el.value; r.label='Custom'; ui.costRange=r; render(); } return; }
   if(el.id==='ratesFile' && el.files[0]){ ui.ratesOpen=true; ui.busy=true; render(); try{ ui.ratesMsg=await importRates(el.files[0]); }catch(e){ ui.ratesMsg=e.message||String(e); } ui.busy=false; el.value=''; render(); return; }

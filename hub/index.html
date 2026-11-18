@@ -307,6 +307,7 @@ table.extab th{font-size:11px}table.meals{width:auto;margin:6px 0}table.meals td
 .notice.signal a,.notice.signal b{color:#fff}
 @keyframes sigflash{0%,100%{background:#C8102E;box-shadow:0 0 0 0 rgba(200,16,46,.6)}50%{background:#8B0A1F;box-shadow:0 0 0 6px rgba(200,16,46,0)}}
 @media (prefers-reduced-motion:reduce){.notice.signal{animation:none}}
+.alpop{position:fixed;right:18px;bottom:18px;z-index:180;width:min(440px,calc(100vw - 24px));background:#fff;border:1px solid var(--line,#d9dbdc);border-top:4px solid #00A7B7;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.22)}.alpop.anim{animation:alpopin .25s ease-out}.alpophead{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #eef0f0}.alpopbody{padding:6px 12px;max-height:50vh;overflow:auto}.alpopfoot{padding:8px 12px;border-top:1px solid #eef0f0;text-align:right}@keyframes alpopin{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}@media print{.alpop{display:none}}
 </style>
 </head>
 <body>
@@ -482,7 +483,27 @@ function checkinId(dId, personId){ return 'c_'+hash(dId)+'_'+hash(dId+'~'+person
 function person(id){ return S.sched.roster.find(r=>r.id===id); }
 function personName(id){ const p=person(id); return p ? p.name : (Object.values(S.checkins).find(c=>c.personId===id)||{}).personName || 'Unknown'; }
 function liveEvents(){ return S.sched.events.filter(e=>INCLUDE_STATUSES.includes(e.status)); }
-function offices(){ const s=new Set(); S.sched.events.forEach(e=>e.office&&s.add(e.office)); S.sched.roster.forEach(r=>r.office&&s.add(r.office)); S.assets.forEach(a=>a.office&&s.add(a.office)); return [...s].sort(); }
+// Branch names: ETACC branches look like "RAL - Raleigh". Older roster rows say just "Raleigh", "Dallas-Ft. Worth" or "OMA",
+// which made the same branch show twice. bestBranch() finds the ETACC branch a name means (by code or city; the region
+// settles Charleston SC vs WV). Region codes ("NE", "MW-2") are never offices.
+const REGION_CODES_ALL = ['MAN','MAS','MW','MW-2','MW2','NE','OV','PNW','SA','SA-2','SA2','SC','SC-2','SC2','SE','SW','UPL','GC','PL','UMW'];
+function isRegionCode(o){ return REGION_CODES_ALL.includes(String(o||'').trim().toUpperCase()); }
+function isBranchLabel(o){ return /^[A-Z]{2,4} - \S/.test(String(o||'')); }
+function cityToks(v){ return String(v||'').toLowerCase().replace(/^patio[\s-]*stanek\s*/,'').replace(/[^a-z]+/g,' ').trim().split(' ').filter(Boolean); }
+function bestBranch(o, region, list){
+  o=String(o||'').trim(); if(!o || isBranchLabel(o)) return o; const L=list||[];
+  const byCode=L.filter(b=>b.split(' - ')[0]===o.toUpperCase()); if(byCode.length===1) return byCode[0];
+  const t=cityToks(o); if(!t.length) return '';
+  const pre=(a,b)=>a.length<=b.length && a.every((x,i)=>x===b[i]);
+  let c=L.filter(b=>{ const bt=cityToks(b.split(' - ').slice(1).join(' - ')); return pre(t,bt)||pre(bt,t); });
+  if(c.length>1 && region){ const r=c.filter(b=>regionOfBranch(b)===region); if(r.length) c=r; }
+  if(c.length>1){ const ex=c.filter(b=>cityToks(b.split(' - ').slice(1).join(' - ')).join(' ')===t.join(' ')); if(ex.length===1) c=ex; }
+  return c.length===1 ? c[0] : '';
+}
+function regionOfBranch(b){ return regionOf(b); }
+function branchList(){ return [...new Set(S.sched.events.map(e=>e.office).filter(isBranchLabel))]; }
+function offices(){ const L=branchList(), s=new Set(L); const add=(o,r)=>{ if(!o || isRegionCode(o)) return; s.add(bestBranch(o,r,L)||o); };
+  S.sched.events.forEach(e=>add(e.office,e.region)); S.sched.roster.forEach(r=>add(r.office,r.region)); S.assets.forEach(a=>add(a.office)); return [...s].sort(); }
 // Region of each office comes from the ETACC Region column on its events.
 function regionMap(){ const c={}; S.sched.events.forEach(e=>{ if(e.office&&e.region){ c[e.office]=c[e.office]||{}; c[e.office][e.region]=(c[e.office][e.region]||0)+1; } });
   const m={}; Object.entries(c).forEach(([o,r])=>{ m[o]=recodeRegion(o, Object.entries(r).sort((a,b)=>b[1]-a[1])[0][0]); }); return m; }
@@ -1274,13 +1295,20 @@ function expRate(p){ return p && p.mgr ? RATE_MANAGER : RATE_MARKETER; }
 function getPath(o,p){ return p.split('.').reduce((x,k)=>x==null?x:x[k], o); }
 function setPath(o,p,v){ const ks=p.split('.'); let x=o; ks.slice(0,-1).forEach(k=>{ if(x[k]==null) x[k]={}; x=x[k]; }); x[ks[ks.length-1]]=v; }
 
+// Meals for one hotel stay. New reports: the marketer enters how many breakfasts, lunches and dinners (mealCount).
+// Older reports (before Nov 2026) ticked meals by date; those still add up the old way.
+function stayMeals(s){
+  if(s && s.mealCount) return { b:Math.max(0,Math.floor(num(s.mealCount.b))), l:Math.max(0,Math.floor(num(s.mealCount.l))), d:Math.max(0,Math.floor(num(s.mealCount.d))) };
+  let b=0,l=0,d=0; datesBetween((s||{}).checkIn,(s||{}).checkOut).forEach(dt=>{ const m=((s||{}).meals||{})[dt]||{}; if(m.b!==false) b++; if(m.l!==false) l++; if(m.d!==false) d++; }); return { b,l,d };
+}
+function stayPerDiem(s){ const m=stayMeals(s); return m.b*PER_DIEM.b+m.l*PER_DIEM.l+m.d*PER_DIEM.d; }
 function expCalc(x){
   const totalMiles=(x.trips||[]).reduce((t,r)=>t+num(r.miles),0);
   const nonReimb=num(x.commuteDays)*num(x.commuteMiles);
   const eligible=Math.max(0,totalMiles-nonReimb);
   const mileage=Math.round(eligible*num(x.rate)*100)/100;
   let b=0,l=0,d=0,nights=0;
-  (x.stays||[]).forEach(s=>{ nights+=Math.max(0,datesBetween(s.checkIn,s.checkOut).length-1); datesBetween(s.checkIn,s.checkOut).forEach(dt=>{ const m=(s.meals||{})[dt]||{}; if(m.b!==false) b++; if(m.l!==false) l++; if(m.d!==false) d++; }); });
+  (x.stays||[]).forEach(s=>{ nights+=Math.max(0,datesBetween(s.checkIn,s.checkOut).length-1); const m=stayMeals(s); b+=m.b; l+=m.l; d+=m.d; });
   const perDiem=b*PER_DIEM.b+l*PER_DIEM.l+d*PER_DIEM.d;
   const misc=Math.round((x.misc||[]).reduce((t,r)=>t+num(r.amount),0)*100)/100;
   return { totalMiles, nonReimb, eligible, mileage, b, l, d, nights, perDiem, misc, total:Math.round((mileage+perDiem+misc)*100)/100 };
@@ -1292,7 +1320,7 @@ function expBySource(x){
   const codeFromEvent=k=>{ if(!k) return ''; const t=[...(x.trips||[]),...(x.stays||[])].find(r=>r.eventKey===k && r.showCode); return t?t.showCode:''; };
   const row=code=>{ const k=String(code||'').trim().toUpperCase()||'(no code)'; return rows[k]=rows[k]||{ code:k, mileage:0, perDiem:0, misc:0 }; };
   (x.trips||[]).forEach(t=>{ row(t.showCode||codeFromEvent(t.eventKey)).mileage+=num(t.miles)*ratio; });
-  (x.stays||[]).forEach(s=>{ let a=0; datesBetween(s.checkIn,s.checkOut).forEach(dt=>{ const m=(s.meals||{})[dt]||{}; a+=(m.b!==false?PER_DIEM.b:0)+(m.l!==false?PER_DIEM.l:0)+(m.d!==false?PER_DIEM.d:0); }); row(s.showCode||codeFromEvent(s.eventKey)).perDiem+=a; });
+  (x.stays||[]).forEach(s=>{ let a=stayPerDiem(s); row(s.showCode||codeFromEvent(s.eventKey)).perDiem+=a; });
   (x.misc||[]).forEach(r=>{ row(r.showCode||codeFromEvent(r.eventKey)).misc+=num(r.amount); });
   const list=Object.values(rows).map(r=>{ ['mileage','perDiem','misc'].forEach(k=>r[k]=Math.round(r[k]*100)/100); r.total=Math.round((r.mileage+r.perDiem+r.misc)*100)/100; return r; }).filter(r=>r.total).sort((a,b)=>a.code==='(no code)'?1:b.code==='(no code)'?-1:a.code.localeCompare(b.code));
   // fix any rounding penny so the codes add up to the report total
@@ -1312,7 +1340,7 @@ function expenseCostsForEvent(e){
     const c=expCalc(x); let hit=false;
     const ratio=c.totalMiles ? c.mileage/c.totalMiles : 0;
     (x.trips||[]).forEach(r=>{ if(r.eventKey===e.key){ out.mileage+=num(r.miles)*ratio; hit=true; } });
-    (x.stays||[]).forEach(s=>{ if(s.eventKey===e.key){ datesBetween(s.checkIn,s.checkOut).forEach(dt=>{ const m=(s.meals||{})[dt]||{}; out.perDiem+=(m.b!==false?PER_DIEM.b:0)+(m.l!==false?PER_DIEM.l:0)+(m.d!==false?PER_DIEM.d:0); }); hit=true; } });
+    (x.stays||[]).forEach(s=>{ if(s.eventKey===e.key){ out.perDiem+=stayPerDiem(s); hit=true; } });
     (x.misc||[]).forEach(r=>{ if(r.eventKey===e.key){ if(r.category==='Phone stipend') out.phone+=num(r.amount); else out.misc+=num(r.amount); hit=true; } });
     if(hit) out.reports++;
   });
@@ -1417,13 +1445,14 @@ function expenseEditor(){
 `:''}<div id="tot-m">${(x.trips||[]).length?totMileageHtml(x,c):''}</div>
   </div>
   <div class="card"><h2>🏨 Per diem (meals) <span class="small muted">GL 73300 · only with a hotel stay</span></h2>
-    <div class="small muted" style="margin-bottom:8px">Breakfast $6 · Lunch $12 · Dinner $25 for each hotel date. Untick any meal that was provided.</div>
+    <div class="small muted" style="margin-bottom:8px">Breakfast $6 · Lunch $12 · Dinner $25. Add each hotel stay, then enter how many breakfasts, lunches and dinners you’re claiming for it. Don’t count meals that were provided.</div>
     ${(x.stays||[]).map((s,i)=>{ const ds=datesBetween(s.checkIn,s.checkOut); return `<div class="exrow"><div class="fields">
       <div class="field"><label>Event</label><select data-ex="stays.${i}.eventKey" data-keep="x-stays.${i}.eventKey">${expEventOptions(x,s.eventKey)}</select></div>
       <div class="field"><label>Show / source code</label>${inp(`stays.${i}.showCode`,s.showCode)}</div>
       <div class="field"><label>Hotel check-in</label>${inp(`stays.${i}.checkIn`,s.checkIn,'type="date"')}</div>
       <div class="field"><label>Hotel check-out</label>${inp(`stays.${i}.checkOut`,s.checkOut,'type="date"')}</div></div>
-      ${ds.length?`<table class="meals"><thead><tr><th>Date</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th></tr></thead><tbody>${ds.map(dt=>{ const m=(s.meals||{})[dt]||{}; return `<tr><td>${fmtLong(dt)}</td>${['b','l','d'].map(k=>`<td><input type="checkbox" data-exmeal="${i}|${dt}|${k}" ${m[k]!==false?'checked':''}></td>`).join('')}</tr>`; }).join('')}</tbody></table><div class="small muted">${ds.length-1} night${ds.length-1===1?'':'s'} in hotel</div>`:''}
+      ${s.mealCount?`<div class="fields" style="margin-top:6px">${[['b','Breakfasts',PER_DIEM.b],['l','Lunches',PER_DIEM.l],['d','Dinners',PER_DIEM.d]].map(([k,l,r])=>`<div class="field" style="max-width:140px"><label>${l} <span class="small muted">($${r} each)</span></label>${inp(`stays.${i}.mealCount.${k}`,s.mealCount[k],`type="number" min="0" max="${Math.max(ds.length,0)}" step="1" inputmode="numeric" placeholder="0"`)}</div>`).join('')}</div>${ds.length?`<div class="small muted">${ds.length-1} night${ds.length-1===1?'':'s'} in hotel · up to ${ds.length} of each meal (one per hotel date)</div>`:''}`
+        :ds.length?`<table class="meals"><thead><tr><th>Date</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th></tr></thead><tbody>${ds.map(dt=>{ const m=(s.meals||{})[dt]||{}; return `<tr><td>${fmtLong(dt)}</td>${['b','l','d'].map(k=>`<td><input type="checkbox" data-exmeal="${i}|${dt}|${k}" ${m[k]!==false?'checked':''}></td>`).join('')}</tr>`; }).join('')}</tbody></table><div class="small muted">${ds.length-1} night${ds.length-1===1?'':'s'} in hotel</div>`:''}
       <div style="margin-top:6px"><span class="lbl">Hotel receipt or confirmation <span style="color:var(--red)">*</span></span> ${rcpt(`stays.${i}.receipt`,s.receipt,'Add receipt')}</div>
       <button class="btn sm danger" data-act="expDel" data-list="stays" data-i="${i}" style="margin-top:6px">Remove stay</button></div>`; }).join('')}
     <button class="btn" data-act="expAdd" data-list="stays">+ Add a hotel stay</button>
@@ -1465,7 +1494,7 @@ function expValidate(x){
   if(!(x.trips||[]).length && !(x.stays||[]).length && !(x.misc||[]).length) errs.push('at least one trip, hotel stay or expense');
   (x.trips||[]).forEach((t,i)=>{ if(!t.date||!num(t.miles)) errs.push(`date and miles for trip ${i+1}`); if(!t.showCode) errs.push(`show code for trip ${i+1}`); if(!isStreetAddr(t.from)) errs.push(`the street address you started from for trip ${i+1}`); });
   if((x.trips||[]).length && x.commuteDays==='') errs.push('number of commute days');
-  (x.stays||[]).forEach((s,i)=>{ if(!s.checkIn||!s.checkOut||s.checkOut<s.checkIn) errs.push(`hotel dates for stay ${i+1}`); if(!s.showCode) errs.push(`show code for stay ${i+1}`); if(!s.receipt) errs.push(`hotel receipt for stay ${i+1}`); });
+  (x.stays||[]).forEach((s,i)=>{ if(!s.checkIn||!s.checkOut||s.checkOut<s.checkIn) errs.push(`hotel dates for stay ${i+1}`); if(!s.showCode) errs.push(`show code for stay ${i+1}`); if(!s.receipt) errs.push(`hotel receipt for stay ${i+1}`); if(s.mealCount){ const n=datesBetween(s.checkIn,s.checkOut).length, m=stayMeals(s); if(m.b>n||m.l>n||m.d>n) errs.push(`no more than ${n} of each meal for stay ${i+1} (one per hotel date)`); } });
   (x.misc||[]).forEach((r,i)=>{ if(!r.date||!r.category||!num(r.amount)) errs.push(`date, type and amount for expense ${i+1}`); if(!NO_RECEIPT_CATS.includes(r.category) && !r.receipt) errs.push(`receipt for expense ${i+1}`); });
   if(!x.certify) errs.push('the certification checkbox'); if(!x.signature) errs.push('your signature');
   return errs.length ? 'Please add: '+[...new Set(errs)].join(', ')+'.' : '';
@@ -1497,7 +1526,7 @@ function expenseDoc(x, forPrint){
     </tbody></table>
     ${(x.trips||[]).length?`<h3>Mileage (GL 73200) · ${money2(x.rate)}/mile</h3><table class="extab"><thead><tr><th>Date</th><th>Event</th><th>Show code</th><th>From → To</th><th>Office first</th><th>Miles</th></tr></thead><tbody>${x.trips.map(t=>`<tr><td>${fmtMD(t.date)}</td><td>${esc(evName(t.eventKey))}</td><td>${esc(t.showCode||'')}</td><td>${esc([t.from,t.to].filter(Boolean).join(' → '))}</td><td>${t.officeFirst?'Yes':''}</td><td>${round1(num(t.miles))}</td></tr>`).join('')}</tbody></table>
       <table class="extot"><tbody><tr><td>Total miles</td><td>${round1(c.totalMiles)}</td></tr><tr><td>Commute days × round-trip commute miles</td><td>${num(x.commuteDays)} × ${num(x.commuteMiles)} = ${round1(c.nonReimb)}</td></tr><tr><td>Eligible miles</td><td>${round1(c.eligible)}</td></tr><tr><th>Total mileage reimbursement</th><th>${money2(c.mileage)}</th></tr></tbody></table>`:''}
-    ${(x.stays||[]).length?`<h3>Per diem (GL 73300)</h3><table class="extab"><thead><tr><th>Event</th><th>Show code</th><th>Hotel</th><th>Nights</th><th>Meals (B/L/D)</th><th>Receipt</th></tr></thead><tbody>${x.stays.map(s=>{ const ds=datesBetween(s.checkIn,s.checkOut); let b=0,l=0,d=0; ds.forEach(dt=>{ const m=(s.meals||{})[dt]||{}; if(m.b!==false)b++; if(m.l!==false)l++; if(m.d!==false)d++; }); return `<tr><td>${esc(evName(s.eventKey))}</td><td>${esc(s.showCode||'')}</td><td>${fmtMD(s.checkIn)}–${fmtMD(s.checkOut)}</td><td>${Math.max(0,ds.length-1)}</td><td>${b}/${l}/${d}</td><td>${img(s.receipt)}</td></tr>`; }).join('')}</tbody></table>
+    ${(x.stays||[]).length?`<h3>Per diem (GL 73300)</h3><table class="extab"><thead><tr><th>Event</th><th>Show code</th><th>Hotel</th><th>Nights</th><th>Meals (B/L/D)</th><th>Receipt</th></tr></thead><tbody>${x.stays.map(s=>{ const ds=datesBetween(s.checkIn,s.checkOut), {b,l,d}=stayMeals(s); return `<tr><td>${esc(evName(s.eventKey))}</td><td>${esc(s.showCode||'')}</td><td>${fmtMD(s.checkIn)}–${fmtMD(s.checkOut)}</td><td>${Math.max(0,ds.length-1)}</td><td>${b}/${l}/${d}</td><td>${img(s.receipt)}</td></tr>`; }).join('')}</tbody></table>
       <table class="extot"><tbody><tr><td>Meals</td><td>${c.b} × $6 + ${c.l} × $12 + ${c.d} × $25</td></tr><tr><th>Total per diem</th><th>${money2(c.perDiem)}</th></tr></tbody></table>`:''}
     ${(x.misc||[]).length?`<h3>Reimbursable expenses</h3><table class="extab"><thead><tr><th>Date</th><th>Type</th><th>Event</th><th>Show code</th><th>Description</th><th>Amount</th><th>Receipt</th></tr></thead><tbody>${x.misc.map(r=>`<tr><td>${fmtMD(r.date)}</td><td>${esc(r.category)}</td><td>${esc(evName(r.eventKey))}</td><td>${esc(r.showCode||'')}</td><td>${esc(r.desc||'')}</td><td>${money2(r.amount)}</td><td>${NO_RECEIPT_CATS.includes(r.category)?'n/a':img(r.receipt)}</td></tr>`).join('')}</tbody></table>
       <table class="extot"><tbody><tr><th>Miscellaneous expense total</th><th>${money2(c.misc)}</th></tr></tbody></table>`:''}
@@ -2710,6 +2739,22 @@ function alertsBanner(){
   return `<details class="card albanner hsec" data-hsec="alerts" ${hsecOpen('alerts')?'open':''}><summary class="row"><h2 style="margin:0;flex:1">🔔 ${un.length} new alert${un.length===1?'':'s'}</h2><button class="btn sm" data-act="alReadAll">Mark all read</button><button class="btn sm" data-tab="alerts">See all</button></summary>
     ${un.slice(0,5).map(a=>alertRow(a,true)).join('')}${un.length>5?`<div class="small muted">…and ${un.length-5} more.</div>`:''}</details>`;
 }
+// Pop-up for new alerts: when a manager has the hub open (any page) and an alert for them comes in, or there are
+// unread ones when they sign in, a box pops up over the page. "Later" hides it until the next new alert or the next visit.
+function alertPopupList(){
+  if(!S.user || MARKETER_MODE || ui.tour!=null || ui.welcome || previewing()) return [];
+  const me=myEmail(), done=ui.alPopped||(ui.alPopped=new Set());
+  return unreadAlerts().filter(a=>!done.has(a.id) && ((a.to||[]).includes(me) || (a.cc||[]).includes(me) || isLeadUser()) && (a.createdAt||0)>=Date.now()-3*864e5);
+}
+function alertPopup(){
+  const L=alertPopupList(); if(!L.length) return '';
+  const sig=L.map(a=>a.id).join('|'), fresh=sig!==ui.alPopSig; ui.alPopSig=sig;   // slide in only when something new arrives, not on every refresh
+  return `<div class="alpop${fresh?' anim':''}" role="alertdialog" aria-label="New alerts"><div class="alpophead"><b>🔔 ${L.length} new alert${L.length===1?'':'s'}</b><button class="btn sm" data-act="alPopLater" title="Hide until the next new alert">Later</button></div>
+    <div class="alpopbody">${L.slice(0,4).map(a=>`<div class="alrow"><span class="alic">${ALERT_ICON[a.kind]||'🔔'}</span><div style="flex:1;min-width:0"><b>${esc(a.subject||'')}</b>${a.text?`<div class="small">${esc(a.text)}</div>`:''}<div class="small muted">${fmtStamp(a.createdAt)}${a.office?' · '+esc(a.office):''}</div></div>
+      <span class="acts">${a.tab?`<button class="btn sm primary" data-act="alOpen" data-id="${esc(a.id)}">Open</button>`:''}<button class="btn sm" data-act="alRead" data-id="${esc(a.id)}" title="Mark as read">✓</button></span></div>`).join('')}
+      ${L.length>4?`<div class="small muted" style="margin-top:4px">…and ${L.length-4} more. <a href="#" data-tab="alerts">See all</a></div>`:''}</div>
+    ${L.length>1?'<div class="alpopfoot"><button class="btn sm" data-act="alReadAll">Mark all read</button></div>':''}</div>`;
+}
 function myAlertsCard(){
   const list=myAlerts(), un=list.filter(a=>!alertSeen(a)).length;
   return `<div class="card"><div class="row"><h2 style="margin:0;flex:1">🔔 My alerts <span class="small muted">(last 14 days${(ui.scope||[]).length?', '+esc(scopeLabel()):''})</span></h2>${un?'<button class="btn sm" data-act="alReadAll">Mark all read</button>':''}</div>
@@ -2923,7 +2968,8 @@ function asgPeople(){
   LEADERSHIP.forEach(p=>add(p.email,p.name));
   ORG.forEach(d=>{ Object.entries(d.regions).forEach(([r,x])=>{ add(x.email,x.name,r); add(d.leader.email,d.leader.name,r); }); });
   const c=alertCfg(); Object.entries(c.offices||{}).forEach(([o,v])=>splitEmails(v).forEach(e=>add(e,'',regionOf(o))));
-  (S.sched.roster||[]).forEach(p=>{ if(p.email && (p.mgr || m[String(p.email).toLowerCase()])) add(p.email,p.name,regionOf(p.office)); });
+  // roster managers count only with their work email; personal addresses (gmail etc.) can't sign in to the hub
+  (S.sched.roster||[]).forEach(p=>{ const em=String(p.email||'').toLowerCase(); if(em.endsWith('@greatdayimprovements.com') && (p.mgr || m[em])) add(em,p.name,regionOf(p.office)); });
   return Object.values(m).map(x=>Object.assign(x,{ name:x.name||x.email.split('@')[0].replace(/[._]/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) })).sort((a,b)=>a.name.localeCompare(b.name));
 }
 function asgResolve(a){
@@ -4303,12 +4349,14 @@ function render(){
   const app=document.getElementById('app');
   computeStates();
   actOnRender();
-  const keep=captureInputs();
+  const keep=captureInputs(), sx=window.scrollX, sy=window.scrollY;
   document.body.classList.toggle('marketer', MARKETER_MODE);
   if(!ui.tourT && S.user){ ui.tourT=setTimeout(()=>{ maybeStartTour(); if(ui.tour!=null){ markWelcomed(); render(); } else if(S.user && !MARKETER_MODE && (S.mode==='live'||ui.forceWelcome) && welcomeDue()){ ui.welcomeBack=welcomedToday(); ui.welcome=true; markWelcomed(); touchSeen.at=0; touchSeen(); render(); } else touchSeen(); },3000); }
   app.innerHTML = `<div class="wrap">${demoBar()}${header()}${viewAsBanner()}${searchBox()}${MARKETER_MODE?'':tabs()}${setupBanner()}${offlineBanner()}${ui.notice?`<div class="notice ${ui.noticeKind}">${esc(ui.notice)} <button class="btn sm" data-act="clearNotice">Dismiss</button></div>`:''}${body()}</div>${overlay()}${bottomNav()}${tourOverlay()}${welcomeOverlay()}${helpOverlay()}${glOverlay()}${shopOverlay()}${kitBuildOverlay()}${scEvEditOverlay()}${undoToast()}`;
   stackTables(app); document.body.classList.toggle('hasnav', !!(S.user && !MARKETER_MODE)); if(ui.tourT && !ui.welcome) touchSeen();
+  { const pop=alertPopup(); if(pop) app.insertAdjacentHTML('beforeend', pop); const n=S.user&&!MARKETER_MODE?unreadAlerts().length:0; document.title=(n?`(${n}) `:'')+document.title.replace(/^\(\d+\)\s*/,''); }
   restoreInputs(keep);
+  if(window.scrollY!==sy || window.scrollX!==sx) window.scrollTo(sx, sy); // live updates never move the page (page changes scroll to the top themselves, after render)
   // lazy-load any photos now on screen
   app.querySelectorAll('img[data-photo]').forEach(im=>{ const id=im.dataset.photo; if(ui.photoCache[id]===undefined) getPhoto(id); });
   drawBarcodes();
@@ -4316,7 +4364,7 @@ function render(){
 }
 // keep typed text while live updates re-render
 function captureInputs(){ const m={}; document.querySelectorAll('[data-keep]').forEach(el=>{ m[el.dataset.keep]= (el.type==='checkbox'||el.type==='radio')?el.checked:el.value; }); const a=document.activeElement; return {m, focus:a&&a.dataset?a.dataset.keep:null}; }
-function restoreInputs(k){ document.querySelectorAll('[data-keep]').forEach(el=>{ if(k.m[el.dataset.keep]!==undefined && !el.dataset.fresh && !el.dataset.ex){ if(el.type==='checkbox'||el.type==='radio') el.checked=k.m[el.dataset.keep]; else el.value=k.m[el.dataset.keep]; } }); if(k.focus){ const el=document.querySelector(`[data-keep="${k.focus}"]`); if(el) el.focus(); } }
+function restoreInputs(k){ document.querySelectorAll('[data-keep]').forEach(el=>{ if(k.m[el.dataset.keep]!==undefined && !el.dataset.fresh && !el.dataset.ex){ if(el.type==='checkbox'||el.type==='radio') el.checked=k.m[el.dataset.keep]; else el.value=k.m[el.dataset.keep]; } }); if(k.focus){ const el=document.querySelector(`[data-keep="${k.focus}"]`); if(el) el.focus({ preventScroll:true }); } }
 
 function header(){
   const stat = S.mode==='live'?'<span class="cstat live">● Live</span>':S.mode==='connecting'?'<span class="cstat">○ Connecting…</span>':`<span class="cstat local">○ ${DEMO?'Demo data':'This device only'}</span>`;
@@ -4856,7 +4904,7 @@ document.addEventListener('click', async ev=>{
     render(); window.scrollTo(0,0); return; }
   if(a==='expNew'){ const me=person(ui.me); if(!me) return; ui.exp=newExpense(me.id); ui.expErr=''; render(); window.scrollTo(0,0); return; }
   if(a==='expClose'){ ui.exp=null; ui.expErr=''; render(); return; }
-  if(a==='expAdd'){ const x=ui.exp, L=t.dataset.list; x[L]=x[L]||[]; x[L].push(L==='trips'?{ id:uid(), date:'', eventKey:'', showCode:'', from:startAddr(x), to:'', officeFirst:false, miles:'' }:L==='stays'?{ id:uid(), eventKey:'', showCode:'', checkIn:'', checkOut:'', meals:{} }:{ id:uid(), date:'', category:'', eventKey:'', desc:'', amount:'' }); render(); return; }
+  if(a==='expAdd'){ const x=ui.exp, L=t.dataset.list; x[L]=x[L]||[]; x[L].push(L==='trips'?{ id:uid(), date:'', eventKey:'', showCode:'', from:startAddr(x), to:'', officeFirst:false, miles:'' }:L==='stays'?{ id:uid(), eventKey:'', showCode:'', checkIn:'', checkOut:'', mealCount:{ b:'', l:'', d:'' } }:{ id:uid(), date:'', category:'', eventKey:'', desc:'', amount:'' }); render(); return; }
   if(a==='expDel'){ if(!confirm('Remove this line from the report?')) return; const L=t.dataset.list, I=+t.dataset.i, row=ui.exp[L][I]; showUndo('Line removed.', ()=>{ if(ui.exp){ ui.exp[L].splice(I,0,row); if(L==='trips') syncCommuteDays(ui.exp); } }); ui.exp[t.dataset.list].splice(+t.dataset.i,1); if(t.dataset.list==='trips') syncCommuteDays(ui.exp); render(); return; }
   if(a==='expSave'||a==='expSubmit'){ const x=ui.exp;
     if(a==='expSubmit'){ const err=expValidate(x); if(err){ ui.expErr=err; render(); return; } x.status='submitted'; x.submittedAt=Date.now(); x.history=[...(x.history||[]), { at:Date.now(), by:x.personName, action:'Submitted' }]; }
@@ -4878,6 +4926,7 @@ document.addEventListener('click', async ev=>{
     ui.notice='Approved. Save it as a PDF and email it to Accounts Payable using the steps on the report.'; ui.noticeKind='ok'; render(); return; }
   if(a==='expAP'){ const x=S.expenses[ui.expView]; if(!x||x.status!=='approved') return; ui.busy=true; render(); try{ const n=await sendExpenseToAP(x); ui.notice=`Emailed to Accounts Payable${n>1?` in ${n} emails`:''} with the receipts.`; ui.noticeKind='ok'; }catch(e){ console.error(e); ui.notice='Couldn’t email Accounts Payable: '+(e.code||e.message); ui.noticeKind='err'; } ui.busy=false; render(); return; }
   if(a==='expReturn'){ const x=S.expenses[ui.expView]; const note=prompt('What needs to change? (the marketer will see this)',''); if(note===null) return; await guard(()=>expAction(x,'returned',note)); alertExpenseReturned(x, note); ui.expView=null; render(); return; }
+  if(a==='alPopLater'){ alertPopupList().forEach(x=>ui.alPopped.add(x.id)); render(); return; }
   if(a==='alRead'){ await guard(()=>markAlertsRead([t.dataset.id])); return; }
   if(a==='alReadAll'){ await guard(()=>markAlertsRead(unreadAlerts().map(x=>x.id))); return; }
   if(a==='alOpen'){ const al=(S.alerts||{})[t.dataset.id]; if(!al) return; markAlertsRead([al.id]).catch(()=>{}); ui.tab=al.tab||'home'; history.pushState(null,'','#'+ui.tab); render(); window.scrollTo(0,0); return; }

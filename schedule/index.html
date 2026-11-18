@@ -656,7 +656,12 @@ function regionMap(){ const c={}; data.events.forEach(e=>{ if(e.office&&e.region
   const m={}; Object.entries(c).forEach(([o,r])=>{ m[o]=recodeRegion(o, Object.entries(r).sort((a,b)=>b[1]-a[1])[0][0]); }); return m; }
 // GC, PL and UMW are no longer active (Nov–Dec 2026 sprint): their branches belong to the active region that owns them.
 const RECODE_BY_CITY = [['Houston','SC-2'],['Mobile','SE'],['Omaha','UPL'],['St. Louis','UPL'],['Saint Louis','UPL'],['Chicago','UPL'],['Madison','UPL']];
-function recodeRegion(office, r){ const R=String(r||'').replace(/^(SC|SA|MW)2$/,'$1-2'); if(!['GC','PL','UMW'].includes(R)) return R; const hit=RECODE_BY_CITY.find(([c])=>String(office||'').toLowerCase().includes(c.toLowerCase())); return hit?hit[1]:R; }
+// Branches whose region is set here, whatever region their events carry (ETACC's branch list puts these in SC-2, Stephen Novak).
+const REGION_BY_BRANCH = { WAC:'SC-2', HOU:'SC-2', SAN:'SC-2', AUS:'SC-2' };
+const REGION_BY_CITY = [['Waco','SC-2'],['Houston','SC-2'],['San Antonio','SC-2'],['Austin','SC-2']];
+function fixedRegion(office){ const o=String(office||''), code=o.split(' - ')[0].trim().toUpperCase(), city=o.split(' - ').pop().trim().toLowerCase();
+  if(REGION_BY_BRANCH[code]) return REGION_BY_BRANCH[code]; const hit=REGION_BY_CITY.find(([c])=>city===c.toLowerCase()); return hit?hit[1]:''; }
+function recodeRegion(office, r){ const F=fixedRegion(office); if(F) return F; const R=String(r||'').replace(/^(SC|SA|MW)2$/,'$1-2'); if(!['GC','PL','UMW'].includes(R)) return R; const hit=RECODE_BY_CITY.find(([c])=>String(office||'').toLowerCase().includes(c.toLowerCase())); return hit?hit[1]:R; }
 function regionOf(o){ return regionMap()[o]||''; }
 function regions(){ const a=myArea(); return [...new Set([...Object.values(regionMap()), ...data.roster.map(r=>r.region).filter(Boolean)])].filter(r=>!a||a.regs.has(r)||[...a.offs].some(o=>regionOf(o)===r)).sort(); }
 // Managers only see their own area (same org chart as the Event Hub). Paula, and anyone not in the chart, see everything.
